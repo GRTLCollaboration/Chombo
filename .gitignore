@@ -1,0 +1,15 @@
+d
+f
+o
+p
+*.i
+*.a
+*.d
+*.ex
+pout.*
+*_F.H
+.svn
+Make.defs.local
+
+lib/include
+.check*
