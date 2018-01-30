@@ -1,7 +1,11 @@
 # Chombo
-A copy of Chombo version 3.2 with updates and tweaks for GRChombo.
-Please see the Chombo readme below.
+This is a copy of Chombo version 3.2 available at
+[https://commons.lbl.gov/display/chombo]
+with updates and tweaks for GRChombo.
+Please see the Chombo readme below. The GRChombo collaboration is only a
+a user of Chombo. We are not affiliated to or endorsed by LBNL.
 
+# The Chombo readme
 
                        Chombo
            Applied Numerical Algorithms Group
