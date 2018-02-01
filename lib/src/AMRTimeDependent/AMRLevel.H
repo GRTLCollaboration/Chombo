@@ -273,6 +273,17 @@ public:
 
   ///
   /**
+     Run preCheckpointLevel if data should be manipulated before a checkpoint file
+
+  */
+  virtual
+    void preCheckpointLevel ()
+    {
+    }
+
+
+  ///
+  /**
      Reads checkpoint header.
 
      This is a pure virtual function and  MUST be defined in the derived
