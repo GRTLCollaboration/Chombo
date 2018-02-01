@@ -201,12 +201,68 @@ void TimeInterpolatorRK4::interpolate(/// interpolated solution on this level co
 
       // Evaluate a0 + a1*t + a2*t^2 + a3*t^3
       // as a0 + t * (a1 + t * (a2 + t * a3)).
+
+#ifdef _OPENMP
+
+      #pragma omp parallel default(shared)
+      {
+        int worker = omp_get_thread_num();
+        int workers = omp_get_num_threads();
+
+        int boxSize = UFab.size().product();
+        int workload = boxSize * intervalLength;
+        int quo = workload / workers;
+        int rem = workload % workers;
+
+        int work_start, work_end;
+        if (worker < rem)
+          {
+            work_start = (quo + 1) * worker;
+            work_end = work_start + quo + 1;
+          }
+        else
+          {
+            work_start = (quo + 1) * rem + quo * (worker - rem);
+            work_end = work_start + quo;
+          }
+
+        int comp_start = work_start / boxSize;
+        int i_comp_start = work_start - comp_start * boxSize;
+
+        int comp_end = ((work_end - 1) / boxSize) + 1;
+        int i_comp_end = work_end - (comp_end - 1) * boxSize;
+
+        for (int comp = comp_start; comp < comp_end; ++comp)
+          {
+            const int i_start = (comp == comp_start) ? i_comp_start : 0;
+            const int i_end = (comp == comp_end - 1) ? i_comp_end : boxSize;
+
+            double *const U = UFab.dataPtr(comp);
+            const double *const a0 = taylorFab.dataPtr(coeffFirst[0] + comp);
+            const double *const a1 = taylorFab.dataPtr(coeffFirst[1] + comp);
+            const double *const a2 = taylorFab.dataPtr(coeffFirst[2] + comp);
+            const double *const a3 = taylorFab.dataPtr(coeffFirst[3] + comp);
+
+            #pragma simd vectorlengthfor(double)
+            for (int i = i_start; i < i_end; ++i)
+              {
+                U[i] = a0[i] + a_timeInterpCoeff * (a1[i] + a_timeInterpCoeff
+                                       * (a2[i] + a_timeInterpCoeff * a3[i]));
+              }
+          }
+      }
+
+#else
+
       UFab.copy(taylorFab, coeffFirst[m_numCoeffs-1], 0, intervalLength);
       for (int ind = m_numCoeffs - 2; ind >=0; ind--)
         {
           UFab *= a_timeInterpCoeff;
           UFab.plus(taylorFab, coeffFirst[ind], 0, intervalLength);
         }
+
+#endif
+
     }
   // dummy statement in order to get around gdb bug
   int dummy_unused = 0; dummy_unused = 0;

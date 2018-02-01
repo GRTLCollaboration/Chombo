@@ -35,6 +35,9 @@ c     (dfm 5/25/08)
 
 #if (CH_SPACEDIM < 4)
       if (refRatio .eq. 2) then
+!$OMP  PARALLEL DO DEFAULT(FIRSTPRIVATE)
+!$OMP& COLLAPSE(1+CH_SPACEDIM) SHARED(coarse)
+!$OMP& SHARED(fine)
         do var = 0, CHF_NCOMP[coarse] - 1
           CHF_AUTOMULTIDO[box;ic]
             CHF_DTERM[
@@ -57,7 +60,11 @@ c     (dfm 5/25/08)
      &        + fine(CHF_IX[ip0+1;ip1+1;ip2+1],var) ])
           CHF_ENDDO
         enddo
+!$OMP  END PARALLEL DO
       else if (refRatio .eq. 4) then
+!$OMP  PARALLEL DO DEFAULT(FIRSTPRIVATE)
+!$OMP& COLLAPSE(1+CH_SPACEDIM) SHARED(coarse)
+!$OMP& SHARED(fine)
         do var = 0, CHF_NCOMP[coarse] - 1
           CHF_AUTOMULTIDO[box; ic]
             CHF_DTERM[
@@ -133,8 +140,12 @@ c     (dfm 5/25/08)
      &         + fine(CHF_IX[ip0+3;ip1+3;ip2+3],var) ])
           CHF_ENDDO
         enddo
+!$OMP  END PARALLEL DO
       else
 #endif
+!$OMP  PARALLEL DO DEFAULT(FIRSTPRIVATE)
+!$OMP& COLLAPSE(1+CH_SPACEDIM) SHARED(coarse)
+!$OMP& SHARED(fine)
         do var = 0, CHF_NCOMP[coarse] - 1
           CHF_AUTOMULTIDO[box;ic]
             CHF_DTERM[
@@ -154,6 +165,7 @@ c     (dfm 5/25/08)
             coarse(CHF_AUTOIX[ic],var) = coarseSum * refScale
           CHF_ENDDO
        enddo
+!$OMP  END PARALLEL DO
 #if (CH_SPACEDIM < 4)
       endif
 #endif

@@ -1865,6 +1865,7 @@ void AMR::writeCheckpointFile() const
 
   for (int level = 0; level <= m_finest_level; ++level)
     {
+      m_amrlevels[level]->preCheckpointLevel();
       m_amrlevels[level]->writeCheckpointLevel(handle);
     }
 
