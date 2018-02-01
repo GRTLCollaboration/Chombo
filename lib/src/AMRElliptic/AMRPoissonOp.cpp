@@ -1171,7 +1171,8 @@ void AMRPoissonOp::write(const LevelData<FArrayBox>* a_data,
 #endif
 }
 
-/***/
+/**
+ * */
 // ---------------------------------------------------------
 void AMRPoissonOp::levelGSRB( LevelData<FArrayBox>&       a_phi,
                               const LevelData<FArrayBox>& a_rhs )
@@ -1329,7 +1330,7 @@ void AMRPoissonOp::looseGSRB(LevelData<FArrayBox>&       a_phi,
       {
 	// invoke physical BC's where necessary
 	{
-	  CH_TIME("AMRPoissonOp::looseGSRB::BCs");
+//	  CH_TIME("AMRPoissonOp::looseGSRB::BCs");
 	  m_bc(a_phi[dit[ibox]], dbl[dit[ibox]], m_domain, m_dx, true);
 	}
 	
@@ -1405,9 +1406,9 @@ void AMRPoissonOp::overlapGSRB(LevelData<FArrayBox>&       a_phi,
     for(int ibox = 0; ibox < nbox; ibox++)
       {
 	// invoke physical BC's where necessary
-	CH_START(tb);
+	//CH_START(tb);
 	m_bc(a_phi[dit[ibox]], dbl[dit[ibox]], m_domain, m_dx, true);
-	CH_STOP(tb);
+	//CH_STOP(tb);
 	Box region = dbl[dit[ibox]];
 	region.grow(-1); // just do the interior on the first run through
 	int whichPass = 0;
