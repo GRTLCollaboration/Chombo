@@ -48,8 +48,7 @@ _gppmajorver:= $(word 1,$(_gppversion))
 _gppminorver:= $(word 2,$(_gppversion))
 
   # `-ftemplate-depth' is needed to keep mangled function names from
-  #  getting too long for some linkers to handle. Note it sometimes causes problems for GRChombo, and
-  #  it seems possible to remove it without errors.
+  #  getting too long for some linkers to handle.
   # HDF5 uses `long long', so disable warnings about it.
   # `-Wno-sign-compare' turns off warnings about comparing signed and unsigned int -
   #   this is a meaningful warning, but it appears way too often in our code.
