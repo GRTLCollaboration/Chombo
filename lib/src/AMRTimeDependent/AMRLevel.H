@@ -283,7 +283,7 @@ public:
 
   ///
   /**
-     Run prePlotLevel if data should be manipulated before a checkpoint file
+     Run prePlotLevel if data should be manipulated before a plot file
 
   */
   virtual
