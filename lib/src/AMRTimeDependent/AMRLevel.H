@@ -281,6 +281,15 @@ public:
     {
     }
 
+  ///
+  /**
+     Run prePlotLevel if data should be manipulated before a checkpoint file
+
+  */
+  virtual
+    void prePlotLevel ()
+    {
+    }
 
   ///
   /**

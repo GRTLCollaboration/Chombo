@@ -1793,6 +1793,7 @@ void AMR::writePlotFile() const
   // write physics class per-level data
   for (int level = 0; level <= m_finest_level; ++level)
     {
+      m_amrlevels[level]->prePlotLevel();
       m_amrlevels[level]->writePlotLevel(handle);
     }
 
