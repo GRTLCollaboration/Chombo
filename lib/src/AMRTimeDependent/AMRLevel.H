@@ -281,6 +281,15 @@ public:
     {
     }
 
+  ///
+  /**
+     Run prePlotLevel if data should be manipulated before a plot file
+
+  */
+  virtual
+    void prePlotLevel ()
+    {
+    }
 
   ///
   /**
