@@ -257,6 +257,7 @@ void FourthOrderInterpStencil::fillFine(
   // Note that shiftedFineBox is contained in
   // m_baseFineBox == (IntVect::Zero, (m_refineCoarse - 1) * interpUnit).
 
+#pragma omp parallel for
   for (int icomp = 0; icomp < a_fineFab.nComp(); icomp++)
     {
       for (BoxIterator bit(shiftedFineBox); bit.ok(); ++bit)
