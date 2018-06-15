@@ -52,8 +52,8 @@ _gppminorver:= $(word 2,$(_gppversion))
   # HDF5 uses `long long', so disable warnings about it.
   # `-Wno-sign-compare' turns off warnings about comparing signed and unsigned int -
   #   this is a meaningful warning, but it appears way too often in our code.
-
-_cxxbaseflags := -std=c++11 -Wno-unused-but-set-variable -Wno-long-long -Wno-sign-compare -Wno-deprecated -ftemplate-depth-55  -Wno-unused-local-typedefs -Wno-literal-suffix
+  # Changed c++11 flag into c++14 as required for GRChombo 
+_cxxbaseflags := -std=c++14 -Wno-unused-but-set-variable -Wno-long-long -Wno-sign-compare -Wno-deprecated -ftemplate-depth-55  -Wno-unused-local-typedefs -Wno-literal-suffix
 
   # g++ v3.4.0 started objecting to some uses of HOFFSET()
   # TJL - Changed moving from csh to sh...

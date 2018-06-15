@@ -42,7 +42,8 @@ getcompilerversion := $(CHOMBO_HOME)/mk/compilerVersion.pl
 # -C disable stripping out C++ comments, which are valid code in Fortran
 CH_CPP = $(CXX) -EP -C
 
-_cxxbaseflags = -restrict -m64 -std=c++11
+# Changed c++11 flag into c++14 as required for GRChombo 
+_cxxbaseflags = -restrict -m64 -std=c++14
 
 cxxdbgflags += -g -Wall -Wextra -pedantic -fstack-protector-all $(_cxxbaseflags)
 cxxoptflags += -O3 -m64 -qopt-multi-version-aggressive $(_cxxbaseflags)
@@ -52,7 +53,10 @@ defldflags = -static-intel
 foptflags += -O3
 fdbgflags += -g -check bounds -check uninit -ftrapuv
 
-flibflags += -lifport -lifcore -limf -lsvml -lm -lipgo -lirc -lsvml
+# The -lsvml flag has been found to give GRChombo bugs and it seems like
+# one can safely remove it. For now we will leave it in and just note in wiki.
+flibflags += -lifport -lifcore -limf -lm -lipgo -lirc -lsvml
+
 # Compile with OpenMP
 ifeq ($(OPENMPCC),TRUE)
   cxxoptflags += -qopenmp
