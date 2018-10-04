@@ -44,7 +44,7 @@ makefiles+=compiler/Make.defs.GNU
 ################################################################
 
 _gppversion := $(subst ., ,$(shell $(CXX) -dumpfullversion -dumpversion))
-_gppmajorver:= $(word 1,$(_ggppversion))
+_gppmajorver:= $(word 1,$(_gppversion))
 _gppminorver:= $(word 2,$(_gppversion))
 
   # `-ftemplate-depth' is needed to keep mangled function names from
