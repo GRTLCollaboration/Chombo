@@ -43,8 +43,8 @@ makefiles+=compiler/Make.defs.GNU
 
 ################################################################
 
-_gppversion := $(subst ., ,$(shell $(CXX) -dumpversion))
-_gppmajorver:= $(word 1,$(_gppversion))
+_gppversion := $(subst ., ,$(shell $(CXX) -dumpfullversion -dumpversion))
+_gppmajorver:= $(word 1,$(_ggppversion))
 _gppminorver:= $(word 2,$(_gppversion))
 
   # `-ftemplate-depth' is needed to keep mangled function names from
@@ -52,7 +52,7 @@ _gppminorver:= $(word 2,$(_gppversion))
   # HDF5 uses `long long', so disable warnings about it.
   # `-Wno-sign-compare' turns off warnings about comparing signed and unsigned int -
   #   this is a meaningful warning, but it appears way too often in our code.
-  # Changed c++11 flag into c++14 as required for GRChombo 
+  # Changed c++11 flag into c++14 as required for GRChombo
 _cxxbaseflags := -std=c++14 -Wno-unused-but-set-variable -Wno-long-long -Wno-sign-compare -Wno-deprecated -ftemplate-depth-55  -Wno-unused-local-typedefs -Wno-literal-suffix
 
   # g++ v3.4.0 started objecting to some uses of HOFFSET()
@@ -82,7 +82,7 @@ defcxxdbgflags := $(defcxxcomflags) -g -pedantic -Wall
 ifeq ($(system),Darwin)
   CH_CPP = /usr/bin/cpp -E -P
 
-  # the preprocessor for v4.8+ adds some header gibberish that we 
+  # the preprocessor for v4.8+ adds some header gibberish that we
   # suppress with -nostdinc.
   ifeq (00,$(shell test $(_gppmajorver) -ge 4 ; echo $$?)$(shell test $(_gppminorver) -ge 8 ; echo $$?))
     CH_CPP += -nostdinc
@@ -93,10 +93,10 @@ endif
 # the preprocessor in v3 or later strips "//" by default,
 # but this is a valid Fortran operator, so force it to leave comments
 ifeq (0,$(shell test $(_gppmajorver) -ge 3 ; echo $$?))
-  CH_CPP += 
+  CH_CPP +=
 endif
 
-# the preprocessor for v4.8+ adds some header gibberish that we 
+# the preprocessor for v4.8+ adds some header gibberish that we
 # suppress with -nostdinc.
 ifeq (00,$(shell test $(_gppmajorver) -ge 4 ; echo $$?)$(shell test $(_gppminorver) -ge 8 ; echo $$?))
   CH_CPP += -nostdinc
@@ -131,6 +131,5 @@ endif
 ifeq ($(OPENMPCC),TRUE)
   defflibflags  += -lgfortran -lm -lgomp
 else
-  defflibflags  += -lgfortran -lm 
+  defflibflags  += -lgfortran -lm
 endif
-
