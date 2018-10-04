@@ -10,7 +10,6 @@ pout.*
 *_F.H
 .svn
 Make.defs.local
-Make.defs.local*
 
-#lib/include
+lib/include
 .check*
