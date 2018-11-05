@@ -676,7 +676,12 @@ inline void BaseFab<double>::performCopy(const BaseFab<double>& a_src,
             double *const dest = dataPtr(a_destcomp + comp);
             const double *const src = a_src.dataPtr(a_srccomp + comp);
 
-            #pragma omp simd simdlen(8)
+            // simdlen(n) clause requires OpenMP 4.5 or greater
+            #if _OPENMP > 201510
+                #pragma omp simd simdlen(8)
+            #else
+                #pragma omp simd
+            #endif
             for (int i = i_start; i < i_end; ++i)
               {
                 dest[i] = src[i];

@@ -243,7 +243,12 @@ void TimeInterpolatorRK4::interpolate(/// interpolated solution on this level co
             const double *const a2 = taylorFab.dataPtr(coeffFirst[2] + comp);
             const double *const a3 = taylorFab.dataPtr(coeffFirst[3] + comp);
 
-            #pragma omp simd simdlen(8)
+            // simdlen(n) clause requires OpenMP 4.5 or greater
+            #if _OPENMP > 201510
+                #pragma omp simd simdlen(8)
+            #else
+                #pragma omp simd
+            #endif
             for (int i = i_start; i < i_end; ++i)
               {
                 U[i] = a0[i] + a_timeInterpCoeff * (a1[i] + a_timeInterpCoeff
