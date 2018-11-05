@@ -1,4 +1,4 @@
-## This file contains compiler variables for the Apple clang++ compiler   
+## This file contains compiler variables for the Apple clang++ compiler
 
 ## It sets values for the defaults variables ($def*), which will be used
 ## if the calling makefile doesn't set the corresponding variables.
@@ -15,33 +15,34 @@
 
 makefiles+=local/Make.defs.clang++
 
-# Changed c++11 flag into c++14 as required for GRChombo 
+# Changed c++11 flag into c++14 as required for GRChombo
 defcxxdbgflags = -std=c++14 -g -Wall -Wno-overloaded-virtual -Wno-sign-compare
 defcxxoptflags = -std=c++14 -O3 -march=native  -Wno-sign-compare
 
+# SIMD pragmas are now OpenMP ones and may want to vectorize even if not
+# using OpenMP.
 ifeq ($(OPENMPCC),TRUE)
   defcxxdbgflags+= -fopenmp
   defcxxoptflags+= -fopenmp
 else
-  defcxxdbgflags+= -Wno-unknown-pragmas
-  defcxxoptflags+= -Wno-unknown-pragmas
+  defcxxdbgflags+= -fopenmp-simd -Wno-unknown-pragmas
+  defcxxoptflags+= -fopenmp-simd -Wno-unknown-pragmas
 endif
 
 
-CH_CPP = cpp -E -P -C 
+CH_CPP = cpp -E -P -C
 
 fname   := $(notdir $(firstword $(subst -, ,$(FC))))
 
 ifeq ($(fname),gfortran)
-  deffcomflags = -Wno-line-truncation -fno-second-underscore 
+  deffcomflags = -Wno-line-truncation -fno-second-underscore
   # these flags get rid of unused variables warnings. (-Wno-unused-parameter -Wno-unused-variable)
   deffcomflags += -Wno-unused-parameter -Wno-unused-variable
   deffoptflags = -O3 -funroll-loops -march=native
   deffdbgflags = -g -ggdb -Wall -W
   defflibflags  += -lgfortran -lm
 else
-  deffdbgflags = -g 
+  deffdbgflags = -g
   defoptflags = -O2 -march=native
 #  I don't know what library flag you need if this is gfortran
 endif
-
