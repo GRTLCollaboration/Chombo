@@ -68,10 +68,12 @@ endif
   # NOTE: -malign-double causes MPI programs that use pout() to
   # segfault in ~ostream(), so dont use it
 
+  # SIMD pragmas are now OpenMP ones and may want to vectorize even if not
+  # using OpenMP.
 ifeq ($(OPENMPCC),TRUE)
   _cxxbaseflags += -fopenmp
 else
-  _cxxbaseflags += -Wno-unknown-pragmas
+  _cxxbaseflags += -fopenmp-simd -Wno-unknown-pragmas
 endif
 
 defcxxcomflags := -march=native $(_cxxbaseflags)
