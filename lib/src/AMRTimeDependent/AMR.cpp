@@ -697,6 +697,12 @@ void AMR::setupForRestart(HDF5Handle& a_handle)
       m_amrlevels[level]->initialGrid(Vector<Box>());
       m_amrlevels[level]->initialData();
     }
+
+  // add a hook here for use in postprocessing the files
+  for (int level = 0; level <= m_finest_level; ++level)
+    {
+      m_amrlevels[level]->postRestart();
+    }
 }
 #endif
 //-----------------------------------------------------------------------

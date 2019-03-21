@@ -293,6 +293,15 @@ public:
 
   ///
   /**
+     Run postRestart if we want to act on data after setup for restart from checkpoints
+  */
+  virtual
+    void postRestart ()
+    {
+    }
+
+  ///
+  /**
      Reads checkpoint header.
 
      This is a pure virtual function and  MUST be defined in the derived
