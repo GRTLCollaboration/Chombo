@@ -34,7 +34,11 @@
 
 makefiles+=compiler/Make.defs.Intel
 
-
+# I don't think the compilerVersion perl script works for newer (or perhaps any)
+# intel compilers but the -dumpversion flag should be available on any relevant
+# version
+_icpcfullver  := $(subst ., ,$(shell $(CXX) -dumpversion))
+_icpcmajorver := $(word 1,$(_icpcfullver))
 
 getcompilerversion := $(CHOMBO_HOME)/mk/compilerVersion.pl
 
@@ -47,6 +51,13 @@ _cxxbaseflags = -restrict -m64 -std=c++14
 
 cxxdbgflags += -g -Wall -Wextra -pedantic -fstack-protector-all $(_cxxbaseflags)
 cxxoptflags += -O3 -m64 -qopt-multi-version-aggressive $(_cxxbaseflags)
+
+# For ifort v18.0 and above need this extra flag to preprocess correctly
+# Note that this assumes your version of icpc is the same as ifort like any
+# sane configuration should be
+ifeq (0,$(shell test $(_icpcmajorver) -ge 18 ; echo $$?))
+	deffcomflags += -fpp
+endif
 
 defldflags = -static-intel
 
