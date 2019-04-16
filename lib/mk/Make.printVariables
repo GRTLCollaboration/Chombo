@@ -91,7 +91,7 @@ defs:
 	@echo "PROFILE=$(PROFILE)"
 	@echo "MPI=$(MPI)"
 	@echo "MPICXX=$(MPICXX)"
-        @echo "OPENMPCC=$(OPENMPCC)"
+	@echo "OPENMPCC=$(OPENMPCC)"
 	@echo "ROSE=$(ROSE)"
 	@echo "ROSECC=$(ROSECC)"
 	@echo "ROSEINCFLAGS=$(ROSEINCFLAGS)"
