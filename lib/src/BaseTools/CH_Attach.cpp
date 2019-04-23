@@ -191,8 +191,13 @@ int setChomboMPIErrorHandler()
   // halem at GSFC.  For now, i'm just going to not do this for machines
   // running OSF (which currently, is only halem for us) (ndk)
 #ifndef CH_OSF1
+#if MPI_VERSION >=4.0
+  MPI_Comm_create_errhandler(mpierrorfunction, &handler);
+  rtn = MPI_Comm_set_errhandler(Chombo_MPI::comm, handler);
+#else
   MPI_Errhandler_create(mpierrorfunction, &handler);
   rtn = MPI_Errhandler_set(Chombo_MPI::comm, handler);
+#endif
   if (rtn == MPI_SUCCESS) rtn = 0;
 #else
   rtn = 2;
