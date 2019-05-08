@@ -28,6 +28,7 @@
 ###    USE_HDF     if TRUE, use the HDF5 library
 ###    USE_MF      if TRUE, build Chombo MultiFluid code (requires USE_EB=TRUE)
 ###    USE_MT      if TRUE, enable Chombo memory tracking
+###    COUNT_FLOPS if TRUE, enable Chombo flop counting
 ###    USE_SETVAL  if TRUE, initialize all FABs to special values
 ###    USE_TIMER   if TRUE, enable Chombo Timer class
 ###    ECHO   controls verbosity; default is "@", change to "" (null string)
@@ -129,6 +130,7 @@ export USE_PAPI
 export USE_HDF
 export USE_MF
 export USE_MT
+export COUNT_FLOPS
 export USE_SETVAL
 export USE_TIMER
 export USE_PYTHON
@@ -138,6 +140,12 @@ export PETSC_DIR
 export PETSC_ARCH
 export OPENMPCC
 export OPENMPFC
+export USE_PROTO
+
+ifeq ($(USE_PROTO),TRUE)
+ XTRACPPFLAGS += -I$(PROTO_HOME)/include -DDIM=$(DIM) -DUSE_PROTO=1
+endif
+
 
 ## First, set some local variables
 ##  config       is the configuration identification string used in filenames
@@ -244,8 +252,10 @@ $(subst cubin,,$(subst fatbin,-DCH_FATBIN,$(CUBIN)))\
 $(subst FALSE,,$(subst TRUE,-DCH_USE_SETVAL,$(USE_SETVAL)))\
 $(subst FALSE,,$(subst TRUE,-DCH_USE_COMPLEX,$(USE_COMPLEX)))\
 $(subst FALSE,,$(subst TRUE,-DCH_NAMESPACE,$(NAMESPACE)))\
+$(subst FALSE,,$(subst TRUE, -DCH_USE_EB,$(USE_EB)))\
 $(subst FALSE,,$(subst TRUE,-DCH_MULTIDIM,$(MULTIDIM)))\
 $(subst FALSE,,$(subst TRUE,-DCH_USE_MEMORY_TRACKING,$(USE_MT)))\
+$(subst FALSE,,$(subst TRUE,-DCH_COUNT_FLOPS,$(COUNT_FLOPS)))\
 $(subst FALSE,-DCH_NTIMER,$(subst TRUE,,$(USE_TIMER)))\
 $(subst FALSE,,$(subst TRUE,-DCH_USE_64,$(USE_64)))\
 $(subst DOUBLE,-DCH_USE_DOUBLE,$(subst FLOAT,-DCH_USE_FLOAT,$(PRECISION)))\
@@ -473,12 +483,21 @@ o/$(config)/%.o : %.ChF  d/$(config)/%.d
 	$(QUIET)$(CSHELLCMD) "cat p/$(config)/$(notdir $*.cpre) | $(stripsharp_src)  | $(fortpost)  > f/$(config)/$*.f"
 	$(QUIET)$(FC) $(FFLAGS) $(XTRAFFLAGS) $(fcompflag) f/$(config)/$*.f $(fobjflag)$@
 
-o/$(config)/%.o : %.F  d/$(config)/%.d
+o/$(config)/%.o: %.F  d/$(config)/%.d
 	$(QUIET)$(CSHELLCMD) "$(CH_CPP) $(CPPFLAGS) $(XTRACPPFLAGS) $(fcppflags) -DCH_LANG_FORT $< | $(fortpost) | awk 'NF>0' > f/$(config)/$*.f"
-	$(QUIET)$(FC) $(FFLAGS) $(XTRAFFLAGS) $(fcompflag) f/$(config)/$*.f $(fobjflag)$@
+	$(QUIET)$(FC) $(FFLAGS) $(XTRAFFLAGS) $(fcompflag) f/$(config)/$*.f $(fobjflag)$(patsubst %.mod,o/$(config)/%.o,$@)
 
-o/$(config)/%.o : %.F90  d/$(config)/%.d
-	$(QUIET)$(FC) $(FFLAGS) $(XTRAF90FLAGS) $(fcompflag) $< $(fobjflag)$@
+%.mod: %.F
+	@if [ x"$(QUIET)" != x"@" ]; then echo Creating $*.mod ...; fi
+	$(QUIET)$(CSHELLCMD) "$(CH_CPP) $(CPPFLAGS) $(XTRACPPFLAGS) $(fcppflags) -DCH_LANG_FORT $< | $(fortpost) | awk 'NF>0' > f/$(config)/$*.f"
+	$(QUIET)$(FC) $(FFLAGS) $(XTRAFFLAGS) $(fcompflag) f/$(config)/$*.f $(fobjflag)$(patsubst %.mod,o/$(config)/%.o,$@)
+
+o/$(config)/%.o: %.F90  d/$(config)/%.d
+	$(QUIET)$(FC) $(FFLAGS) $(XTRAF90FLAGS) $(fcompflag) $< $(fobjflag)$(patsubst %.mod,o/$(config)/%.o,$@)
+
+%.mod: %.F90
+	@if [ x"$(QUIET)" != x"@" ]; then echo Creating $*.mod ...; fi
+	$(QUIET)$(FC) $(FFLAGS) $(XTRAF90FLAGS) $(fcompflag) $< $(fobjflag)$(patsubst %.mod,o/$(config)/%.o,$@)
 
 o/$(config)/%.o : %.f  d/$(config)/%.d
 	$(QUIET)$(FC) $(FFLAGS) $(XTRAFFLAGS) $(fcompflag) $< $(fobjflag)$@
@@ -525,9 +544,9 @@ vpath %.d d/$(config) .
 d/$(config)/%.d : %.cpp d/$(config)/.dummy
 	@if [ x"$(QUIET)" != x"@" ]; then echo Depending $< ...; fi
 ifdef lbase
-	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%\($*\)\.o[ :]*%$(_lib_config)(\1.o) $@ : %g' > $@"
+	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%[^ ]*\($*\)\.o[ :]*%$(_lib_config)(\1.o) $@ : %g' > $@"
 else
-	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%\($*\)\.o[ :]*%o/$(config)/\1.o $@ : %g' > $@"
+	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%[^ ]*\($*\)\.o[ :]*%o/$(config)/\1.o $@ : %g' > $@"
 endif
 #	# if $(mkdep) failed, sed will still make the output file so delete it if it is empty
 	$(ECHO)if [ ! -s $@ ]; then $(RM) $@; fi
@@ -535,9 +554,9 @@ endif
 d/$(config)/%.d : %.ChF d/$(config)/.dummy
 	@if [ x"$(QUIET)" != x"@" ]; then echo Depending $< ...; fi
 ifdef lbase
-	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%\($*\)\.o[ :]*%$(_lib_config)(\1.o) $@ : %g' > $@"
+	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%[^ ]*\($*\)\.o[ :]*%$(_lib_config)(\1.o) $@ : %g' > $@"
 else
-	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%\($*\)\.o[ :]*%o/$(config)/\1.o $@ : %g' > $@"
+	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%[^ ]*\($*\)\.o[ :]*%o/$(config)/\1.o $@ : %g' > $@"
 endif
 #	# if $(mkdep) failed, sed will still make the output file so delete it if it is empty
 	$(ECHO)if [ ! -s $@ ]; then $(RM) $@; fi
@@ -545,9 +564,9 @@ endif
 d/$(config)/%.d : %.F d/$(config)/.dummy
 	@if [ x"$(QUIET)" != x"@" ]; then echo Depending $< ...; fi
 ifdef lbase
-	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%\($*\)\.o[ :]*%$(_lib_config)(\1.o) $@ : %g' > $@"
+	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%[^ ]*\($*\)\.o[ :]*%\1.mod $(_lib_config)(\1.o) $@ : %g' > $@"
 else
-	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%\($*\)\.o[ :]*%o/$(config)/\1.o $@ : %g' > $@"
+	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%[^ ]*\($*\)\.o[ :]*%\1.mod o/$(config)/\1.o $@ : %g' > $@"
 endif
 #	# if $(mkdep) failed, sed will still make the output file so delete it if it is empty
 	$(ECHO)if [ ! -s $@ ]; then $(RM) $@; fi
@@ -555,9 +574,9 @@ endif
 d/$(config)/%.d : %.f d/$(config)/.dummy
 	@if [ x"$(QUIET)" != x"@" ]; then echo Depending $< ...; fi
 ifdef lbase
-	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%\($*\)\.o[ :]*%$(_lib_config)(\1.o) $@ : %g' > $@"
+	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%[^ ]*\($*\)\.o[ :]*%$(_lib_config)(\1.o) $@ : %g' > $@"
 else
-	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%\($*\)\.o[ :]*%o/$(config)/\1.o $@ : %g' > $@"
+	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%[^ ]*\($*\)\.o[ :]*%o/$(config)/\1.o $@ : %g' > $@"
 endif
 #	# if $(mkdep) failed, sed will still make the output file so delete it if it is empty
 	$(ECHO)if [ ! -s $@ ]; then $(RM) $@; fi
@@ -565,9 +584,9 @@ endif
 d/$(config)/%.d : %.F90 d/$(config)/.dummy
 	@if [ x"$(QUIET)" != x"@" ]; then echo Depending $< ...; fi
 ifdef lbase
-	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%\($*\)\.o[ :]*%$(_lib_config)(\1.o) $@ : %g' > $@"
+	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%[^ ]*\($*\)\.o[ :]*%\1.mod $(_lib_config)(\1.o) $@ : %g' > $@"
 else
-	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%\($*\)\.o[ :]*%o/$(config)/\1.o $@ : %g' > $@"
+	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%[^ ]*\($*\)\.o[ :]*%\1.mod o/$(config)/\1.o $@ : %g' > $@"
 endif
 #	# if $(mkdep) failed, sed will still make the output file so delete it if it is empty
 	$(ECHO)if [ ! -s $@ ]; then $(RM) $@; fi
@@ -575,9 +594,9 @@ endif
 d/$(config)/%.d : %.f90 d/$(config)/.dummy
 	@if [ x"$(QUIET)" != x"@" ]; then echo Depending $< ...; fi
 ifdef lbase
-	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%\($*\)\.o[ :]*%$(_lib_config)(\1.o) $@ : %g' > $@"
+	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%[^ ]*\($*\)\.o[ :]*%$(_lib_config)(\1.o) $@ : %g' > $@"
 else
-	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%\($*\)\.o[ :]*%o/$(config)/\1.o $@ : %g' > $@"
+	$(ECHO)$(CSHELLCMD) "$(mkdep) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%[^ ]*\($*\)\.o[ :]*%o/$(config)/\1.o $@ : %g' > $@"
 endif
 #	# if $(mkdep) failed, sed will still make the output file so delete it if it is empty
 	$(ECHO)if [ ! -s $@ ]; then $(RM) $@; fi
@@ -587,11 +606,11 @@ d/$(config)/%.cu.d : %.cu d/$(config)/.dummy
 	@if [ x"$(QUIET)" != x"@" ]; then echo Depending $< ...; fi
 ifdef lbase
 #       # FIXME: Not quite sure what to do with cubins in the lib yet
-	$(ECHO)$(CSHELLCMD) "$(mkdep) $< | sed 's%\($*\)\.o[ :]*%$(_lib_config)(\1.$(CUBIN)) $@ : %g' > $@"
+	$(ECHO)$(CSHELLCMD) "$(mkdep) $< | sed 's%[^ ]*\($*\)\.o[ :]*%$(_lib_config)(\1.$(CUBIN)) $@ : %g' > $@"
 else
 #       # NOTE: Change '$(mkdep) $(NVCCFLAGS) $(CPPFLAGS) $(XTRACPPFLAGS)' to
 #       # '$(NVCC) -M' to get all system dependencies
-	$(ECHO)$(CSHELLCMD) "$(mkdep) $(NVCCFLAGS) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%\($*\)\.o[ :]*%cubin/$(config)/\1.$(CUBIN) $@ : %g' > $@"
+	$(ECHO)$(CSHELLCMD) "$(mkdep) $(NVCCFLAGS) $(CPPFLAGS) $(XTRACPPFLAGS) $< | sed 's%[^ ]*\($*\)\.o[ :]*%cubin/$(config)/\1.$(CUBIN) $@ : %g' > $@"
 endif
 #	# if $(mkdep) failed, sed will still make the output file so delete it if it is empty
 	$(ECHO)if [ ! -s $@ ]; then $(RM) $@; fi

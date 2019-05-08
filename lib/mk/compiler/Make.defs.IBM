@@ -68,11 +68,11 @@
     # -C disables stripping "//" comments because they are valid Fortran code
     # -qsuppress suppresses messages: 234 complains about "0.0D0" float constants
     ifeq ($(_xlcmajorver),8)
-      CH_CPP = $(CXX) -E -C -qnoppline -qsourcetype=c -qsuppress=1506-234
+      CH_CPP = $(CXX) -E -qnoppline -qsourcetype=c -qsuppress=1506-234
     else ifeq ($(_xlcmajorver),10) # for bluefire.ucar.edu (DFM - 4/14/11)
-      CH_CPP = $(CXX) -E -C -qnoppline -qsourcetype=c -qsuppress=1506-234
+      CH_CPP = $(CXX) -E -qnoppline -qsourcetype=c -qsuppress=1506-234
     else
-      CH_CPP = $(CXX) -E -C
+      CH_CPP = $(CXX) -E
     endif
 
     # xlC appears to be OK with MT again...

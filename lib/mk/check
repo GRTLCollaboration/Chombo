@@ -41,6 +41,66 @@ errexit ()
   exit 1
 }
 
+# Checks if a header is found.
+# Args: compiler name_of_header ["parallel "]
+#   parallel - Added to warning string if from parallel check
+try_compile_header ()
+{
+  cat << CHKEOF > $TMPDIR/CHKchecktest.cpp
+#include "$2"
+int main() {}
+CHKEOF
+  if [ $? -ne 0 ] ; then
+    echo "error: cannot write scratch file into ${TMPDIR}"
+    echo "info: set the TMPDIR environment variable to a writeable directory."
+    errexit
+  fi
+  $1 -o $TMPDIR/CHKchecktest.ex $TMPDIR/CHKchecktest.cpp 2> /dev/null
+  if [ $? -eq 0 ] ; then
+    if [ -z "$3" ] ; then
+      pvarname=HDFINCFLAGS
+    else
+      pvarname=HDFMPIINCFLAGS
+    fi
+    echo
+    echo "warning: the ${3}HDF header file [hdf5.h] was found in the environment and not from ${pvarname}."
+    ok=1
+  else
+    ok=0
+  fi
+  rm -f $TMPDIR/CHKchecktest.*
+}
+
+# Checks if a library can be linked.
+# Args: compiler name_of_library ["parallel "]
+#   name_of_library - E.g., hdf5
+#   parallel        - Added to warning string if from parallel check
+try_link_lib ()
+{
+  cat << CHKEOF > $TMPDIR/CHKchecktest.cpp
+int main() {}
+CHKEOF
+  if [ $? -ne 0 ] ; then
+    echo "error: cannot write scratch file into ${TMPDIR}"
+    echo "info: set the TMPDIR environment variable to a writeable directory."
+    errexit
+  fi
+  $1 -o $TMPDIR/CHKchecktest.ex $TMPDIR/CHKchecktest.cpp -l$2 2> /dev/null
+  if [ $? -eq 0 ] ; then
+    if [ -z "$3" ] ; then
+      pvarname=HDFLIBFLAGS
+    else
+      pvarname=HDFMPILIBFLAGS
+    fi
+    echo
+    echo "warning: the ${3}HDF library [libhdf5] was found in the environment and not from ${pvarname}."
+    ok=1
+  else
+    ok=0
+  fi
+  rm -f $TMPDIR/CHKchecktest.*
+  return $ok
+}
 
 #################################################################
 
@@ -80,6 +140,11 @@ fi
 case $action in
   HDFINCFLAGS)
     $debug "checking \$(HDFINCFLAGS) = [$*]"
+    if [ "x${MPI}" = "xTRUE" ] ; then
+      CHKCOMPILER=${MPICXX}
+    else
+      CHKCOMPILER=${CXX}
+    fi
     if [ x"$*" != x"" ] ; then
       ok=0
       for f in $* ; do 
@@ -93,23 +158,35 @@ case $action in
         esac
       done
       if [ $ok -eq 0 ] ; then
+        try_compile_header ${CHKCOMPILER} hdf5.h
+      fi
+      if [ $ok -eq 0 ] ; then
         echo
         echo "error: cannot find the HDF header file [hdf5.h] using the HDFINCFLAGS make variable [$*]"
         echo "info: it should be defined in lib/mk/Make.defs.local or lib/mk/local/Make.defs.$hostnm"
         errexit
       fi
     else
-      echo
-      echo "warning: the HDFINCFLAGS make variable is empty."
-      echo "info: Chombo will not compile if the HDF header files cannot be found."
-      echo "info: if this is not intentional, define HDFINCFLAGS in Chombo/lib/mk/Make.defs.local"
-      rtfm
-      exit
+      ok=0
+      try_compile_header ${CHKCOMPILER} hdf5.h
+      if [ $ok -eq 0 ] ; then
+        echo
+        echo "warning: the HDFINCFLAGS make variable is empty."
+        echo "info: Chombo will not compile if the HDF header files cannot be found."
+        echo "info: if this is not intentional, define HDFINCFLAGS in Chombo/lib/mk/Make.defs.local"
+        rtfm
+        exit
+      fi
     fi
     ;;
 
   HDFLIBFLAGS)
     $debug "checking \$(HDFLIBFLAGS) = [$*]"
+    if [ "x${MPI}" = "xTRUE" ] ; then
+      CHKCOMPILER=${MPICXX}
+    else
+      CHKCOMPILER=${CXX}
+    fi
     if [ x"$*" != x"" ] ; then
       ok=0
       dir=/usr/lib
@@ -125,6 +202,9 @@ case $action in
               ok=1
             fi
           done
+          if [ $ok -eq 0 ] ; then
+            try_link_lib ${CHKCOMPILER} hdf5
+          fi
           if [ $ok -eq 0 ] ; then
             echo
             echo "error: cannot find the HDF library [$lib.{a,so}] using the HDFLIBFLAGS make variable [$*]"
@@ -158,18 +238,25 @@ case $action in
         esac
       done
       if [ $ok -eq 0 ] ; then
+        try_compile_header ${MPICXX} hdf5.h "parallel "
+      fi
+      if [ $ok -eq 0 ] ; then
         echo
         echo "error: cannot find the HDF header file [hdf5.h] using the HDFMPIINCFLAGS make variable[$*]"
         echo "info: it should be defined in lib/mk/Make.defs.local or lib/mk/local/Make.defs.$hostnm"
         errexit
       fi
     else
-      echo
-      echo "warning: the HDFMPIINCFLAGS make variable is empty."
-      echo "info: Chombo will not compile in parallel if the HDF header files cannot be found."
-      echo "info: if this is not intentional, define HDFMPIINCFLAGS in lib/mk/Make.defs.local or lib/mk/local/Make.defs.$hostnm"
-      rtfm
-      exit
+      ok=0
+      try_compile_header ${MPICXX} hdf5.h "parallel "
+      if [ $ok -eq 0 ] ; then
+        echo
+        echo "warning: the HDFMPIINCFLAGS make variable is empty."
+        echo "info: Chombo will not compile in parallel if the HDF header files cannot be found."
+        echo "info: if this is not intentional, define HDFMPIINCFLAGS in lib/mk/Make.defs.local or lib/mk/local/Make.defs.$hostnm"
+        rtfm
+        exit
+      fi
     fi
     ;;
 
@@ -190,6 +277,9 @@ case $action in
               ok=1
             fi
           done
+          if [ $ok -eq 0 ] ; then
+            try_link_lib ${MPICXX} hdf5 "parallel "
+          fi
           if [ $ok -eq 0 ] ; then
             echo
             echo "error: cannot find the parallel HDF library [$lib.{a,so}] using the HDFMPILIBFLAGS make variable [$*]"

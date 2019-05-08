@@ -10,6 +10,8 @@ MPICXX=CC
 
 cxxoptflags+= -xMIC-AVX512
 foptflags += -xMIC-AVX512
+cxxcppflags += -ffreestanding
+fcppflags += -ffreestanding
 
 RUN = srun -n 2 ./#
 
