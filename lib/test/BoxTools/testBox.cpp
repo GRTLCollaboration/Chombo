@@ -18,7 +18,7 @@
 #include "Vector.H"
 #include "CH_Timer.H"
 #ifdef CH_MPI
-#include <mpi.h>
+#include "mpi.h"
 #endif
 #include "UsingNamespace.H"
 
@@ -177,6 +177,8 @@ testBox()
   const long numPtsB1Computed = b1.numPts();
   const long numPtsB2Computed = b2.numPts();
   const long numPtsBBigComputed = bBig.numPts();
+  BoxIterator bigIt(bBig);
+  
 
   if (verbose)
   {
@@ -210,7 +212,7 @@ testBox()
     return_code = -1;
   }
 
-  if (numPtsBBig != numPtsBBigComputed)
+  if (numPtsBBig != numPtsBBigComputed || numPtsBBig != bigIt.size())
   {
     if (verbose)
     {
@@ -220,6 +222,33 @@ testBox()
     }
     return_code = -1;
   }
+  BoxIterator bit2(b2);
+  unsigned long long int b2size=bit2.size();
+  if(b2size != b2.numPts())
+    {
+      if (verbose)
+        {
+          pout() << indent2 <<"BoxIterator and Box disagree on number of points"<<endl;
+        }
+      return_code = -1;
+    }
+  else
+    {
+      for(unsigned long long int pt=0; pt<b2size; ++pt, ++bit2)
+        {
+          IntVect p = bit2.at(pt);
+          if(p != bit2())
+            {
+              if (verbose)
+                {
+                  pout() << indent2 <<"BoxIterator++ and BoxIterator::at disagree\n"
+                         <<p<<"  "<<bit2()<<endl;
+                }
+              return_code = -1;
+              break;
+            }
+        }
+    }
 
 //
 // null construction tests

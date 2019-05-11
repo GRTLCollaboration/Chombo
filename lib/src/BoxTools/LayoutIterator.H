@@ -100,7 +100,7 @@ protected:
   BoxLayout    m_layout;
   RefCountedPtr<Vector<LayoutIndex> > m_indicies;
 
-  int m_current;
+  unsigned int m_current;
 };
 
 inline const LayoutIndex& LayoutIterator::operator () () const

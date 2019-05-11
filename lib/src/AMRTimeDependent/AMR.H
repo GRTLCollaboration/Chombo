@@ -429,7 +429,7 @@ protected:
   // whether regridding should be done now.
   bool needToRegrid(int a_level, int a_numStepsLeft) const;
 
-  void makeBaseLevelMesh (Vector<Box>& a_grids) const;
+  virtual void makeBaseLevelMesh (Vector<Box>& a_grids) const;
 
   void setDefaultValues();
 

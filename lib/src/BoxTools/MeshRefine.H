@@ -150,6 +150,10 @@ public:
   /** This function creates a hierarchy of grids from a single level of
       tags on BaseLevel.  If tags exist, then all levels will have grids.
       Returns the new finest level of grids.
+
+      If m_refineDirs != IntVect::Unit, then a_tags and a_oldMeshes must have
+      ranges restricted to 0 in all dimensions d with m_refineDirs[d] == 0,
+      and the output a_newmeshes will have this same restriction.
   */
   virtual int regrid(/// new set of grids at every level
                      Vector<Vector<Box> >& a_newmeshes,
@@ -167,6 +171,10 @@ public:
       refinement levels.  It is possible that not all levels will
       return with grids, since there may not be tags at all levels.
       Returns the new finest level of grids.
+
+      If m_refineDirs != IntVect::Unit, then a_tags and a_oldMeshes must have
+      ranges restricted to 0 in all dimensions d with m_refineDirs[d] == 0,
+      and the output a_newmeshes will have this same restriction.
   */
   virtual int regrid(/// new set of grids at every level
                      Vector<Vector<Box> >& a_newmeshes,
@@ -239,6 +247,18 @@ public:
             const int         a_totalBufferSize) const = 0;
 
   void setPNDMode(int a_mode);
+
+  /// set each component to 1 or 0 according to whether or not we refine in that direction. Default IntVect::Unit.
+  void setRefineDirs(const IntVect& a_refineDirs);
+
+  /// returns IntVect with component d set to a_val if m_refineDirs[d] == 1; else 1.
+  IntVect inRefineDirs(int a_val) const;
+
+  // intersects the Box with the hyperplane of 0 in dimensions where m_refineDirs == 0
+  void restrictUnrefined(Box& a_box) const;
+
+  // intersects the IntVectSet with the hyperplane of 0 in dimensions where m_refineDirs == 0
+  void restrictUnrefined(IntVectSet& a_ivs) const;
 
 protected:
 
@@ -321,6 +341,11 @@ protected:
 
   int m_PNDMode;
 
+  // component 1 if refining in this dimension, 0 if not. Default IntVect::Unit.
+  IntVect m_refineDirs;
+
+  // Lowest d such that m_refineDirs[d] == 1. Default 0.
+  int m_lowestRefineDir;
 };
 
 #include "NamespaceFooter.H"

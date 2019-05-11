@@ -79,7 +79,7 @@ void RK4LevelAdvance(/// the cell-centered solution at the new time (a_time + a_
                      Real a_dt,
                      /// object which encapsulates the ODE functionality (must meet the requirements detailed above)
                      TOp& a_op,
-                     /// whether a_newSoln is initialized with a_oldSoln (default true)
+                     /// whether a_newSoln should be initialized with a_oldSoln (default true)
                      const bool a_initializeNewSoln = true)
 {
   // Advance by one time step using 4th-order Runge-Kutta.

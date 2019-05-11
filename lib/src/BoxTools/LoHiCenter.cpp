@@ -51,55 +51,58 @@ void loHiCenter(Box&                 a_loBox,
   Box inBox = a_inBox;
   inBox &= a_domain;
 
-  // The centered difference box is always one smaller in a_dir
+  // The centered difference box is always one smaller in a_dir,
+  // because a_inBox is the box where we have data.
   a_centerBox = inBox;
   a_centerBox.grow(a_dir,-1);
 
-  // The union of all the output boxes start off equal to the center
+  // The union of all the output boxes starts off equal to the centered
   // difference portion on the input box (intersected with the domain)
   a_entireBox = a_centerBox;
 
-  // See if this chops off the high side of the input box
-  Box tmp = a_inBox;
-  tmp.shift(a_dir,-1);
-  tmp &= a_domain;
-  tmp.shift(a_dir,1);
+  { // Check high side.
+    // See if this chops off the high side of the input box.
+    Box tmp = inBox;
+    tmp.shift(a_dir,1);
+    tmp &= a_domain;
+    tmp.shift(a_dir,-1);
 
-  // If so, set up the high, one-sided difference box, a_hiBox, and expand
-  // the entire box to include it
-  if (!a_domain.contains(tmp))
-    {
-      a_hasHi = 1;
-      tmp.shift(a_dir,-2);
-      a_hiBox = adjCellHi(tmp,a_dir);
-      a_entireBox.growHi(a_dir,1);
-    }
-  else
-    {
-      a_hasHi = 0;
-      a_hiBox = Box();
-    }
+    // If so, set up the high, one-sided difference box, a_hiBox, and expand
+    // the entire box to include it
+    if (tmp != inBox)
+      {
+        a_hasHi = 1;
+        a_hiBox = adjCellHi(tmp, a_dir);
+        a_entireBox.growHi(a_dir,1);
+      }
+    else
+      {
+        a_hasHi = 0;
+        a_hiBox = Box();
+      }
+  }
 
-  // See if this chops off the low side of the input box
-  tmp = a_inBox;
-  tmp.shift(a_dir,1);
-  tmp &= a_domain;
-  tmp.shift(a_dir,-1);
+  { // Check low side.
+    // See if this chops off the low side of the input box.
+    Box tmp = inBox;
+    tmp.shift(a_dir,-1);
+    tmp &= a_domain;
+    tmp.shift(a_dir,1);
 
-  // If so, set up the low, one-sided difference box, a_loBox, and expand
-  // the entire box to include it
-  if (!a_domain.contains(tmp))
-    {
-      a_hasLo = 1;
-      tmp.shift(a_dir,2);
-      a_loBox = adjCellLo(tmp,a_dir);
-      a_entireBox.growLo(a_dir,1);
-    }
-  else
-    {
-      a_hasLo = 0;
-      a_loBox = Box();
-    }
+    // If so, set up the low, one-sided difference box, a_loBox, and expand
+    // the entire box to include it
+    if (tmp != inBox)
+      {
+        a_hasLo = 1;
+        a_loBox = adjCellLo(tmp,a_dir);
+        a_entireBox.growLo(a_dir,1);
+      }
+    else
+      {
+        a_hasLo = 0;
+        a_loBox = Box();
+      }
+  }
 
   // Make some simple sanity checks
   CH_assert(a_entireBox.contains(a_centerBox));
@@ -155,7 +158,8 @@ void loHiCenterFace(Box&                 a_loBox,
   Box inBox = a_inBox;
   inBox &= a_domain;
 
-  // The centered difference box is always one smaller in a_dir
+  // The centered difference box is always one smaller in a_dir,
+  // because a_inBox is the box where we have data.
   a_centerBox = inBox;
   a_centerBox.surroundingNodes(a_dir);
   a_centerBox.grow(a_dir,-1);
@@ -164,49 +168,51 @@ void loHiCenterFace(Box&                 a_loBox,
   // difference portion on the input box (intersected with the domain)
   a_entireBox = a_centerBox;
 
-  // See if this chops off the high side of the input box
-  Box tmp = a_inBox;
-  tmp.shift(a_dir,-1);
-  tmp &= a_domain;
-  tmp.shift(a_dir,1);
+  { // Check high side.
+    // See if this chops off the high side of the input box.
+    Box tmp = inBox;
+    tmp.shift(a_dir,1);
+    tmp &= a_domain;
+    tmp.shift(a_dir,-1);
 
-  // If so, set up the high, one-sided difference box, a_hiBox, and expand
-  // the entire box to include it
-  if (!a_domain.contains(tmp))
-    {
-      a_hasHi = 1;
-      tmp.shift(a_dir,-2);
-      a_hiBox = adjCellHi(tmp,a_dir);
-      a_hiBox.shiftHalf(a_dir,1);
-      a_entireBox.growHi(a_dir,1);
-    }
-  else
-    {
-      a_hasHi = 0;
-      a_hiBox = Box().convert(BASISV(a_dir));
-    }
+    // If so, set up the high, one-sided difference box, a_hiBox, and expand
+    // the entire box to include it
+    if (tmp != inBox)
+      {
+        a_hasHi = 1;
+        a_hiBox = adjCellHi(tmp,a_dir);
+        a_hiBox.shiftHalf(a_dir,1);
+        a_entireBox.growHi(a_dir,1);
+      }
+    else
+      {
+        a_hasHi = 0;
+        a_hiBox = Box().convert(BASISV(a_dir));
+      }
+  }
 
-  // See if this chops off the low side of the input box
-  tmp = a_inBox;
-  tmp.shift(a_dir,1);
-  tmp &= a_domain;
-  tmp.shift(a_dir,-1);
+  { // Check low side.
+    // See if this chops off the low side of the input box.
+    Box tmp = inBox;
+    tmp.shift(a_dir,-1);
+    tmp &= a_domain;
+    tmp.shift(a_dir,1);
 
-  // If so, set up the low, one-sided difference box, a_loBox, and expand
-  // the entire box to include it
-  if (!a_domain.contains(tmp))
-    {
-      a_hasLo = 1;
-      tmp.shift(a_dir,2);
-      a_loBox = adjCellLo(tmp,a_dir);
-      a_loBox.shiftHalf(a_dir,-1);
-      a_entireBox.growLo(a_dir,1);
-    }
-  else
-    {
-      a_hasLo = 0;
-      a_loBox = Box().convert(BASISV(a_dir));
-    }
+    // If so, set up the low, one-sided difference box, a_loBox, and expand
+    // the entire box to include it
+    if (tmp != inBox)
+      {
+        a_hasLo = 1;
+        a_loBox = adjCellLo(tmp,a_dir);
+        a_loBox.shiftHalf(a_dir,-1);
+        a_entireBox.growLo(a_dir,1);
+      }
+    else
+      {
+        a_hasLo = 0;
+        a_loBox = Box().convert(BASISV(a_dir));
+      }
+  }
 
   // Make some simple sanity checks
   CH_assert(a_entireBox.contains(a_centerBox));

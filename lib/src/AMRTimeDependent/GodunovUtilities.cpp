@@ -604,8 +604,10 @@ void GodunovUtilities::PPMFaceValues(FArrayBox&            a_WFace,
       Box loBox,hiBox,centerBox,entireBox;
       int hasLo,hasHi;
 
+      // (DFM 10/27/2017) This one should be over the destination box, not
+      // box1cells
       loHiCenterFace(loBox, hasLo, hiBox, hasHi, centerBox, entireBox,
-                     box1cells, m_domain, a_dir);
+                     a_box, m_domain, a_dir);
 
       // a_Wface[i-e/2] = (a_W[i-e] + dW[i-e]/3)/2 + (a_W[i] - dW[i]/3)/2
       FORT_PPMFACEVALUESF(CHF_FRA(a_WFace),

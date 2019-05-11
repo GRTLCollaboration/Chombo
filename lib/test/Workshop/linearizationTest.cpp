@@ -35,20 +35,29 @@
 
 #include "GeometryShop.H"
 #include "PlaneIF.H"
+#include "SphereIF.H"
+#include "UnionIF.H"
+#include "BRMeshRefine.H"
+#include "LoadBalance.H"
 
 #include "CH_Attach.H"
 
 #include "UsingNamespace.H"
 
-void do_geo( Box &domain, Real &dx )
+typedef void (*do_geo)(Box& box, DisjointBoxLayout& dbl);
+
+void do_plane( Box &domain, DisjointBoxLayout &dbl )
 {
-  int N = 10;
+  int N = 32;
   Real xdom = 1.0;
 
-  dx = xdom/N;
+  Real dx = xdom/N;
   const IntVect hi = (N-1)*IntVect::Unit;
   domain=  Box(IntVect::Zero, hi);
-
+  Vector<Box> boxes(1, domain);
+  Vector<int> procs(1, 0);
+  // Make a layout for the space.
+  dbl.define(boxes, procs);
   int updir=1;
   int indv=0;
   Real start = 0.5;
@@ -63,8 +72,13 @@ void do_geo( Box &domain, Real &dx )
 
   bool normalInside = true;
 
-  PlaneIF myramp(normal,point,normalInside);
+  PlaneIF iramp(normal,point,!normalInside);
 
+  point[updir]+=2*dx;
+  PlaneIF oramp(normal, point, normalInside);
+
+  UnionIF myramp(iramp,oramp);
+  
   RealVect vectDx = RealVect::Unit;
   vectDx *= dx;
 
@@ -74,7 +88,43 @@ void do_geo( Box &domain, Real &dx )
 
   EBIndexSpace *ebisPtr = Chombo_EBIS::instance();
 
-  ebisPtr->define(domain, origin, dx, mygeom);
+  ebisPtr->define(domain, origin, dx, mygeom, -1, 2);
+
+  return;
+}
+
+void do_sphere( Box &domain, DisjointBoxLayout &dbl )
+{
+  int N = 64;
+  Real dx=0.08;
+
+  const IntVect hi = (N-1)*IntVect::Unit;
+  domain=  Box(IntVect::Zero, hi);
+
+  ProblemDomain d(domain);
+  Vector<Box> boxes;
+  Vector<int> ranks;
+  domainSplit(d,boxes,16);
+
+  LoadBalance(ranks, boxes);
+  dbl.define(boxes, ranks);
+  
+  Real radius=1.3;
+  RealVect center=RealVect::Unit*1.0;
+  //center[0]+=0.2;
+  SphereIF sphere1(radius, center, true);
+  SphereIF sphere2(radius, center+1.7*RealVect::Unit, true);
+  UnionIF  spheres(sphere1,sphere2);
+  RealVect vectDx = RealVect::Unit;
+  vectDx *= dx;
+
+  GeometryShop mygeom( spheres, 0, vectDx );
+
+  RealVect origin = RealVect::Zero;
+
+  EBIndexSpace *ebisPtr = Chombo_EBIS::instance();
+
+  ebisPtr->define(domain, origin, dx, mygeom, -1, 4);
 
   return;
 }
@@ -325,61 +375,70 @@ main(int argc, char** argv)
   {
     //registerDebugger();
 
-    // Set up some geometry.
-    Box domain;
-    Real dx;
-
-    do_geo( domain, dx );
-
-    Vector<Box> boxes(1, domain);
-    Vector<int> procs(1, 0);
-    // Make a layout for the space.
-    DisjointBoxLayout dbl(boxes, procs);
-
-    // Fill in the layout with the geometrical info.
-    EBISLayout ebisl;
-    EBIndexSpace *ebisPtr = Chombo_EBIS::instance();
-    ebisPtr->fillEBISLayout(ebisl, dbl, domain, 1 );
-
-    // Define the leveldata for my one and only level.
-    DataIterator dit = dbl.dataIterator();
-    for ( dit.begin(); dit.ok(); ++dit )
+  
+ 
+    do_geo geo[2]={do_plane, do_sphere};
+    const char* geoname[2]={"plane","sphere"};
+    
+ 
+    for(int g=0; g<2; ++g)
       {
-        eekflag = testIVFAB(ebisl[dit()], dbl.get(dit()));
-        if (eekflag != 0)
+        Box domain;
+        DisjointBoxLayout dbl;
+        geo[g](domain, dbl);
+        EBIndexSpace *ebisPtr = Chombo_EBIS::instance();
+        for (int d=0; d<3; d++)
           {
-            pout() << "IVFAB linearization test failed " << endl;
-            return eekflag;
-          }
-        eekflag = testIFFAB(ebisl[dit()], dbl.get(dit()));
-        if (eekflag != 0)
-          {
-            pout() << "IFFAB  linearization test failed " << endl;
-            return eekflag;
-          }
-        eekflag = testEBCellFAB(ebisl[dit()], dbl.get(dit()));
-        if (eekflag != 0)
-          {
-            pout() << "EBCellFAB  linearization test failed " << endl;
-            return eekflag;
-          }
-        eekflag = testEBFaceFAB(ebisl[dit()], dbl.get(dit()));
-        if (eekflag != 0)
-          {
-            pout() << "EBFaceFAB  linearization test failed " << endl;
-            return eekflag;
-          }
+            // Fill in the layout with the geometrical info.
+            EBISLayout ebisl;
 
-        eekflag = testEBFluxFAB(ebisl[dit()], dbl.get(dit()));
-        if (eekflag != 0)
-          {
-            pout() << "EBFluxFAB  linearization test failed " << endl;
-            return eekflag;
-          }
+            pout() << "begin filling ebislayout" << endl;
+            ebisPtr->fillEBISLayout(ebisl, dbl, domain, 1 );
+            pout() << "end filling ebislayout" << endl;
+            // Define the leveldata for my one and only level.
+            DataIterator dit = dbl.dataIterator();
+            for ( dit.begin(); dit.ok(); ++dit )
+              {
+                eekflag = testIVFAB(ebisl[dit()], dbl.get(dit()));
+                if (eekflag != 0)
+                  {
+                    pout() << "IVFAB linearization test failed "<<geoname[g] << endl;
+                    return eekflag;
+                  }
+                eekflag = testIFFAB(ebisl[dit()], dbl.get(dit()));
+                if (eekflag != 0)
+                  {
+                    pout() << "IFFAB  linearization test failed " << endl;
+                    return eekflag;
+                  }
+                eekflag = testEBCellFAB(ebisl[dit()], dbl.get(dit()));
+                if (eekflag != 0)
+                  {
+                    pout() << "EBCellFAB  linearization test failed " << endl;
+                    return eekflag;
+                  }
+                eekflag = testEBFaceFAB(ebisl[dit()], dbl.get(dit()));
+                if (eekflag != 0)
+                  {
+                    pout() << "EBFaceFAB  linearization test failed " << endl;
+                    return eekflag;
+                  }
+                
+                eekflag = testEBFluxFAB(ebisl[dit()], dbl.get(dit()));
+                if (eekflag != 0)
+                  {
+                    pout() << "EBFluxFAB  linearization test failed " << endl;
+                    return eekflag;
+                  }
+              }
+            domain.coarsen(2);
+            DisjointBoxLayout next;
+            coarsen(next, dbl, 2);
+            dbl=next;
+          }      
+        ebisPtr->clear();
       }
-
-    ebisPtr->clear();
-
+      
   }//end scoping trick
   pout() << "linearization tests passed "<< endl;
 #ifdef CH_MPI

@@ -316,6 +316,16 @@ public:
 
   void incrementMem();
   void freeMem();
+
+  /// move constructor
+  inline RefCountedPtr(RefCountedPtr<T,OP>&& a_in) noexcept
+    :ptr_(a_in.ptr_), refCount_(a_in.refCount_) 
+  {a_in.ptr_=0; a_in.refCount_=0; }
+  
+  inline RefCountedPtr<T,OP>& operator=(RefCountedPtr<T,OP>&& a_in) noexcept
+  { std::swap(ptr_, a_in.ptr_); std::swap(refCount_,a_in.refCount_);
+    return *this;}
+
 protected:
   void refUp(); // atomic refcount increment
   void refDown();// atomic refcount decrement and freeMem on refCount_==0

@@ -72,7 +72,7 @@ lib_targets := $(shell \echo $(lib_targets) `\ls` | \tr ' ' '\n' | \sort | \uniq
 
 # some src subdirs don't have tests; ChomboFortran and DotProduct have tests but no src subdir
 #[NOTE: this has to be "=", not ":=" for it to work correctly]
-test_targets = $(filter-out ArrayView EBArrayView InfiniteDomain,$(lib_targets)) $(extra_test_targets)
+test_targets = $(filter-out ArrayView EBArrayView InfiniteDomain HOAMRTools MOLAMRTimeDependent,$(lib_targets)) $(extra_test_targets)
 
 ##
 ## These are the actions (targets for the recursive make) supported by this

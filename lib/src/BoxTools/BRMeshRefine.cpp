@@ -19,8 +19,8 @@
 #define _BR_MIN_INFLECTION_MAG_ ( 3 )
 #endif
 
-#define MAXBOXES     130000
-#define P_BUFFERSIZE (130000 * 8 * CH_SPACEDIM)
+#define MAXBOXES     2000000 // petermc: was 20000
+#define P_BUFFERSIZE (MAXBOXES * 8 * CH_SPACEDIM)
 
 // Berger-Rigoutsos Mesh refinement class
 // ---------
@@ -89,6 +89,7 @@ breakBoxes(Vector<Box>& a_vboxin,  const int& a_maxBoxSize, const int& a_idir)
 BRMeshRefine::BRMeshRefine()
 {
   m_fillRatio = 1.0;
+  setRefineDirs(IntVect::Unit);
 }
 
 BRMeshRefine::~BRMeshRefine()
@@ -491,6 +492,8 @@ void BRMeshRefine::splitTagsInBestDimension(IntVectSet& a_tags_inout_lo,
 
   for ( int idim = 0 ; idim < SpaceDim ; idim++ )
   {
+    if (m_refineDirs[idim] == 1)
+      {
     //hole_indx[idim] = findSplit( traces[idim] ) ;
     //infl_indx[idim] = findMaxInflectionPoint(traces[idim], infl_val[idim] ) ;
     // The following two functions, with the a_maxBoxSize argument,
@@ -498,6 +501,7 @@ void BRMeshRefine::splitTagsInBestDimension(IntVectSet& a_tags_inout_lo,
     //  searching for a split or inflection index.
     hole_indx[idim] = findSplit( traces[idim], a_maxBoxSize);
     infl_indx[idim] = findMaxInflectionPoint(traces[idim], infl_val[idim], a_maxBoxSize) ;
+      }
   }
   // Take the highest index as the best one because we want to take as large
   // a box as possible  (fewer large boxes are better than many small ones)
@@ -527,7 +531,8 @@ void BRMeshRefine::splitTagsInBestDimension(IntVectSet& a_tags_inout_lo,
   {
     // split on the midpoint of the longest side of \var{minbox}, rounding up,
     // allowing for \var{minbox} to have a non-zero offset
-    minbox.longside(split_dim); //[NOTE: split_dim is set by \func(longside)]
+    // minbox.longside(split_dim); //[NOTE: split_dim is set by \func(longside)]
+    longsideRefineDirs(minbox, split_dim);
     split_index = (minbox.smallEnd(split_dim) + minbox.bigEnd(split_dim) +1)/2;
   }
 
@@ -581,7 +586,8 @@ BRMeshRefine::splitBox( std::list<Box>&                 a_boxes,
   // See if the box needs to be split in this dimension.  If not, do nothing.
   Box& b = *a_box;
   int dir;
-  int longside = b.longside(dir);
+  // int longside = b.longside(dir);
+  int longside = longsideRefineDirs(b, dir);
   if ( longside > a_maxBoxSize )
     {
      // pout() <<"splitting box "<<a_boxes[a_boxIndex]<<std::endl;
@@ -948,8 +954,18 @@ BRMeshRefine::breakBoxes(Vector<Box>& a_vboxin,
 int
 BRMeshRefine::maxloc( const int* a_V, const int a_Size ) const
 {
-  int imax = 0 ;
-  for ( int i=1 ; i<a_Size ; i++ ) if ( a_V[i] > a_V[imax] ) imax = i ;
+  // Need only m_lowestRefineDir and m_refineDirs.
+  // CH_assert( isDefined() );
+  // int imax = 0 ;
+  int imax = m_lowestRefineDir;
+  // for ( int i=1 ; i<a_Size ; i++ ) if ( a_V[i] > a_V[imax] ) imax = i ;
+  for ( int i=m_lowestRefineDir+1 ; i<a_Size ; i++ ) 
+    {
+      if (m_refineDirs[i] == 1)
+        {
+          if ( a_V[i] > a_V[imax] ) imax = i ;
+        }
+    }
   return( imax ) ;
 }
 
@@ -958,14 +974,15 @@ BRMeshRefine::maxloc( const int* a_V, const int a_Size ) const
 // hopefully will have a better version soon...
 void
 domainSplit(const ProblemDomain& a_domain, Vector<Box>& a_vbox,
-            int a_maxBoxSize, int a_blockFactor)
+            int a_maxBoxSize, int a_blockFactor, IntVect a_refineDirs)
 {
   const Box& domBox = a_domain.domainBox();
-  domainSplit(domBox, a_vbox, a_maxBoxSize, a_blockFactor);
+  domainSplit(domBox, a_vbox, a_maxBoxSize, a_blockFactor, a_refineDirs);
 }
 void
-domainSplit(const Box& a_domain, Vector<Box>& a_vbox, int a_maxBoxSize, int a_blockFactor)
+domainSplit(const Box& a_domain, Vector<Box>& a_vbox, int a_maxBoxSize, int a_blockFactor, IntVect a_refineDirs)
 {
+  CH_TIME("BRMeshRefine::domainSplit");
   a_vbox.resize(0);
   if (a_maxBoxSize == 0)
     {
@@ -974,21 +991,63 @@ domainSplit(const Box& a_domain, Vector<Box>& a_vbox, int a_maxBoxSize, int a_bl
     }
   int ratio = a_maxBoxSize/a_blockFactor;
 
+  // Set blockFactorDirs[d] = a_blockFactor if a_refineDirs[d] == 1; else 1.
+  IntVect blockFactorDirs = (a_blockFactor-1)*a_refineDirs + IntVect::Unit;
   Box d(a_domain);
-  d.coarsen(a_blockFactor);
-  if (refine(d, a_blockFactor) != a_domain)
+  d.coarsen(blockFactorDirs);
+  if (refine(d, blockFactorDirs) != a_domain)
     {
       MayDay::Error("domainSplit: a_domain not coarsenable by blockingFactor");
     }
+  
+  /*
+    //recursive version here is too cute for very large box counts (bvs)
+    // apparently testRThetaZ needs domainSplit to work thsi way.  I suspect the test needs a larger block factor
   a_vbox.push_back(d);
   for (int i=0; i<CH_SPACEDIM; ++i)
     {
-      breakBoxes(a_vbox, ratio, i);
+      if (a_refineDirs[i] == 1)
+        {
+          breakBoxes(a_vbox, ratio, i);
+        }
     }
-  for (int i=0; i<a_vbox.size(); ++i)
+   for (int b=0; b<a_vbox.size(); ++b)
     {
-      a_vbox[i].refine(a_blockFactor);
+      a_vbox[b].refine(blockFactorDirs);
     }
+  */
+
+  size_t  count[CH_SPACEDIM+1] = {1};
+
+  for(int i=0; i<CH_SPACEDIM; ++i)
+    {
+      count[i+1]=count[i];
+      if(a_refineDirs[i]==1)
+        {
+          int c = (d.bigEnd()[i]-d.smallEnd()[i]+ratio)/ratio;
+          count[i+1]*=c;
+        }
+    }
+  a_vbox.resize(count[CH_SPACEDIM]);
+
+  //#pragma omp parallel for  
+  for (int b=0; b<a_vbox.size(); ++b)
+    {
+      IntVect Lo(d.smallEnd()), Hi(d.bigEnd());
+      for(int i=0; i<CH_SPACEDIM ; i++)
+        {
+          if(a_refineDirs[i]==1)
+            {
+              int m = (b/count[i])%(count[i+1]/count[i]);
+              Lo[i]+=m*ratio;
+              Hi[i]=std::min(d.bigEnd()[i],Lo[i]+ratio-1);
+            }
+        }
+ 
+      a_vbox[b]=Box(Lo, Hi);
+      a_vbox[b].refine(blockFactorDirs);
+    }
+   
 }
 
 // void
@@ -1064,8 +1123,11 @@ BRMeshRefine::receiveBoxesParallel(const Interval& a_from,
 
   // pout()<<"from "<<a_from.begin()<<a_from.end()<<"\n"
   //      <<"to   "<<a_to.begin()<<a_to.end()<<"\n";
-  // NOTE: This static malloc is currently not being freed anywhere (ndk)
-  static int* recBuffer = (int*)mallocMT(P_BUFFERSIZE);
+  if(m_messageBuffer.size()<ch_count.back())
+    {
+      m_messageBuffer.resize(ch_count.back() + P_BUFFERSIZE);
+    }
+  int* recBuffer = &(m_messageBuffer[0]);
   int* next = recBuffer;
   MPI_Status status;
   const int boxSize = 2*CH_SPACEDIM;
@@ -1081,8 +1143,8 @@ BRMeshRefine::receiveBoxesParallel(const Interval& a_from,
 
   if (a_from.size() == a_to.size() || !hang)
     {
-      //pout()<<"expecting boxes from "<<source<<"\n";
-      //pout()<<"sending "<<ch_count.back()/boxSize<<" boxes to "<<dest<<std::endl;
+      // pout()<<"expecting boxes from "<<source<<"\n";
+      // pout()<<"sending "<<ch_count.back()/boxSize<<" boxes to "<<dest<<std::endl;
       MPI_Sendrecv( sendBuffers.back(), ch_count.back(), MPI_INT,
                     dest, tag,
                     recBuffer, MAXBOXES*boxSize, MPI_INT,
@@ -1092,14 +1154,14 @@ BRMeshRefine::receiveBoxesParallel(const Interval& a_from,
   if (a_from.size() < a_to.size() && procID()==a_from.end())
     {
       dest = a_to.end();
-      //pout()<<"SEnding "<<ch_count.back()/boxSize<<" boxes to "<<dest<<std::endl;
+      // pout()<<"SEnding "<<ch_count.back()/boxSize<<" boxes to "<<dest<<std::endl;
       MPI_Send(sendBuffers.back(), ch_count.back(), MPI_INT,
                a_to.end(), tag, Chombo_MPI::comm);
     }
   if (a_from.size() > a_to.size() && procID()==a_from.end())
     {
       source = a_to.end();
-      //pout()<<"EXpecting boxes from "<<source<<"\n";
+      // pout()<<"EXpecting boxes from "<<source<<"\n";
       MPI_Recv(recBuffer, MAXBOXES*boxSize, MPI_INT,
                source, tag, Chombo_MPI::comm, &status );
     }
@@ -1130,4 +1192,27 @@ BRMeshRefine::receiveBoxesParallel(const Interval& a_from,
   //pout()<<"received "<<a_mesh.size()<<" boxes from "<<source<<std::endl;
 #endif
 }
+
+int
+BRMeshRefine::longsideRefineDirs(const Box& a_bx, int& a_dir) const
+{
+  // Need only m_lowestRefineDir and m_refineDirs.
+  // CH_assert( isDefined() );
+  int maxlen = a_bx.size(m_lowestRefineDir);
+  a_dir = m_lowestRefineDir;
+  for (int idir = m_lowestRefineDir+1; idir < SpaceDim; idir++)
+    {
+      if (m_refineDirs[idir] == 1)
+        {
+          int len = a_bx.size(idir);
+          if (len > maxlen)
+            {
+              maxlen = len;
+              a_dir = idir;
+            }
+        }
+    }
+  return maxlen;
+}
+
 #include "NamespaceFooter.H"

@@ -28,7 +28,7 @@
 #include "Misc.H"
 
 #ifdef CH_MPI
-#include <mpi.h>
+#include "mpi.h"
 #endif
 
 #include "BaseNamespaceHeader.H"
@@ -102,12 +102,6 @@ T must have have the following functions:
 template <class T>
 void gather(Vector<T>& a_outVec, const T& a_input, int a_dest);
 
-// this has to be here so that linearSize<IntVectSet>, linearIn<IntVectSet>,
-//  and linearOut<IntVectSet> are defined.
-// template < >
-// void gather(Vector<IntVectSet>& a_outVec,
-//             const IntVectSet& a_input,
-//             int a_dest);
 #endif
 
 ///broadcast to every process

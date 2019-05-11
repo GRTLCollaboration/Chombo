@@ -292,11 +292,11 @@ int testConservation(const Vector<DisjointBoxLayout>& a_vecGrids,
                     coarDomain, a_vecRefRat[0],
                     nvar, redistRad);
   coarToFine.define(fineGrids, mediGrids,
-                    fineEBISL, mediEBISL,
+                    mediEBISL,
                     mediDomain, a_vecRefRat[1],
                     nvar, redistRad, Chombo_EBIS::instance());
   coarToCoar.define(fineGrids, mediGrids,
-                    fineEBISL, mediEBISL,
+                    mediEBISL,
                     mediDomain, a_vecRefRat[1],
                     nvar, redistRad);
 

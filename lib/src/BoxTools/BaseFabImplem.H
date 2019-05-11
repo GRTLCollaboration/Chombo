@@ -8,6 +8,7 @@
  */
 #endif
 
+#include <utility>
 #ifndef _BASEFABIMPLEM_H_
 #define _BASEFABIMPLEM_H_
 
@@ -16,6 +17,7 @@
 #include "SliceSpec.H"
 #include "MayDay.H"
 #include "parstream.H"
+#include "BoxIterator.H"
 #include "NamespaceHeader.H"
 
 //
@@ -81,6 +83,27 @@ template <class T> int BaseFab<T>::test()
 //
 // Implementation.=====================================
 //
+template <class T> inline BaseFab<T>::BaseFab(BaseFab<T>&& a_in) noexcept
+  :m_domain(std::move(a_in.m_domain)),
+   m_nvar(a_in.m_nvar),
+   m_numpts(a_in.m_numpts),
+   m_truesize(a_in.m_truesize),
+   m_dptr(a_in.m_dptr),
+   m_aliased(a_in.m_aliased)
+{
+  a_in.m_aliased=true;
+}
+
+template <class T> inline BaseFab<T>& BaseFab<T>::operator=(BaseFab<T>&& a_in) noexcept
+{
+  m_domain = std::move(a_in.m_domain);
+  m_nvar=a_in.m_nvar;
+  m_numpts=a_in.m_numpts;
+  std::swap(m_truesize,a_in.m_truesize);
+  std::swap(m_dptr,a_in.m_dptr);
+  std::swap(m_aliased,a_in.m_aliased);
+  return *this;
+}
 
 template <class T> inline BaseFab<T>::BaseFab()
   :
@@ -155,6 +178,7 @@ template <class T> void BaseFab<T>::resize(const Box& a_b,
   m_nvar   = a_n;
   m_domain = a_b;
   m_numpts = m_domain.numPts();
+  m_truesize = m_numpts * m_nvar;
 
   if (a_alias != NULL)
   {
@@ -474,10 +498,10 @@ template <class T> inline BaseFab<T> & BaseFab<T>::shiftHalf(const IntVect& a_v)
   return *this;
 }
 
-template <class T> inline int BaseFab<T>::size(const Box&      a_box,
-                                               const Interval& a_comps) const
+template <class T> inline size_t BaseFab<T>::size(const Box&      a_box,
+                                                  const Interval& a_comps) const
 {
-  return a_box.numPts() * sizeof(T) * a_comps.size();
+  return a_box.numPts() * (sizeof(T) * a_comps.size());
 }
 
 template <class T> inline void BaseFab<T>::linearOut(void*           a_buf,
@@ -523,6 +547,67 @@ template <class T> inline void* BaseFab<T>::linearIn2(void*           a_buf,
   return (void*) buffer;
 }
 
+// ---------------------------------------------------------
+// this is for broadcast & gather; the Box is in the msg
+template <class T> inline void BaseFab<T>::linearOut(void* a_outBuf) const
+{
+  char * bufptr = static_cast<char*>(a_outBuf) ;
+
+  CH_XD::linearOut( bufptr ,m_domain );
+  bufptr += CH_XD::linearSize(m_domain);
+
+  CH_XD::linearOut( bufptr ,m_nvar );
+  bufptr += sizeof(int) ;
+
+  linearOut( bufptr ,m_domain ,interval() );
+}
+
+// ---------------------------------------------------------
+// this is for broadcast & gather; the Box is in the msg
+template <class T> inline void BaseFab<T>::linearIn(const void* const a_buf)
+{
+  // first get the box, then the number of components, then the data
+  char * bufptr = static_cast<char*>(const_cast<void*>(a_buf)) ;
+
+  CH_XD::linearIn( m_domain ,bufptr ); 
+  bufptr += CH_XD::linearSize( m_domain );
+
+  int ncomps;
+  CH_XD::linearIn( ncomps ,bufptr );
+  bufptr += sizeof( ncomps );
+
+  resize(m_domain, ncomps);
+
+  // Tried calling:
+  // linearIn( bufptr, m_domain, Interval( 0,ncomps-1 ) );
+  // but it crashed with OPT setting.
+  // So we use BoxIterator instead.
+  T* buffer = (T*)bufptr;
+  for (int icomp = 0; icomp < ncomps; icomp++)
+    {
+      for (BoxIterator bit(m_domain); bit.ok(); ++bit)
+        {
+          IntVect iv = bit();
+          (*this)(iv, icomp) = *buffer;
+          ++buffer;
+        }
+    }
+
+  //  ForAllThisBNN(T,m_domain,0,ncomps)
+  //  {
+  //    thisR = *buffer;
+  //    ++buffer;
+  //  } EndFor;
+  // return (void*) buffer;
+}
+
+// ---------------------------------------------------------
+// this is for broadcast & gather; the Box is in the msg
+template <class T> inline int BaseFab<T>::linearSize( ) const
+{ // the linearization contains the Box, #components, and data
+  return CH_XD::linearSize(m_domain) + sizeof(int) + size(m_domain, interval());
+}
+
 template <class T> inline void BaseFab<T>::define()
 {
   CH_assert(m_nvar > 0);
@@ -554,6 +639,7 @@ template <class T> inline void BaseFab<T>::define()
       m_dptr     = static_cast<T*>(s_Arena->alloc(m_truesize * sizeof(T)));
 
 #ifdef CH_USE_MEMORY_TRACKING
+      ch_memcount+=m_truesize * sizeof(T) + sizeof(BaseFab<T>);
       s_Arena->bytes += m_truesize * sizeof(T) + sizeof(BaseFab<T>);
       CH_assert(s_Arena->bytes > 0);
       if (s_Arena->bytes > s_Arena->peak)
@@ -605,6 +691,7 @@ template <class T> inline void BaseFab<T>::undefine()
   s_Arena->free(m_dptr);
 
 #ifdef CH_USE_MEMORY_TRACKING
+  ch_memcount -= m_truesize * sizeof(T) + sizeof(BaseFab<T>);
   s_Arena->bytes -= m_truesize * sizeof(T) + sizeof(BaseFab<T>);
   CH_assert(s_Arena->bytes >= 0);
 #endif
@@ -617,81 +704,6 @@ template <class T> inline std::string BaseFab<T>::name()
   std::string rtn = (typeid(T)).name();
 
   return rtn;
-}
-
-template <>
-inline void BaseFab<double>::performCopy(const BaseFab<double>& a_src,
-                                    const Box&        a_srcbox,
-                                    int               a_srccomp,
-                                    const Box&        a_destbox,
-                                    int               a_destcomp,
-                                    int               a_numcomp)
-{
-  CH_assert(a_src.box().contains(a_srcbox));
-  CH_assert(box().contains(a_destbox));
-  CH_assert(a_destbox.sameSize(a_srcbox));
-  CH_assert(a_srccomp  >= 0 && a_srccomp  + a_numcomp <= a_src.nComp());
-  CH_assert(a_destcomp >= 0 && a_destcomp + a_numcomp <= nComp());
-  // CH_TIME("BaseFab::performCopy")
-
-#ifdef _OPENMP
-  if (a_srcbox == a_src.box() && a_destbox == box() && a_destbox.sameSize(a_srcbox))
-    {
-      //MK: Was just for debugging so I have taken this out again.
-      //pout() << "Using OMP-optimised version of BaseFab::performCopy" << endl;
-
-      #pragma omp parallel default(shared)
-      {
-        int worker = omp_get_thread_num();
-        int workers = omp_get_num_threads();
-
-        int boxSize = size().product();
-        int workload = boxSize * a_numcomp;
-        int quo = workload / workers;
-        int rem = workload % workers;
-
-        int work_start, work_end;
-        if (worker < rem)
-          {
-            work_start = (quo + 1) * worker;
-            work_end = work_start + quo + 1;
-          }
-        else
-          {
-            work_start = (quo + 1) * rem + quo * (worker - rem);
-            work_end = work_start + quo;
-          }
-
-        int comp_start = work_start / boxSize;
-        int i_comp_start = work_start - comp_start * boxSize;
-
-        int comp_end = ((work_end - 1) / boxSize) + 1;
-        int i_comp_end = work_end - (comp_end - 1) * boxSize;
-
-        for (int comp = comp_start; comp < comp_end; ++comp)
-          {
-            const int i_start = (comp == comp_start) ? i_comp_start : 0;
-            const int i_end = (comp == comp_end - 1) ? i_comp_end : boxSize;
-
-            double *const dest = dataPtr(a_destcomp + comp);
-            const double *const src = a_src.dataPtr(a_srccomp + comp);
-
-            #pragma omp simd
-            for (int i = i_start; i < i_end; ++i)
-              {
-                dest[i] = src[i];
-              }
-          }
-      }
-
-      return;
-    }
-#endif
-
-  ForAllThisBNNXCBN(double, a_destbox, a_destcomp, a_numcomp, a_src, a_srcbox, a_srccomp)
-  {
-    thisR = a_srcR;
-  } EndForTX
 }
 
 template <class T>

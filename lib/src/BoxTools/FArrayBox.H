@@ -23,6 +23,7 @@
 #include "SPACE.H"
 #include "NamespaceHeader.H"
 
+
 ///
 /**
    Fortran Array Boxes (generally called FABs) are objects constructed
@@ -59,8 +60,10 @@ public:
   */
   FArrayBox(const Box& a_box,
             int        a_ncomp,
-            Real*      a_alias = NULL);
+            Real*      a_alias);
 
+  FArrayBox(const Box& a_box,
+            int        a_ncomp);
   ///
   /**
      Construct an aliaed FArrayBox.  See BaseFab class for details.
@@ -81,7 +84,7 @@ public:
                       int        a_ncomp,
                       Real*      a_alias = NULL)
   {
-    resize(a_box, a_ncomp, a_alias);
+    BaseFab<Real>::define(a_box, a_ncomp, a_alias);
   }
 
   ///
@@ -121,6 +124,15 @@ public:
     BaseFab<Real>::define(a_comps, a_original);
   }
 
+  ///
+  /** override resize.  I'm going to try and get rid of this function in the future (bvs)
+   */
+  virtual void resize(const Box& a_box, 
+                      int a_comps,
+                      Real* a_alias = NULL)
+  {
+    BaseFab<Real>::resize(a_box, a_comps, a_alias);
+  }
   ///
   /**
      Constructs FArrayBox by reading it from istream.
@@ -285,6 +297,7 @@ public:
   int maskGE(BaseFab<int>& a_mask,
              Real          a_val,
              int           a_comp = 0) const;
+
 
   ///
   /**
@@ -778,6 +791,10 @@ public:
                   Real a_A, Real a_B,
                   int a_destComp, int a_xComp, int a_yComp);
 
+
+
+  FArrayBox(FArrayBox&& a_in)=default;
+  FArrayBox& operator=(FArrayBox&& a_in)=default;
 protected:
   virtual void performCopy(const BaseFab<Real>& a_src,
                            const Box&           a_srcbox,
@@ -791,8 +808,8 @@ private:
   //
   // These are disallowed.
   //
-  FArrayBox (const FArrayBox&);
-  FArrayBox& operator = (const FArrayBox&);
+  //FArrayBox (const FArrayBox&);
+  //FArrayBox& operator = (const FArrayBox&);    
 };
 
 #include "NamespaceFooter.H"

@@ -26,6 +26,9 @@
 
 namespace CHSystem
 {
+  /// Check if a file exists
+  int fileExists(const char *const a_filename);
+
   /// Allocate aligned memory
   int memalign(void **a_memptr, size_t a_alignment, size_t a_size);
 
@@ -50,6 +53,56 @@ namespace CHSystem
 #endif
   }
 }
+
+// BOOST_PP_STRINGIZE(expr) - Return expr as a string literal.
+#define BOOST_PP_STRINGIZE_(expr) #expr
+#define BOOST_PP_STRINGIZE(expr) BOOST_PP_STRINGIZE_(expr)
+
+// BOOST_PRAGMA(args) - Emits a pragma.
+#define BOOST_PRAGMA(args) _Pragma(BOOST_PP_STRINGIZE(args))
+#if   defined(__INTEL_COMPILER)
+    #define BOOST_BUILTIN_ASSUME(expr)                                         \
+        __assume(expr)                                                         \
+        /**/
+    #define BOOST_BUILTIN_ASSUME_ALIGNED(ptr, align)                           \
+        __assume_aligned(ptr, align)                                           \
+        /**/
+#elif defined(__clang__)
+    #define BOOST_BUILTIN_ASSUME(expr)                                         \
+        __builtin_assume(expr)                                                 \
+        /**/
+    #define BOOST_BUILTIN_ASSUME_ALIGNED(ptr, align)                           \
+        {                                                                      \
+            ptr = reinterpret_cast<decltype(ptr)>(                             \
+                __builtin_assume_aligned(ptr, align)                           \
+            );                                                                 \
+        }                                                                      \
+        /**/
+#else // GCC
+    #define BOOST_BUILTIN_ASSUME(expr)                                         \
+        do { if (!(expr)) __builtin_unreachable(); } while (0)                 \
+        /**/
+    #define BOOST_BUILTIN_ASSUME_ALIGNED(ptr, align)                           \
+        {                                                                      \
+            ptr = reinterpret_cast<decltype(ptr)>(                             \
+                __builtin_assume_aligned(ptr, align)                           \
+            );                                                                 \
+        }                                                                      \
+        /**/
+#endif
+#if   defined(__INTEL_COMPILER)
+    #define BOOST_DEMAND_VECTORIZATION                                         \
+        BOOST_PRAGMA(simd)                                                     \
+        /**/
+#elif defined(__clang__)
+    #define BOOST_DEMAND_VECTORIZATION                                         \
+        BOOST_PRAGMA(clang loop vectorize(enable) interleave(enable))          \
+        /**/
+#else
+    #define BOOST_DEMAND_VECTORIZATION                                         \
+        BOOST_PRAGMA(GCC ivdep)                                                \
+        /**/
+#endif
 
 #include "BaseNamespaceFooter.H"
 #endif

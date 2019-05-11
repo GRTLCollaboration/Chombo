@@ -27,11 +27,14 @@
 #include <csignal>
 #endif
 
+
 using namespace std;
 
 #include "SPMD.H"
 
 #include "BaseNamespaceHeader.H"
+
+std::fstream LBFILE;
 
 struct elem
 {
@@ -262,10 +265,10 @@ int TraceTimer::initializer()
       ualarm( sampleFrequency, sampleFrequency );
       s_memorySampling = true;
 #else 
-      std::cout<<"Chombo was compiled with memory tracking, but CH_DISABLE_SIGNALS was set.  no samples created"<<std::endl;
+      pout()<<"Chombo was compiled with memory tracking, but CH_DISABLE_SIGNALS was set.  no samples created"<<std::endl;
 #endif
 #else
-      std::cout<<"CH_USE_MEMORY_TRACKING was not used during compilation, so no memory sampling will happen"<<std::endl;
+      pout()<<"CH_USE_MEMORY_TRACKING was not used during compilation, so no memory sampling will happen"<<std::endl;
 #endif
       
     } else if (strncmp(timerEnv, "TRACING",7)==0)
@@ -274,10 +277,10 @@ int TraceTimer::initializer()
 #ifndef CH_DISABLE_SIGNALS
       s_tracing = true;
 #else 
-      std::cout<<"Chombo was compiled with memory tracking, but CH_DISABLE_SIGNALS was set.  no samples created"<<std::endl;
+      pout()<<"Chombo was compiled with memory tracking, but CH_DISABLE_SIGNALS was set.  no samples created"<<std::endl;
 #endif
 #else
-      std::cout<<"CH_USE_MEMORY_TRACKING was not used during compilation, so no memory sampling will happen"<<std::endl;
+      pout()<<"CH_USE_MEMORY_TRACKING was not used during compilation, so no memory sampling will happen"<<std::endl;
 #endif
     }
 
@@ -301,6 +304,7 @@ int TraceTimer::initializer()
 
   //#endif
 #endif // CH_NTIMER
+
   initialized = true;
   if (s_memorySampling)
     samplingOn = true;
@@ -308,6 +312,11 @@ int TraceTimer::initializer()
   }
 #endif
   return 0;
+}
+
+bool TraceTimer::timersOn()
+{
+  return !(s_roots[0]->m_pruned);
 }
 
 void normalizeMemory(unsigned int a_m, int& a_memory, char* units)
@@ -422,6 +431,10 @@ void TraceTimer::report(bool a_closeAfter)
       return;
     }
 
+  if(LBFILE.is_open())
+    {
+      LBFILE<<std::endl; // flush load balance file to disk
+    }
   TraceTimer& root = *(s_roots[0]); // in MThread code, loop over roots
   root.currentize();
   // flop-counting breaks multidim
@@ -490,7 +503,11 @@ void TraceTimer::report(bool a_closeAfter)
       subReport(out, "FORT_", root.m_accumulated_WCtime );
       subReport(out, "MPI_", root.m_accumulated_WCtime );
 
-      reportFullTree(out, root, root.m_accumulated_WCtime, 0); //uses recursion
+      TraceTimer* bottom = &root;
+      reportFullTree(out, root, root.m_accumulated_WCtime, 0, &bottom); //uses recursion
+      fprintf(out, "stack top %p, stack bottom %p, stack size = %8.3f MB \n",
+              root.m_name, bottom->m_name, ((double)(root.m_name-bottom->m_name))/(1024*1024));
+      fprintf(out, "[%d] %s\n", bottom->m_rank, bottom->m_name);
       fflush(out);
       if (a_closeAfter) fclose(out);
     }
@@ -598,7 +615,7 @@ void TraceTimer::subReport(FILE* out, const char* header, unsigned long long int
           if(f>0)
             fprintf(out, " f=%lld MFlop/s=%.0f\n", f, MFLOP);
           else
-            fprintf(out,"\n");	  
+            fprintf(out,"\n");    
 
         }
       }
@@ -632,13 +649,14 @@ void TraceTimer::updateMemory(TraceTimer& a_timer)
 }
 
 void TraceTimer::reportFullTree(FILE* out, const TraceTimer& timer,
-                                unsigned long long int totalTime, int depth)
+                                unsigned long long int totalTime, int depth, TraceTimer** bottom)
 {
 #ifdef _OPENMP
   if(onThread0()){
 #endif
   if (timer.m_pruned) return;
   unsigned long long int time = timer.m_accumulated_WCtime;
+
 
   for (int i=0; i<depth; ++i) fprintf(out,"   ");
   double percent = ((double)time)/totalTime * 100.0;
@@ -648,14 +666,18 @@ void TraceTimer::reportFullTree(FILE* out, const TraceTimer& timer,
 
   Vector<int> ordering;
   sorterHelper(timer.m_children, ordering);
+  if(timer.m_children.size()==0 && timer.m_name<(*bottom)->m_name) 
+    {
+      *bottom = (TraceTimer*)(&timer);
+    } 
   for (int i=0; i<timer.m_children.size(); ++i)
-  {
-    reportFullTree(out, *(timer.m_children[ordering[i]]), totalTime, depth+1);
-  }
+    {
+      reportFullTree(out, *(timer.m_children[ordering[i]]), totalTime, depth+1, bottom);
+    }
 #ifdef _OPENMP
   }
 #endif
-
+  
 }
 void TraceTimer::reportOneTree(FILE* out, const TraceTimer& timer)
 {
@@ -708,8 +730,8 @@ void TraceTimer::reportOneTree(FILE* out, const TraceTimer& timer)
             double percent = ((double)childtime) / time * 100.0;
             if (!s_memorySampling || child.m_memoryMax == 0)
  
-	      fprintf(out,"    %4.1f%% %10.5f %8lld %s [%d] f=%lld\n",
-                      percent, floatTime, child.m_count, child.m_name, child.m_rank, child.m_flops);	    
+              fprintf(out,"    %4.1f%% %10.5f %8lld %s [%d] f=%lld\n",
+                      percent, floatTime, child.m_count, child.m_name, child.m_rank, child.m_flops);        
 
             else
               {

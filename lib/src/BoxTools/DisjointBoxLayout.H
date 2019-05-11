@@ -65,6 +65,12 @@ public:
                     const ProblemDomain& a_physDomain);
 
   ///
+  /** Construct from a LayoutData<Box>.
+      On exit, the BoxLayout will be closed.
+  */
+  DisjointBoxLayout(const LayoutData<Box>& a_newLayout);
+
+  ///
   /**
      Ref-counted destruction.  Once the last reference to the
      implementation of this class is destroyed, the data members
@@ -73,6 +79,9 @@ public:
   virtual
   ~DisjointBoxLayout()
   {}
+
+  // for flop counts
+  unsigned long long int numPointsThisProc() const;
 
   ///
   /** Define this DisjointBoxLayout from a Vector of Boxes.  This is a
@@ -111,7 +120,7 @@ public:
       error if not disjoint.  If <i>a_layout</i> is disjoint, then this object
       becomes a closed DisjointBoxLayout object.
   */
-  void
+  virtual void
   define(const BoxLayout& a_layout);
 
   ///
@@ -122,7 +131,7 @@ public:
       and is sorted, the neighbour iterator is rebuilt (now with knowledge of
       the problem domain).
   */
-  void
+  virtual void
   define(const BoxLayout& a_layout, const ProblemDomain& a_physDomain);
 
   ///
@@ -204,10 +213,10 @@ public:
    */
   void setDomain(const ProblemDomain& a_domain)
   {
-    if (*m_closed)
-      {
-        MayDay::Error("attempt to setDomain on closed DisjointBoxLayout");
-      }
+    //if (*m_closed)
+    //  {
+    //    MayDay::Error("attempt to setDomain on closed DisjointBoxLayout");
+    //  }
     m_physDomain = a_domain;
   }
 
@@ -240,8 +249,11 @@ public:
     Makes a_to a one-cell-thick version of *this -- sliced at a_ss.position
     along the a_ss.direction'th axis.
     If a_ss.position is outside the range of *this, that's a fatal error.
+    If a_maintainProcAssign = true, maintain processor assignments in the 
+    process (even if it breaks load balancing)
   */
-  void degenerate( DisjointBoxLayout& a_to, const SliceSpec& a_ss ) const;
+  void degenerate( DisjointBoxLayout& a_to, const SliceSpec& a_ss,
+                   bool a_maintainProcAssign = false) const;
 
   ///
   /**

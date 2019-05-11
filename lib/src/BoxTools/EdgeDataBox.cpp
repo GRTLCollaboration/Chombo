@@ -138,6 +138,7 @@ EdgeDataBox::define(const Box& a_bx, int a_nComp)
 // ---------------------------------------------------------
 // should resize fluxes in space (could be faster than re-allocating
 // storage)
+/*
 void
 EdgeDataBox::resize(const Box& a_bx, int a_nComp)
 {
@@ -171,7 +172,7 @@ EdgeDataBox::resize(const Box& a_bx, int a_nComp)
   }
 
 }
-
+*/
 // ---------------------------------------------------------
 void
 EdgeDataBox::setVal(const Real val)
@@ -320,10 +321,10 @@ EdgeDataBox::copy(const Box& RegionFrom,
 }
 
 // ---------------------------------------------------------
-int
+size_t
 EdgeDataBox::size(const Box& bx, const Interval& comps) const
 {
-  int totalSize = 0;
+  size_t totalSize = 0;
 
   FArrayBox tempFab;
   for (int dir =0; dir<SpaceDim; dir++)

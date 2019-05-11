@@ -47,7 +47,7 @@ c     added by dmartin, 11 Oct 2007
          numpts = 2**CH_SPACEDIM
          wt = one / (numpts * one)
          CHF_AUTOMULTIDO[dcalcface; i]
-            tot = zero
+            tot = 0
             CHF_AUTOMULTIDO[offbox; ioff]
                tot = tot + facescal(CHF_OFFSETIX[i; +ioff])
             CHF_ENDDO
@@ -144,7 +144,7 @@ c     added by dmartin, 11 Oct 2007
       real_t cur,sum
 
       CHF_AUTOMULTIDO[box; i]
-         sum = zero
+         sum = 0
 
          do iv = 0, CHF_NCOMP[data]-1
             cur = data(CHF_AUTOIX[i], iv)
@@ -276,7 +276,7 @@ c single-component face-centered FAB containing the normal advection
 c velocity
             ustar = advVel(CHF_AUTOIX[i])
 
-            if (ustar .gt. zero) then
+            if (ustar .gt. 0) then
                so = sl
             else
                so = sr

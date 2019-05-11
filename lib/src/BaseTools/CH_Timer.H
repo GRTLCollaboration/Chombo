@@ -41,6 +41,7 @@ using namespace std;
 
 #ifdef CH_NTIMER
 
+#define CH_TIMERS_ON() false
 #define CH_TIMER(name, tpointer)   (void)0
 #define CH_TIME(name)    (void)0
 #define CH_TIMELEAF(name)  (void)0
@@ -55,40 +56,61 @@ using namespace std;
 
 #else // CH_NTIMER
 
+extern std::fstream LBFILE;
+
+#define CH_TIMERS_ON() TraceTimer::timersOn()
+
 #define CH_TIMER(name, tpointer)                                        \
   const char* TimerTag_##tpointer = name ;                             \
   CH_XD::TraceTimer* tpointer = NULL ;\
-_Pragma("omp master");                                                  \
+  if(TIMERS_tid==0)                                                      \
     {                                                                       \
       tpointer = CH_XD::TraceTimer::getTimer(TimerTag_##tpointer) ;            \
     }
-
+#ifdef _OPENMP
 #define CH_TIME(name)                                                   \
   const char* TimerTagA = name ;                                       \
   char CH_TimermutexA = 0;                                              \
   CH_XD::TraceTimer* ch_tpointer = NULL;                                       \
-  _Pragma("omp master")                                                 \
+  int tid=omp_get_thread_num();                                         \
+  if(tid == 0)                                                         \
   {                                                                    \
     ch_tpointer = CH_XD::TraceTimer::getTimer(TimerTagA);                     \
   }                                                                    \
   CH_XD::AutoStart autostart(ch_tpointer, &CH_TimermutexA)
+#else
+#define CH_TIME(name)                                                   \
+  const char* TimerTagA = name ;                                       \
+  char CH_TimermutexA = 0;                                              \
+  CH_XD::TraceTimer* ch_tpointer = NULL;                                       \
+    ch_tpointer = CH_XD::TraceTimer::getTimer(TimerTagA);                     \
+  CH_XD::AutoStart autostart(ch_tpointer, &CH_TimermutexA)
+#endif
 
-
+#ifdef _OPENMP
 #define CH_TIMELEAF(name)                                                   \
   const char* TimerTagA = name ;                                       \
   CH_XD::TraceTimer* ch_tpointer = NULL; \
-  _Pragma("omp master")                                                 \
+  int tid = omp_get_thread_num(); if(tid==0)                            \
   {                                                                    \
     ch_tpointer = CH_XD::TraceTimer::getTimer(TimerTagA);                     \
   }                                                                    \
   CH_XD::AutoStartLeaf autostart(ch_tpointer)
+#else
+#define CH_TIMELEAF(name)                                                   \
+  const char* TimerTagA = name ;                                       \
+  CH_XD::TraceTimer* ch_tpointer = NULL; \
+  ch_tpointer = CH_XD::TraceTimer::getTimer(TimerTagA);                     \
+  CH_XD::AutoStartLeaf autostart(ch_tpointer)
+#endif
 
+#ifdef _OPENMP
 #define CH_TIMERS(name)                                                   \
   const char* TimerTagA = name ;                                       \
   char CH_TimermutexA = 0;                                              \
   char CH_Timermutex = 0;                                               \
   CH_XD::TraceTimer* ch_tpointer = NULL;                                       \
-  _Pragma("omp master")                                                 \
+  int TIMERS_tid = omp_get_thread_num(); if(TIMERS_tid==0)            \
   {                                                                    \
     ch_tpointer = CH_XD::TraceTimer::getTimer(TimerTagA);                     \
   }                                                                    \
@@ -96,17 +118,41 @@ _Pragma("omp master");                                                  \
 
 
 #define CH_START(tpointer) \
-  _Pragma("omp master")    \
+  if(TIMERS_tid==0)                            \
   {                        \
   tpointer->start(&CH_Timermutex); \
   }
 
 #define CH_STOP(tpointer) \
-  _Pragma("omp master") \
+ if(TIMERS_tid==0)                            \
   {                     \
   tpointer->stop(&CH_Timermutex); \
    }
 
+#else
+#define CH_TIMERS(name)                                                   \
+  const char* TimerTagA = name ;                                       \
+  char CH_TimermutexA = 0;                                              \
+  char CH_Timermutex = 0;                                               \
+  CH_XD::TraceTimer* ch_tpointer = NULL;                                       \
+  int TIMERS_tid=0;                                                     \
+  {                                                                    \
+    ch_tpointer = CH_XD::TraceTimer::getTimer(TimerTagA);                     \
+  }                                                                    \
+  CH_XD::AutoStart autostart(ch_tpointer, &CH_TimermutexA, &CH_Timermutex)
+
+
+#define CH_START(tpointer) \
+  {                        \
+  tpointer->start(&CH_Timermutex); \
+  }
+
+#define CH_STOP(tpointer) \
+  {                     \
+  tpointer->stop(&CH_Timermutex); \
+   }
+
+#endif
 //#define CH_STOPV(tpointer, val )
 
 #define CH_TIMER_REPORT() CH_XD::TraceTimer::report()
@@ -304,6 +350,8 @@ _Pragma("omp master");                                                  \
       return s_currentTimer[0]->m_name;
     }
 
+    static bool timersOn();
+
   private:
     TraceTimer(const char* a_name, TraceTimer* parent, int thread_id);
     static std::vector<TraceTimer*> s_roots;
@@ -337,7 +385,7 @@ _Pragma("omp master");                                                  \
     void currentize() const ;
     int  computeRank() const;
     static void reportFullTree(FILE* out, const TraceTimer& timer,
-                               unsigned long long int totalTime, int depth);
+                               unsigned long long int totalTime, int depth, TraceTimer** stack_bottom);
     static void reportOneTree(FILE* out, const TraceTimer& timer);
     static void updateMemory(TraceTimer& a_timer);
 

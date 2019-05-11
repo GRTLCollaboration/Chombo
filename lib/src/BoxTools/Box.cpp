@@ -18,8 +18,8 @@
 #include "SliceSpec.H"
 #include "NamespaceHeader.H"
 
-using std::cout;
-using std::cerr;
+
+
 using std::endl;
 using std::ws;
 using std::ostream;
@@ -290,22 +290,22 @@ void Box::define(const Box& b)
   btype = b.btype;
 }
 
-template<unsigned char DIM> inline unsigned long long int counter(const IntVect& lo, const IntVect& hi);
-template<> inline unsigned long long int counter<1>(const IntVect& lo, const IntVect& hi)
+template<unsigned char BDIM> inline size_t counter(const IntVect& lo, const IntVect& hi);
+template<> inline size_t counter<1>(const IntVect& lo, const IntVect& hi)
 {
   return hi[0]-lo[0]+1;
 }
-template<unsigned char DIM> inline unsigned long long int counter(const IntVect& lo, const IntVect& hi)
+template<unsigned char BDIM> inline size_t counter(const IntVect& lo, const IntVect& hi)
 {
-  return (hi[DIM-1]-lo[DIM-1]+1)*counter<DIM-1>(lo,hi);
+  return (hi[BDIM-1]-lo[BDIM-1]+1)*counter<BDIM-1>(lo,hi);
 }
 
-unsigned long long int Box::numPts() const
+size_t Box::numPts() const
 {
   return counter<CH_SPACEDIM>(smallend,bigend);
 }
 
-unsigned long long int Box::volume() const
+size_t Box::volume() const
 {
   return counter<CH_SPACEDIM>(smallend,bigend);
 }

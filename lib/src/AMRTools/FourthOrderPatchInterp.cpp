@@ -12,6 +12,7 @@
 
 #include "FourthOrderPatchInterp.H"
 #include "BoxIterator.H"
+#include "NamespaceHeader.H"
 
 //////////////////////////////////////////////////////////////////////////////
 // Constructor - set up some defaults
@@ -186,3 +187,4 @@ void FourthOrderPatchInterp::interpToFine(/// interpolated solution on this leve
       stencil.fillFine(a_fine, a_coarse, ivc);
     }
 }
+#include "NamespaceFooter.H"

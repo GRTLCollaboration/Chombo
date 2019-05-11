@@ -176,6 +176,8 @@ protected:
   // Patch integrator
   LayoutData<PatchGodunov>    m_patchGodunov;
 
+  ///just for global calls
+  PatchGodunov    m_patchGodunovNoBox;
   // Number of ghost cells need locally for this level
   int m_numGhost;
 

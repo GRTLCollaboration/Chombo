@@ -9,7 +9,6 @@
 #endif
 
 #if defined(CH_Darwin) && defined(__GNUC__) && ( __GNUC__ == 3 )
-// deal with the broken isnan()/isinf() in GCC on MacOS
 #include <unistd.h>
 #define _GLIBCPP_USE_C99 1
 #endif

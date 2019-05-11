@@ -41,7 +41,7 @@ public:
   ~FluxBox();
 
   /// Resize FluxBox similar to BaseFab::resize()
-  void resize(const Box& bx, int n=1);
+  //void resize(const Box& bx, int n=1);
 
   /// Define function
   void define(const Box& bx, int n=1);

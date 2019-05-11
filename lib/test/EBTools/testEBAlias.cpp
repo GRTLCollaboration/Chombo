@@ -227,8 +227,11 @@ int checkAMRAlias(const Box& a_domain)
   aliasEBAMR(dataOneRegPtr,dataOne);
 
   for (int i=0; i<numlevels-1; i++)
-    delete dataOneRegPtr[i] ;
-
+   {
+     delete dataOneRegPtr[i] ;
+     delete dataOne[i];
+     delete dataTwo[i];
+  }
   return eekflag;
 }
 void aliasEBAMR(Vector<LevelData<FArrayBox>* >& a_output,

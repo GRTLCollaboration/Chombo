@@ -12,8 +12,9 @@
 #include <omp.h>
 #endif
 
-#ifndef _CH_Thread_H_
-#define _CH_Thread_H_
+#ifndef _CH_THREAD_H_
+#define _CH_THREAD_H_
+
 
 //returns true if we are on thread 0 (or if not threaded)
 extern bool onThread0();

@@ -8,13 +8,14 @@ CHOMBO_HOME := $(shell pwd)/../..
 
 makefiles+=lib_test_BoxTools
 
-ebase = transformTest ldIVSFABCopyTest interiorExchangeTest copy2Test \
+ebase = transformTest ldIVSFABCopyTest ldIVSFABCopyTestInt interiorExchangeTest copy2Test \
   broadcastTest copyTest   threadTest domainSplitTest fabTest gatherTest         \
   HDF5attributes  HDF5boxIO HDF5data newIVSTest testBox               \
   testIntVectSet testBaseFabMacros testLoadBalance testMeshRefine     \
   testPeriodic ivsfabTest testRealVect codimensionBoundaryTest        \
   testTreeIntVectSet scopingTest reductionTest testRealTensor         \
-  testCHArray matrixTest 
+  testCHArray mortonTest testIndicesTransformation matrixTest stdIVSTest \
+  FaceSumOpTest
 
 LibNames = BoxTools
 

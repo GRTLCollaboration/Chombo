@@ -12,6 +12,7 @@
 #define _SPMDI_H_
 
 #include "memtrack.H"
+#include "parstream.H"
 #include "BaseNamespaceHeader.H"
 
 // default implementations for linearization routines.
@@ -83,7 +84,7 @@ gather(Vector<T>& a_outVec, const T& a_input, int a_dest)
   void* recdBuf = NULL;
   if (procID() == a_dest)
     {
-      int itotsize=0;
+      size_t itotsize=0;
       for (int iproc = 0; iproc < nProcess; iproc++)
         {
           vectDisp[iproc] = itotsize;
@@ -91,7 +92,9 @@ gather(Vector<T>& a_outVec, const T& a_input, int a_dest)
         }
       recdBuf = mallocMT(itotsize);
       if (recdBuf == NULL)
-        MayDay::Error("out of memory in gather 2");
+        {
+          MayDay::Error("out of memory in gather 2");
+        }
     }
 
   //gather data

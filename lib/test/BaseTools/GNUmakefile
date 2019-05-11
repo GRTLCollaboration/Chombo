@@ -8,8 +8,9 @@ CHOMBO_HOME := $(shell pwd)/../..
 
 makefiles+=lib_test_BaseTools
 
-ebase =  clock testTask testCH_Attach testRefCountedPtr testParmParse \
-   test_complex test_parstream testRootSolver
+ebase =  clock testTask testCH_Attach testRefCountedPtr \
+   testRefCountedPtrConstruct testParmParse test_complex \
+   testRootSolver testChomboVersion
 
 # note that BaseTools library should be included by default, even 
 # if we don't specify it here

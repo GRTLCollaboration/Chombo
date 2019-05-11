@@ -104,6 +104,7 @@ main(int argc, char* argv[])
             }
          }
       }
+    indexSpace.clear();
    }
    pout() << "EBNormalize test passed" << endl;
 #ifdef CH_MPI

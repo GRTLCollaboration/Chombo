@@ -177,6 +177,7 @@ FluxBox::define(const Box& a_bx, int a_nComp)
 // ---------------------------------------------------------
 // should resize fluxes in space (could be faster than re-allocating
 // storage)
+/*
 void
 FluxBox::resize(const Box& a_bx, int a_nComp)
 {
@@ -206,7 +207,7 @@ FluxBox::resize(const Box& a_bx, int a_nComp)
         }
     }
 }
-
+*/
 // ---------------------------------------------------------
 void
 FluxBox::setVal(const Real val)

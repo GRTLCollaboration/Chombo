@@ -82,20 +82,23 @@ NodeFArrayBox::define(const Box& a_bx, int a_nComp)
 {
   // resize() works just like BaseFab::define() if this instance
   // hasn't already been defined
-  resize(a_bx, a_nComp);
+  define(a_bx, a_nComp, 0);
 }
 
+void NodeFArrayBox::define(const Box& a_bx, int a_nComp, Real* a_dataPtr)
+{
+  m_box=a_bx;
+  m_fab.define(surroundingNodes(a_bx), a_nComp, a_dataPtr);
+}
 // ---------------------------------------------------------
 // resize function
+/*
 void
 NodeFArrayBox::resize(const Box& a_bx, int a_nComp, Real* a_alias)
 {
-  CH_assert(a_nComp > 0);
-  m_box = a_bx;
-  Box nodeBox(surroundingNodes(a_bx));
-  m_fab.resize(nodeBox, a_nComp, a_alias);
-}
 
+}
+*/
 // ---------------------------------------------------------
 void
 NodeFArrayBox::copy(const NodeFArrayBox& a_src)
@@ -135,7 +138,7 @@ NodeFArrayBox::copy(const Box& a_regionFrom,
 }
 
 // ---------------------------------------------------------
-int
+size_t
 NodeFArrayBox::size(const Box& a_R, const Interval& a_comps) const
 {
   Box nodeBox(surroundingNodes(a_R));
@@ -164,7 +167,7 @@ NodeFArrayBox::linearIn(const void* const a_buf)
   int ncomps ;
   CH_XD::linearIn( ncomps ,bufptr ) ;  bufptr += sizeof( ncomps );
   Box nodeBox = surroundingNodes( m_box ) ;
-  m_fab.resize( nodeBox ,ncomps );
+  m_fab.define( nodeBox ,ncomps );
   m_fab.linearIn( bufptr, nodeBox, Interval( 0,ncomps-1 ) );
 }
 

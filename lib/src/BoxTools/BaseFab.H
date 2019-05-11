@@ -142,6 +142,8 @@ public:
   BaseFab(const Interval& a_comps,
           BaseFab<T>&     a_original);
 
+  /// move constructor
+  BaseFab(BaseFab<T>&& a_in) noexcept;
   ///
   /**
      The destructor deletes the array memory. Unless this was an aliased
@@ -222,6 +224,8 @@ public:
     return Interval(0, m_nvar-1);
   }
 
+  /// move assignment
+  inline BaseFab<T>& operator= (BaseFab<T>&&) noexcept;
   /**
      Returns a modifiable lvalue reference to the Nth component value defined
      at position p in the domain.  This operator may be inefficient if the
@@ -472,8 +476,8 @@ public:
      by the input Box a_box and the component Interval a_comps.  The size
      does not include the size of a_box and a_comps.
   */
-  virtual int size(const Box&      a_box,
-                   const Interval& a_comps) const;
+  virtual size_t size(const Box&      a_box,
+                      const Interval& a_comps) const;
 
   ///
   /**
@@ -499,6 +503,14 @@ public:
   virtual void* linearIn2(void*           a_buf,
                           const Box&      a_R,
                           const Interval& a_comps);
+
+  /// These functions are required for broadcast & gather.
+
+  void linearOut(void* a_buf) const;
+  ///
+  void linearIn(const void* const a_buf);
+  ///
+  int linearSize(void) const;
 
   ///
   static int preAllocatable()
@@ -566,7 +578,7 @@ protected:
   long m_numpts;   // Cached number of points in FAB.
   long m_truesize; // m_nvar * m_numpts that was allocated on heap
                    //   (only if m_aliased == false).
-  T*   m_dptr;     // The data pointer.
+  T* __restrict  m_dptr;     // The data pointer.
   bool m_aliased;  // The BaseFab is not allocated memory, but is an alias. bvs
 
 private:

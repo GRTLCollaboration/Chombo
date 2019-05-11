@@ -525,8 +525,8 @@ divergenceTest()
     {
       const EBCellFAB& errorFineFAB = errorFine[dit()];
       const EBCellFAB& errorCoarFAB = errorCoar[dit()];
-      int i1 = errorFineFAB.getMultiCells().numPts();
-      int i2 = errorCoarFAB.getMultiCells().numPts();
+      int i1 = errorFineFAB.getMultiCells().size();
+      int i2 = errorCoarFAB.getMultiCells().size();
       pout() << i1 << i2 << endl;
     }
 

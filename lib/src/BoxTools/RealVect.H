@@ -350,6 +350,12 @@ public:
 
   ///
   /**
+     sum squares--no square root
+  */
+  Real radSquared() const;
+
+  ///
+  /**
      Product of all components of this RealVect.
   */
   Real product () const;
@@ -532,6 +538,22 @@ void linearIn(CH_XDIR::RealVect& a_outputT, const void* const inBuf);
 template < >
 void linearOut(void* const a_outBuf, const CH_XDIR::RealVect& a_inputT);
 
+//Vector<RealVect>  specialization
+template < >
+int linearSize(const Vector<CH_XDIR::RealVect>& a_input);
+template < >
+void linearIn(Vector<CH_XDIR::RealVect>& a_outputT, const void* const inBuf);
+template < >
+void linearOut(void* const a_outBuf, const Vector<CH_XDIR::RealVect>& a_inputT);
+
+//Vector<Vector<RealVect> > specialization
+template < >
+int linearSize(const Vector<Vector<CH_XDIR::RealVect> >& a_input);
+template < >
+void linearIn(Vector<Vector<CH_XDIR::RealVect> >& a_outputT, const void* const inBuf);
+template < >
+void linearOut(void* const a_outBuf, const Vector<Vector<CH_XDIR::RealVect> >& a_inputT);
+
 #include "BaseNamespaceFooter.H"
 
 #include "NamespaceHeader.H"
@@ -608,12 +630,21 @@ inline
 Real
 RealVect::vectorLength () const
 {
+  Real len = this->radSquared();
+  len = sqrt(len);
+
+  return len;
+}
+
+inline
+Real
+RealVect::radSquared() const
+{
   Real len = 0;
   for (int idir = 0; idir < SpaceDim; idir++)
     {
       len = len + vect[idir]*vect[idir];
     }
-  len = sqrt(len);
 
   return len;
 }

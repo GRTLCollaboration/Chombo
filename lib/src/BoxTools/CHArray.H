@@ -27,6 +27,7 @@
 #ifdef CH_SPACEDIM
 // In Chombo land
   #include "REAL.H"
+  #include "Misc.H"
   #include "Box.H"
   #include "NamespaceHeader.H"
 #else
@@ -94,6 +95,26 @@
     IntVect m_lb;
     IntVect m_ub;
   };
+  // Test for class type
+  namespace Misc {
+    template <typename T>
+    class TypeTr
+    {
+    private:
+      typedef char One;
+      typedef struct
+      {
+        char a[2];
+      } Two;
+      template <typename C> static One test(int C::*);
+      template <typename C> static Two test(...);
+    public:
+      enum
+      {
+        IsClass = sizeof(TypeTr<T>::template test<T>(0)) == 1
+      };
+    };
+  }
 #endif
 
 // How to index an IntVect.  May evaluate to, e.g., iv[0], iv[1], iv[2] or
@@ -217,39 +238,13 @@ inline ArSp::USz_t operator*(const CHRange &a, const ArSp::USz_t &i)
 
 namespace ArSp  // CHArray support
 {
-/*====================================================================*/
-///  Test for class type
-/**  Use the SFINAE principle as described in 15.2.2 "Determining
- *   Class Types" in Vandevoorde and Josuttis "C++ Templates" book to
- *   see if T is class type.  E.g.,
- *     TypeTr<int>::IsClass == false
- *     TypeTr<Box>::IsClass == true
- *//*=================================================================*/
-
-template <typename T>
-class TypeTr
-{
-  private:
-  typedef char One;
-  typedef struct
-  {
-    char a[2];
-  } Two;
-  template <typename C> static One test(int C::*);
-  template <typename C> static Two test(...);
-  public:
-  enum
-  {
-    IsClass = sizeof(TypeTr<T>::template test<T>(0)) == 1
-  };
-};
 
 /*====================================================================*/
 /**  \name Raw address allocation policy
  *//*=================================================================*/
 //@{
 
-template <typename T, bool IsClass = TypeTr<T>::IsClass>
+template <typename T, bool IsClass = Misc::TypeTr<T>::IsClass>
 struct AllocRawPolicy;
 
 ///  If elements are class type, allocate using placement new
@@ -278,7 +273,7 @@ struct AllocRawPolicy<T, false>
  *//*=================================================================*/
 //@{
 
-template <typename T, bool IsClass = TypeTr<T>::IsClass>
+template <typename T, bool IsClass = Misc::TypeTr<T>::IsClass>
 struct ReleaseRawPolicy;
 
 ///  If elements are class type, invoke destructor on each element

@@ -30,7 +30,7 @@
 #include <iostream>
 #include <vector>
 #ifdef CH_MPI
-#include <mpi.h>
+#include "mpi.h"
 #endif
 
 #include "IndexTM.H"

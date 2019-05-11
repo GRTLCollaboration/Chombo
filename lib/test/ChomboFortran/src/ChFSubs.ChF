@@ -714,20 +714,12 @@ c     test fails
 ! Test parsing end-of-line comments
 
       subroutine TEST_PARSE1( CHF_INT[ status ] )
-
+      status = 0
 #if 0
-! this test has proved to be brittle under various compilers, so 
-! commenting it out for now (and return status = 0)
       integer i,c  ! simple comment
       character bar*255  !'a comment with a string in it'
       integer  LENC
       external LENC
-#endif
-      status = 0
-#if 0
-c     this function keeps breaking and it has absolutely nothing to
-c     do with chombo fortran.   It is just testing the fortran compiler
-
       bar = 'a string with a comment ! in it'
       bar = bar(:LENC(bar)) // ''''  !string with embedded quote and a double quote '' in the comment
       !! Check the result:
@@ -747,6 +739,7 @@ c     do with chombo fortran.   It is just testing the fortran compiler
         endif
       enddo
       if ( c .NE. 1 ) status = status + 2
+#endif 
       return  ! comment with a comment !!! in it
       end
 
@@ -759,8 +752,6 @@ c     do with chombo fortran.   It is just testing the fortran compiler
       enddo
       l = 0
    10 LENC = l
-#endif
-
       return
       end
 

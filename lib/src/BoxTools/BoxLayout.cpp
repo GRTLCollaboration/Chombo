@@ -576,6 +576,29 @@ refine(int a_ref)
     }
 }
 
+///////////
+void
+BoxLayout::
+shift(const IntVect& a_iv)
+{
+  for (int ivec = 0; ivec < m_boxes->size(); ivec++)
+    {
+      (*m_boxes)[ivec].box.shift(a_iv);
+    }
+}
+
+///////////
+void
+BoxLayout::
+shiftHalf(const IntVect& a_iv)
+{
+  for (int ivec = 0; ivec < m_boxes->size(); ivec++)
+    {
+      (*m_boxes)[ivec].box.shiftHalf(a_iv);
+    }
+}
+
+
 // we have an easier time with refine, since we know that refinement will
 // not change the state of a sort, but, we will play it safe for now
 // until this function shows up in the profiler.
@@ -641,7 +664,7 @@ ostream& operator<<(ostream& os, const BoxLayout& a_layout)
 
 void BoxLayout::print() const
 {
-  std::cout << *this;
+  pout() << *this;
 }
 
 int BoxLayout::numBoxes(const int procID) const
