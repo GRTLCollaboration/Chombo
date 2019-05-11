@@ -137,6 +137,12 @@ public:
 
   ///
   /**
+    Return true if this cell is multi-valued.
+  */
+  bool isMultiValued(const IntVect& a_iv) const;
+
+  ///
+  /**
      Return true if every cell in a_box is a
      covered cell.
   */
@@ -313,12 +319,14 @@ public:
    */
   void setToAllCovered();
 
-  /// define from scratch using irregular graph
-  void
-  define(const BaseFab<int>&      a_regIrregCovered,
-         const Vector<IrregNode>& a_irregGraph,
-         const Box&               a_validRegion,
-         const ProblemDomain&     a_domain);
+  /// define from scratch using irregular graph  
+  //dtg--- i don't think this one exists
+  //void
+  //define(const BaseFab<int>&      a_regIrregCovered,
+  //       const Vector<IrregNode>& a_irregGraph,
+  //       const Box&               a_validRegion,
+  //       const ProblemDomain&     a_domain,
+  //       const DataIndex&         a_dit);
 
   ///
   /**
@@ -333,7 +341,8 @@ public:
   /// define from scratch using a graph and an ebdata
   void
   define(const EBGraph&  a_graph,
-         const EBData&   a_data);
+         const EBData&   a_data,
+         const DataIndex & a_dit);
 
   ///pointer copy
   EBISBox& operator=(const EBISBox& ebiin);
@@ -344,6 +353,55 @@ public:
   ///pointer comparison
   bool operator==(const EBISBox& ebiin);
 
+  /// get the moment at  the VoF associated with the  monomial with the input exponents
+  /**
+     Given VoF variables x, y, z,   p = mono(0), q = mono(1), r = mono(2),
+     returns integral_over_VoF(x^p y^q z^r dV) for all p q
+  **/
+  IndMomSpaceDim getVolumeMoments(const VolIndex& a_vof) const
+    {
+      return m_data.getVolumeMoments(a_vof);
+    }
+
+  /// get the normal the irregular face associated with the  monomial with the input exponents 
+  /**
+     Given VoF variables x, y, z,   p = mono(0), q = mono(1), r = mono(2),
+     returns integral_over_VoF((x^p y^q z^r) dV) for p q r
+  **/
+  IndMomSpaceDim getEBMoments(const VolIndex& a_vof) const
+    {
+      return m_data.getEBMoments(a_vof);
+    }
+
+  /// get the moment at  the face associated with the  monomial with the input exponents
+  /**
+     Given face variables x, y,  p = mono(0), q = mono(1)),
+     returns integral_over_face(x^p y^q dA) for all p q
+  **/
+  IndMomSDMinOne getFaceMoments(const FaceIndex& a_face) const
+    {
+      return m_data.getFaceMoments(a_face);
+    }
+
+  /// I am sick of guessing this name wrong
+  IndMomSDMinOne getAreaMoments(const FaceIndex& a_face) const
+    {
+      return getFaceMoments(a_face);
+    }
+
+  /// 
+  /**
+     gets the partial derivs of the normal component.   
+  **/
+  IndMomSpaceDim getEBNormalPartialDerivs(const VolIndex& a_vof, int a_normalComponent) const
+    {
+      return m_data.getEBNormalPartialDerivs(a_vof, a_normalComponent);
+    }
+
+  DataIndex dataIndex() const
+    {
+      return m_dit;
+    }
 private:
 
   ///this is already a ref-counted object
@@ -351,6 +409,8 @@ private:
 
   ///this is already a ref-counted objecto
   EBData   m_data;
+
+  DataIndex m_dit;
 
 };
 
@@ -386,6 +446,13 @@ EBISBox::isCovered(const IntVect& a_iv) const
 {
   return m_graph.isCovered(a_iv);
 }
+
+inline bool
+EBISBox::isMultiValued(const IntVect& a_iv) const
+{
+  return m_graph.isMultiValued(a_iv);
+}
+
 /*******************************/
 inline bool
 EBISBox::isCovered(const Box& a_box) const

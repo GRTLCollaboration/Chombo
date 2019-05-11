@@ -8,6 +8,9 @@
  */
 #endif
 
+#include <algorithm>
+using std::sort;
+
 #include "CH_Timer.H"
 #include "RefCountedPtr.H"
 
@@ -53,6 +56,7 @@ void STLExplorer::Explore(RefCountedPtr<STLBox> a_sb)
   // warning message if this box is going to be destroyed
   if (m_freestlbox)
   {
+    pout() << endl;
     pout() << "STLExplorer::Explore Warning, the input STLBox will be deleted upon destruction.  This is because a new STLBox was created in your first call to Explore()." << endl;
   }
 
@@ -113,7 +117,10 @@ STLExplorer::~STLExplorer()
 
   int KDError = KDFree( m_ptree );
   if (KDError!=0)
+  {
+    pout() << endl;
     pout() << "KDFree returned an error" << endl;
+  }
   KDTreeFinalize();
 }
 
@@ -193,7 +200,10 @@ void STLExplorer::GetPointInOut(const IntVect&  a_point,
   // do search
   KDError = KDNearestNeighbor( m_ptree , pointArr , closestArr , (void**) &dat , NULL , 0 );
   if (KDError!=0)
+  {
+    pout() << endl;
     pout() << "KDNearestNeighbor returned an error" << endl;
+  }
 
   RealVect closestRV;
   for (int i=0; i<SpaceDim; i++)
@@ -255,7 +265,9 @@ void STLExplorer::FindCellsOnVertices()
   if (m_printdebug)
   {
     PMap(m_sb->m_cellmap);
-    pout() << "m_vertmap: "; PVec(m_vertmap); pout() << endl;
+    pout() << "m_vertmap: ";
+    PVec(m_vertmap);
+    pout() << endl;
   }
 
 }
@@ -367,15 +379,19 @@ void STLExplorer::FindCellsOnEdges()
 
     }
     if (m_printdebug)
+    {
       pout() << " Done" << endl;
+    }
     /*
     pout() << "edge " << iedge << " from ";
-     PRV(m_msh->vertices.vertex[ m_msh->edges.edge[iedge][0] ]);
-     pout() << " to ";
-     PRV(m_msh->vertices.vertex[ m_msh->edges.edge[iedge][1] ]);
-     pout() << ": \n";
-    pout() << "  L:"; PVec(m_trimap[ triLR[0] ]); pout() << "\n";
-    pout() << "  R:"; PVec(m_trimap[ triLR[1] ]); pout() << "\n";
+    PRV(m_msh->vertices.vertex[ m_msh->edges.edge[iedge][0] ]);
+    pout() << " to ";
+    PRV(m_msh->vertices.vertex[ m_msh->edges.edge[iedge][1] ]);
+    pout() << ": \n";
+    pout() << "  L:"; PVec(m_trimap[ triLR[0] ]);
+    pout() << "\n";
+    pout() << "  R:"; PVec(m_trimap[ triLR[1] ]);
+    pout() << "\n";
     */
   }
 }
@@ -386,6 +402,7 @@ void STLExplorer::FindCellsInTriangles()
 {
   CH_TIMERS("STLExplorer::FindCellsInTriangles");
   CH_TIMER("sort cells",tsort);
+  CH_TIMER("fill line",tline);
   CH_TIMER("insert cells",tinsert);
   CH_TIMER("remove duplicate cells",tunique);
 
@@ -442,6 +459,8 @@ void STLExplorer::FindCellsInTriangles()
           i+=1; continue;
         }
 
+        CH_START(tline);
+
         // only fill-in sequential points along a single cartesian direction
         // go to next slice of cells
         if (SpaceDim>0 && (cells[i][idir] != cells[i-1][idir]))
@@ -455,7 +474,9 @@ void STLExplorer::FindCellsInTriangles()
               !( cells[i][idir] == cells[i-1][idir]+1 && \
                  cells[i][(idir+1)%SpaceDim] == cells[i-1][(idir+1)%SpaceDim] ))
             FillInCellLine(cells,i,itri,idir,(idir+1)%SpaceDim);
-          i+=1; continue;
+          i += 1;
+          CH_STOP(tline);
+          continue;
         }
 
         // go to next line of cells
@@ -470,8 +491,12 @@ void STLExplorer::FindCellsInTriangles()
               !( cells[i][(idir+1)%SpaceDim] == cells[i-1][(idir+1)%SpaceDim]+1 && \
                  cells[i][(idir+2)%SpaceDim] == cells[i-1][(idir+2)%SpaceDim] ))
             FillInCellLine(cells,i,itri,(idir+1)%SpaceDim,(idir+2)%SpaceDim);
-          i+=1; continue;
+          i += 1;
+          CH_STOP(tline);
+          continue;
         }
+
+        CH_STOP(tline);
 
         CH_START(tinsert);
 
@@ -530,7 +555,8 @@ void STLExplorer::FindCellsInTriangles()
   {
     int itri = 102; IntVect iv(D_DECL(33,32,13));
     CellMapIt it = m_sb->m_cellmap.find(iv); 
-    pout() << " After fill-in:"; PVec(m_trimap[itri]); pout() << endl;
+    pout() << " After fill-in:"; PVec(m_trimap[itri]);
+    pout() << endl;
     pout() << " Found IntVect " << iv << "? " << (it!=m_sb->m_cellmap.end()) << endl;
   }
 
@@ -812,6 +838,7 @@ void STLExplorer::FindCellEdgesOnBondary()
         if (!rvNode.second && (rvNode.first->second != (!isNode1Inside) ))
         {
           // node was not inserted and the existing node has the opposite in/out'ness
+          pout() << endl;
           pout() << "STLExplorer: Building boundary nodes: Warning, a node is specified as inside for one edge but outside for another!" << endl;
           pout() << curedge.m_node0 << " at " << IVToRV(curedge.m_node0, m_sb->m_origin, m_sb->m_dx) << endl; 
         }
@@ -821,6 +848,7 @@ void STLExplorer::FindCellEdgesOnBondary()
         if (!rvNode.second && (rvNode.first->second != (isNode1Inside) ))
         {
           // node was not inserted and the existing node has the opposite in/out'ness
+          pout() << endl;
           pout() << "STLExplorer: Building boundary nodes: Warning, a node is specified as inside for one edge but outside for another!\n";
           pout() << curedge.m_node1 << " at " << IVToRV(curedge.m_node1, m_sb->m_origin, m_sb->m_dx) << endl;
         }
@@ -868,18 +896,23 @@ void STLExplorer::FindCellEdgesOnBondary()
     PMap(m_sb->m_nodemap);
   if (nedgeMultipleIntersections>0)
   {
+    pout() << endl;
     pout() << "STLExplorer: Building boundary nodes: Warning, there were " << nedgeMultipleIntersections << " edges that had " << endl << "  multiple intersection points.  You should consider using a finer mesh!" << endl;
   }
   if (nnodeOnTriangle>0)
   {
+    pout() << endl;
     pout() << "STLExplorer: Building boundary nodes: Warning, there were approximately " << nnodeOnTriangle << " nodes that lie in the plane of a triangle. " << endl << " This may give unexpected results.  Try perturbing the geometry." << endl; 
   }
   if (nedgeOnTriangle>0)
   {
+    pout() << endl;
     pout() << "STLExplorer: Building boundary nodes: Warning, there were " << nedgeOnTriangle << " edges that lie in the plane of a triangle. " << endl << " This may give unexpected results.  Try perturbing the geometry." << endl; 
   }
 
 }
+
+typedef pair<RealVect,pair<IntVect,bool>*> BUILDNODE;
 
 void STLExplorer::BuildKDTree()
 {
@@ -889,14 +922,39 @@ void STLExplorer::BuildKDTree()
   int KDError;
   m_ptree = (KDTree *) KDCreate( SpaceDim , &KDError );
   if (KDError!=0)
+  {
+    pout() << endl;
     pout() << "KDCreate returned an error" << endl;
-  Vector<pair<IntVect,bool> >* data = new Vector<pair<IntVect,bool> >(m_sb->m_nodemap.size());
+  }
+
+  vector<pair<IntVect,bool> >* data = new vector<pair<IntVect,bool> >(m_sb->m_nodemap.size());
+
   KDSetGlobalData( m_ptree , (void *) data );
 
   // don't bother inserting if there are no edges
   if (m_sb->m_edgemap.size()==0)
     return;
 
+#if 1
+  vector<BUILDNODE> allNodes(m_sb->m_nodemap.size());
+
+  int i = 0;
+  for (NodeMapIt it = m_sb->m_nodemap.begin(); it != m_sb->m_nodemap.end(); it++)
+  {
+    RealVect nodeRV;
+    nodeRV = IVToRV(it->first, m_sb->m_origin, m_sb->m_dx);
+
+    allNodes[i].first = nodeRV;
+
+    (*data)[i].first = it->first;
+    (*data)[i].second = it->second;
+    
+    allNodes[i].second = &(*data)[i];
+    i++;
+  }
+
+  STLExplorer::RecursiveKDTreeInsert(allNodes,0,allNodes.size()-1,0);
+#else
   // insert each node and it's associated boolean
   Real nodeArr[SpaceDim];
   RealVect nodeRV;
@@ -910,13 +968,127 @@ void STLExplorer::BuildKDTree()
     (*data)[i].second = it->second;
     KDError = KDInsert( m_ptree , nodeArr , &(*data)[i] );
     if (KDError!=0)
+    {
+      pout() << endl;
       pout() << "KDInsert returned an error" << endl;
+    }
     i++;
   }
+#endif
 
   KDTreeStatistics(m_ptree);
+  pout() << endl;
+  // KDTreePrint(m_ptree);
 }
 
+class SortNodes
+{
+  public:
+    SortNodes(const int & a_dim)
+    { 
+      m_dim = a_dim;
+    }
+
+    bool operator()(BUILDNODE m_a,
+                    BUILDNODE m_b)
+    {
+      const RealVect &posA = m_a.first;
+      const RealVect &posB = m_b.first;
+
+      if (posA[m_dim] < posB[m_dim])
+      {
+        return true;
+      }
+      else
+      {
+        return false;
+      }
+    }
+
+  protected:
+    int m_dim;
+};
+
+void STLExplorer::RecursiveKDTreeInsert(vector<BUILDNODE> &allNodes,
+                                        const int         &nstart,
+                                        const int         &nend,
+                                        const int         &depth)
+{
+  if (nstart <= nend)
+  {
+    int dim = depth % SpaceDim;
+
+    vector<BUILDNODE>::iterator istart = allNodes.begin() + nstart  ;
+    vector<BUILDNODE>::iterator iend   = allNodes.begin() + nend + 1;
+
+#if 0
+    pout() << "RecursiveKDTreeInsert" << endl;
+    pout() << "  nstart = " << nstart << endl;
+    pout() << "  nend   = " << nend   << endl;
+    pout() << "  npivot = " << npivot << endl;
+    pout() << "  depth  = " << depth  << endl;
+    pout() << "  dim    = " << dim    << endl;
+
+    pout() << "  input vector:" << endl;
+    for (vector<BUILDNODE>::iterator i = istart; i != iend; i++)
+    {
+      pout() << "    " << i->first << endl;
+    }
+#endif
+
+    struct SortNodes sortNodes(dim);
+
+    sort(istart,iend,sortNodes);
+
+#if 0
+    pout() << "  sorted vector:" << endl;
+    for (vector<BUILDNODE>::iterator i = istart; i != iend; i++)
+    {
+      pout() << "    " << i->first << endl;
+    }
+    pout() << endl;
+#endif
+
+    int npivot;
+
+    for (npivot = (nend + nstart)/2; npivot < nend; npivot++)
+    {
+      if (allNodes[npivot].first[dim] != allNodes[npivot+1].first[dim])
+      {
+        break;
+      }
+    }
+
+    Real nodeArr[SpaceDim];
+
+    for (int i = 0; i < SpaceDim; i++)
+    {
+      nodeArr[i] = allNodes[npivot].first[i];
+    }
+
+    int KDError;
+
+#if 0
+    pout() << "  inserting: " << allNodes[npivot].first << endl;
+    pout() << endl;
+#endif
+
+    KDError = KDInsert(m_ptree,nodeArr,allNodes[npivot].second);
+
+    if (KDError!=0)
+    {
+      pout() << "KDInsert returned an error" << endl;
+    }
+
+#if 0
+    KDTreePrint(m_ptree);
+    pout() << endl;
+#endif
+
+    RecursiveKDTreeInsert(allNodes,nstart  ,npivot-1,depth+1);
+    RecursiveKDTreeInsert(allNodes,npivot+1,nend    ,depth+1);
+  }
+}
 
 /*
  * Functions for low-level computations

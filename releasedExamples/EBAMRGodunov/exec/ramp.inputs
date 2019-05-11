@@ -3,7 +3,7 @@ artificial_viscosity = 0.1
 cfl = 0.9
 use_mass_redist = 1
 initial_cfl = 0.1
-verbosity = 1
+verbosity = 3
 max_step = 60
 max_time = 0.7
 tag_buffer_size = 3
@@ -14,6 +14,7 @@ dt_tolerance_factor = 1.1
 fixed_dt   = -1
 gamma = 1.4
 domain_length = 1.0 1.0 1.0
+smallness = 1.0e-6
 
 shock_mach = 10
 shock_center = 0.15

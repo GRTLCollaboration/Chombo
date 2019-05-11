@@ -1,11 +1,11 @@
 #ifdef CH_LANG_CC
 /*
-*      _______              __
-*     / ___/ /  ___  __ _  / /  ___
-*    / /__/ _ \/ _ \/  V \/ _ \/ _ \
-*    \___/_//_/\___/_/_/_/_.__/\___/
-*    Please refer to Copyright.txt, in Chombo's root directory.
-*/
+ *      _______              __
+ *     / ___/ /  ___  __ _  / /  ___
+ *    / /__/ _ \/ _ \/  V \/ _ \/ _ \
+ *    \___/_//_/\___/_/_/_/_.__/\___/
+ *    Please refer to Copyright.txt, in Chombo's root directory.
+ */
 #endif
 
 #include <cmath>
@@ -17,9 +17,7 @@
 #include "VoFIterator.H"
 #include "EBLGIntegrator.H"
 #include "EBPatchPolytropicF_F.H"
-
-#include "NamespaceHeader.H"
-
+#include "UsingNamespace.H"
 /****************************/
 /****************************/
 EBPlanarShockIBC::
@@ -48,16 +46,23 @@ EBPlanarShockIBC(const Real&     a_gamma,
     {
       pp.get("preshockdense", preshockdense);
     }
-  Real postshocktemp;
-  pp.get("post_shock_temperature", postshocktemp);
+
+  Real backpress = preshockpress;
+  if(pp.contains("backpressure"))
+    {
+      pp.get("backpressure", backpress);
+    }
+  Real cv;
+  pp.get("specific_heat", cv);
 
 
-  FORT_SETPLANARSHOCK(CHF_CONST_REAL(postshocktemp),
+  FORT_SETPLANARSHOCK(CHF_CONST_REAL(cv),
                       CHF_CONST_REAL(a_gamma),
                       CHF_CONST_REAL(a_ms),
                       CHF_CONST_REAL(a_center),
                       CHF_CONST_REAL(preshockpress),
                       CHF_CONST_REAL(preshockdense),
+                      CHF_CONST_REAL(backpress),
                       CHF_CONST_INT(a_shocknorm),
                       CHF_CONST_INT(ishockback));
   /**/
@@ -240,20 +245,25 @@ fluxBC(EBFluxFAB&            a_flux,
       // Shift things to all line up correctly
       boundaryBox.shiftHalf(a_dir,-isign);
       BaseFab<Real>& regFlux = a_flux[a_dir].getSingleValuedFAB();
-      const BaseFab<Real>& regPrimExtrap = a_primExtrap.getSingleValuedFAB();
+      const BaseFab<Real>& regPrimExtrap = a_primExtrap.getSingleValuedFAB(); // 
 
       // Set the boundary fluxes
       bool inbackofshock =
         (!m_shockbackward && a_side == Side::Lo) ||
         ( m_shockbackward && a_side == Side::Hi);
+      bool outflowBC = true;
+      ParmParse pp;
+      pp.query("outflow_bc", outflowBC);
       if(a_dir == m_shocknorm && inbackofshock)
         {
-          regFlux.shiftHalf(a_dir,-isign);
+          Box region = a_primExtrap.box();
+          region &= a_ebisBox.getDomain();
 
+          regFlux.shiftHalf(a_dir,-isign);
           // Set the boundary fluxes
           /**/
           FORT_EXTRAPBC(CHF_FRA(regFlux),
-                        CHF_CONST_FRA(regPrimExtrap),
+                        CHF_CONST_FRA(a_primExtrap.getSingleValuedFAB()),
                         CHF_CONST_REAL(m_dx),
                         CHF_CONST_INT(a_dir),
                         CHF_BOX(boundaryBox));
@@ -281,6 +291,55 @@ fluxBC(EBFluxFAB&            a_flux,
                   FORT_POINTGETFLUX(CHF_VR(fluxv),
                                     CHF_VR(qgdnv),
                                     CHF_CONST_INT(a_dir));
+                  /**/
+                  const FaceIndex& face = bndryFaces[iface];
+                  for(int ivar = 0; ivar < FNUM; ivar++)
+                    {
+                      a_flux[a_dir](face, ivar) = fluxv[ivar];
+                    }
+                }
+            }
+        } //end if on the back side of the shock
+      else if(a_dir == m_shocknorm && (!inbackofshock && outflowBC))
+        {
+          Box region = a_primExtrap.box();
+          region &= a_ebisBox.getDomain();
+
+          regFlux.shiftHalf(a_dir,-isign);
+
+          // Set the boundary fluxes
+          /**/
+          FORT_OUTFLOWBC(CHF_FRA(regFlux),
+                         CHF_CONST_FRA(a_primExtrap.getSingleValuedFAB()),
+                         CHF_CONST_INT(isign),
+                         CHF_CONST_INT(a_dir),
+                         CHF_BOX(boundaryBox));
+          /**/
+
+          // Shift returned fluxes to be face centered
+          regFlux.shiftHalf(a_dir,isign);
+          //now for the multivalued cells.  Since it is pointwise,
+          //the regular calc is correct for all single-valued cells.
+          IntVectSet ivs = a_ebisBox.getMultiCells(boundaryBox);
+          for(VoFIterator vofit(ivs, a_ebisBox.getEBGraph()); vofit.ok(); ++vofit)
+            {
+              const VolIndex& vof = vofit();
+              Vector<Real> qgdnv(QNUM);
+              Vector<Real> fluxv(FNUM);
+              for(int ivar = 0; ivar < QNUM; ivar++)
+                {
+                  qgdnv[ivar] = a_primExtrap(vof, ivar);
+                }
+              Vector<FaceIndex> bndryFaces =
+                a_ebisBox.getFaces(vof, a_dir, a_side);
+              for(int iface= 0; iface < bndryFaces.size(); iface++)
+                {
+                  /**/
+                  FORT_POINTOUTFLOWBC(CHF_VR(fluxv),
+                                      CHF_VR(qgdnv),
+                                      CHF_CONST_INT(a_dir),
+                                      CHF_CONST_INT(isign)
+                                      );
                   /**/
                   const FaceIndex& face = bndryFaces[iface];
                   for(int ivar = 0; ivar < FNUM; ivar++)
@@ -408,5 +467,3 @@ EBPlanarShockIBC::
 }
 /****************************/
 /****************************/
-
-#include "NamespaceFooter.H"

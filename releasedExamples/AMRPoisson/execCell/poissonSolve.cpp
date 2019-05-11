@@ -26,7 +26,6 @@
 #include "BoxIterator.H"
 #include "CONSTANTS.H"
 #include "memusage.H"
-#include "CH_Attach.H"
 
 #include "UsingNamespace.H"
 
@@ -71,9 +70,6 @@ void ParseValue(Real* pos,
                 Side::LoHiSide* side,
                 Real* a_values)
 {
-  //  ParmParse pp;
-  //Real bcVal;
-  //pp.get("bc_value",bcVal);
   a_values[0]=0.;
 }
 
@@ -86,15 +82,6 @@ void ParseBC(FArrayBox& a_state,
 
   if (!a_domain.domainBox().contains(a_state.box()))
     {
-
-      // if (!GlobalBCRS::s_areBCsParsed)
-      //   {
-      //     ParmParse pp;
-      //     pp.getarr("bc_lo", GlobalBCRS::s_bcLo, 0, SpaceDim);
-      //     pp.getarr("bc_hi", GlobalBCRS::s_bcHi, 0, SpaceDim);
-      //     GlobalBCRS::s_areBCsParsed = true;
-      //   }
-
       Box valid = a_valid;
       for (int i=0; i<CH_SPACEDIM; ++i)
         {
@@ -105,36 +92,6 @@ void ParseBC(FArrayBox& a_state,
               Box ghostBoxHi = adjCellBox(valid, i, Side::Hi, 1);
               if (!a_domain.domainBox().contains(ghostBoxLo))
                 {
-                  // if (GlobalBCRS::s_bcLo[i] == 1)
-                  //   {
-                  //     if (!GlobalBCRS::s_printedThatLo[i])
-                  //       {
-                  //         if (a_state.nComp() != 1)
-                  //           {
-                  //             MayDay::Error("using scalar bc function for vector");
-                  //           }
-                  //         GlobalBCRS::s_printedThatLo[i] = true;
-                  //         if (s_verbosity>5)pout() << "const neum bcs lo for direction " << i << endl;
-                  //       }
-                  //     NeumBC(a_state,
-                  //            valid,
-                  //            a_dx,
-                  //            a_homogeneous,
-                  //            ParseValue,
-                  //            i,
-                  //            Side::Lo);
-                  //   }
-                  // else if (GlobalBCRS::s_bcLo[i] == 0)
-                  //   {
-                  //     if (!GlobalBCRS::s_printedThatLo[i])
-                  //       {
-                  //         if (a_state.nComp() != 1)
-                  //           {
-                  //             MayDay::Error("using scalar bc function for vector");
-                  //           }
-                  //         GlobalBCRS::s_printedThatLo[i] = true;
-                  //         if (s_verbosity>5)pout() << "const diri bcs lo for direction " << i << endl;
-                  //       }
                       DiriBC(a_state,
                              valid,
                              a_dx,
@@ -143,45 +100,10 @@ void ParseBC(FArrayBox& a_state,
                              i,
                              Side::Lo,
                              1);
-                  //   }
-                  // else
-                  //   {
-                  //     MayDay::Error("bogus bc flag lo");
-                  //   }
                 }
 
               if (!a_domain.domainBox().contains(ghostBoxHi))
                 {
-                  // if (GlobalBCRS::s_bcHi[i] == 1)
-                  //   {
-                  //     if (!GlobalBCRS::s_printedThatHi[i])
-                  //       {
-                  //         if (a_state.nComp() != 1)
-                  //           {
-                  //             MayDay::Error("using scalar bc function for vector");
-                  //           }
-                  //         GlobalBCRS::s_printedThatHi[i] = true;
-                  //         if (s_verbosity>5)pout() << "const neum bcs hi for direction " << i << endl;
-                  //       }
-                  //     NeumBC(a_state,
-                  //            valid,
-                  //            a_dx,
-                  //            a_homogeneous,
-                  //            ParseValue,
-                  //            i,
-                  //            Side::Hi);
-                  //   }
-                  // else if (GlobalBCRS::s_bcHi[i] == 0)
-                  //   {
-                  //     if (!GlobalBCRS::s_printedThatHi[i])
-                  //       {
-                  //         if (a_state.nComp() != 1)
-                  //           {
-                  //             MayDay::Error("using scalar bc function for vector");
-                  //           }
-                  //         GlobalBCRS::s_printedThatHi[i] = true;
-                  //         if (s_verbosity>5)pout() << "const diri bcs hi for direction " << i << endl;
-                  //       }
                       DiriBC(a_state,
                              valid,
                              a_dx,
@@ -190,206 +112,11 @@ void ParseBC(FArrayBox& a_state,
                              i,
                              Side::Hi,
                              1);
-                  //   }
-                  // else
-                  //   {
-                  //     MayDay::Error("bogus bc flag hi");
-                  //   }
                 }
             } // end if is not periodic in ith direction
         }
     }
 }
- 
-//#ifdef FAS_HACKS
-#if 0
-////////////////////////////////////////////////////////////////////////
-// DampBC helper
-////////////////////////////////////////////////////////////////////////
-static void DampDiriBC( FArrayBox&      a_state,
-                        const Box&      a_valid,
-                        const ProblemDomain& a_domain,
-                        int             a_ratio,
-                        int             a_dir,
-                        Side::LoHiSide  a_side,
-                        Interval&       a_interval
-                        )
-{
-  Real dc = 1.0, df = dc/(Real)a_ratio;
-  for (int kk=1 ; kk <= 2 ; kk++, df += 1., dc += 1. )
-    {
-      Real fact = df/dc;
-      
-      Box region = adjCellBox( a_valid, a_dir, a_side, 1 );
-      region.shift( a_dir, -kk*sign(a_side) );
-
-      for (BoxIterator bit(region); bit.ok(); ++bit)
-        {
-          const IntVect& ivTo = bit();
-          for (int icomp = a_interval.begin(); icomp <= a_interval.end(); icomp++)
-            {
-              Real ghostVal = a_state(ivTo, icomp);
-              a_state(ivTo, icomp) = fact*ghostVal;
-            }
-        }
-    }
-}
-////////////////////////////////////////////////////////////////////////
-// DampBC -- method to damp (residual) at Dirchlet BCs
-////////////////////////////////////////////////////////////////////////
-void DampBC( FArrayBox& a_state,
-             const Box& a_valid,
-             const ProblemDomain& a_domain,
-             Real a_dx,
-             int a_ratio )
-{
-  
-  if (!a_domain.domainBox().contains(a_state.box()))
-    {
-      if (!GlobalBCRS::s_areBCsParsed)
-        {
-          ParmParse pp;
-          pp.getarr("bc_lo", GlobalBCRS::s_bcLo, 0, SpaceDim);
-          pp.getarr("bc_hi", GlobalBCRS::s_bcHi, 0, SpaceDim);
-          GlobalBCRS::s_areBCsParsed = true;
-        }
-
-      for (int i=0; i<CH_SPACEDIM; ++i)
-        {
-          // don't do anything if periodic
-          if (!a_domain.isPeriodic(i))
-            {
-              Box valid = a_valid;
-              Box ghostBoxLo = adjCellBox(valid, i, Side::Lo, 1);
-              Box ghostBoxHi = adjCellBox(valid, i, Side::Hi, 1);
-              if ( !a_domain.domainBox().contains(ghostBoxLo) && GlobalBCRS::s_bcLo[i]==0 )
-                {
-                  Interval stateInterval = a_state.interval();
-                  DampDiriBC(a_state,
-                             valid,
-                             a_domain, a_ratio,
-                             i,
-                             Side::Lo,
-                             stateInterval
-                             );
-                }
-              if (!a_domain.domainBox().contains(ghostBoxHi) && GlobalBCRS::s_bcHi[i]==0 )
-                {
-                  Interval stateInterval = a_state.interval();
-                  DampDiriBC(a_state,
-                             valid,
-                             a_domain, a_ratio,
-                             i,
-                             Side::Hi,
-                             stateInterval
-                             );
-                }
-            } // end if is not periodic in ith direction
-        }
-    }
-}
-
-////////////////////////////////////////////////////////////////////////
-// convergeGS_BC helper
-////////////////////////////////////////////////////////////////////////
-extern void convDiriBC_RBGS( FArrayBox&      a_state,
-                             const FArrayBox& a_rhs,
-                             const Box&      a_valid,
-                             const ProblemDomain& a_domain,
-                             Real a_dx,
-                             int             a_whichpass,
-                             int             a_dir,
-                             Side::LoHiSide  a_side);
-
-////////////////////////////////////////////////////////////////////////
-// convergeGS_BC -- method to converge G-S on Dirchlet BCs
-////////////////////////////////////////////////////////////////////////
-void convergeGS_BC( FArrayBox& a_state,
-                    const FArrayBox& a_rhs,
-                    const Box& a_valid,
-                    const ProblemDomain& a_domain,
-                    Real a_dx,
-                    int a_whichpass )
-{
-  
-  if (!a_domain.domainBox().contains(a_state.box()))
-    {
-      if (!GlobalBCRS::s_areBCsParsed)
-        {
-          ParmParse pp;
-          pp.getarr("bc_lo", GlobalBCRS::s_bcLo, 0, SpaceDim);
-          pp.getarr("bc_hi", GlobalBCRS::s_bcHi, 0, SpaceDim);
-          GlobalBCRS::s_areBCsParsed = true;
-        }
-
-      for (int i=0; i<CH_SPACEDIM; ++i)
-        {
-          // don't do anything if periodic
-          if (!a_domain.isPeriodic(i))
-            {
-              Box ghostBoxLo = adjCellBox(a_valid, i, Side::Lo, 1);
-              Box ghostBoxHi = adjCellBox(a_valid, i, Side::Hi, 1);
-              if ( !a_domain.domainBox().contains(ghostBoxLo) && GlobalBCRS::s_bcLo[i]==0 )
-                {
-                  Interval stateInterval = a_state.interval();
-                  // iterate 
-                  for (int kk=0;kk<10;kk++)
-                    {
-                      // apply BC
-                      DiriBC(a_state,
-                             a_valid,
-                             a_dx,
-                             true,
-                             ParseValue,
-                             i,
-                             Side::Lo,
-                             1);
-                      // apply G-S to boundary
-                      convDiriBC_RBGS(a_state, 
-                                      a_rhs,
-                                      a_valid,
-                                      a_domain, 
-                                      a_dx,
-                                      a_whichpass,
-                                      i,
-                                      Side::Lo);
-                    }
-                }
-              if (!a_domain.domainBox().contains(ghostBoxHi) && GlobalBCRS::s_bcHi[i]==0 )
-                {
-                  Interval stateInterval = a_state.interval();
-                  // iterate 
-                  for (int kk=0;kk<10;kk++)
-                    {
-                      // apply BC
-                      DiriBC(a_state,
-                             a_valid,
-                             a_dx,
-                             true,
-                             ParseValue,
-                             i,
-                             Side::Hi,
-                             1);
-                      // apply G-S to boundary
-                      convDiriBC_RBGS(a_state, 
-                                      a_rhs,
-                                      a_valid,
-                                      a_domain, 
-                                      a_dx,
-                                      a_whichpass,
-                                      i,
-                                      Side::Hi);
-                    }
-                }
-            } // end if is not periodic in ith direction
-        }
-    }
-}
-#endif
-
-// ----------------------------------------
-// end BC stuff
-// ----------------------------------------
 
 void setRHS(Vector<LevelData<FArrayBox>* > a_rhs,
             Vector<ProblemDomain>& a_amrDomains,
@@ -859,7 +586,7 @@ setupSolver(AMRMultiGrid<LevelData<FArrayBox> > *a_amrSolver,
  {
    CH_TIME("runSolver");
 
-   int status = 0, mg_type = 0;
+   int status = 0;
    ParmParse ppMain("main");
 
    ppMain.query("verbosity", s_verbosity);
@@ -875,28 +602,7 @@ setupSolver(AMRMultiGrid<LevelData<FArrayBox> > *a_amrSolver,
 
    // initialize solver
    AMRMultiGrid<LevelData<FArrayBox> > *amrSolver;
-   if ( mg_type==0 ) 
-     {
-       amrSolver = new AMRMultiGrid<LevelData<FArrayBox> >();
-     }
-   else 
-     {
-       MayDay::Error("FAS not supported");
-       // int type = (int)VCYCLE;
-       // ParmParse ppSolver("solver");
-       
-       // AMRFASMultiGrid<LevelData<FArrayBox> > *psol;
-       // psol = new AMRFASMultiGrid<LevelData<FArrayBox> >();
-       // ppSolver.query("cycle_type", type);
-       // psol->setCycleType( (FASMG_type)type );
-       // bool avoid_norms = false;
-       // ppSolver.query("avoid_norms", avoid_norms);
-       // psol->setAvoidNorms(avoid_norms);
-       // int numv=1;
-       // ppSolver.query("num_v_cycles", numv);
-       // psol->setNumVcycles(numv);
-       // amrSolver = psol;
-     }
+   amrSolver = new AMRMultiGrid<LevelData<FArrayBox> >();
    BiCGStabSolver<LevelData<FArrayBox> > bottomSolver;
    bottomSolver.m_verbosity = s_verbosity-2;
    setupSolver(amrSolver, bottomSolver, amrGrids, amrDomains,
@@ -1012,7 +718,7 @@ int main(int argc, char* argv[])
   MPI_Init(&argc, &argv);
 #endif
   int status = 0;
-  //  AttachDebugger();
+
   // scoping...
   {
     if (argc < 2)

@@ -54,20 +54,28 @@
 #include "DirichletConductivityDomainBC.H"
 #include   "NeumannConductivityDomainBC.H"
 #include "DirichletConductivityEBBC.H"
+#include "InflowOutflowViscousTensorEBBC.H"
 #include   "NeumannConductivityEBBC.H"
 #include   "EBPlanarShockSolverBC.H"
 #include   "EBPlanarShockTemperatureBC.H"
-#include "EBCNSVortexF_F.H"
-#include "EBCNSVortexIBC.H"
-#include "SchlichtingVelocityEBBC.H"
-#include "SchlichtingVeloDomainBC.H"
-#include "SchlichtingTempDomainBC.H"
+#include "BoundaryAreaRefCrit.H"
+#include "SmoothAbsoluteValue.H"
+#include "SmoothUnion.H"
+#include "SmoothIntersection.H"
+#include "WrappedGShop.H"
 #include "GodunovGeom.H"
 
 #include "NamespaceHeader.H"
 
 using std::ifstream;
 using std::ios;
+
+string convertIntGG(int number)
+{
+   stringstream ss;//create a stringstream
+   ss << number;//add number to the stream
+   return ss.str();//return a string with the contents of the stream
+}
 
 extern "C"
 {
@@ -243,81 +251,6 @@ coarsenBoxes(Vector< Vector<Box>      >&    a_boxesCoar,
         }
     }
 }
-/************/
-void
-schlichtingGeometry(Box& a_coarsestDomain,
-                    RealVect& a_dx)
-{
-  ParmParse ppgodunov;
-  //parse input file
-  int max_level = 0;
-  ppgodunov.get("max_level",max_level);
-
-  int num_read_levels = Max(max_level,1);
-  std::vector<int> refRatios; // (num_read_levels,1);
-  // note this requires a refRatio to be defined for the
-  // finest level (even though it will never be used)
-
-  ppgodunov.getarr("ref_ratio",refRatios,0,num_read_levels+1);
-  ParmParse pp;
-  RealVect origin = RealVect::Zero;
-  Vector<int> n_cell(SpaceDim);
-  pp.getarr("n_cell",n_cell,0,SpaceDim);
-
-  CH_assert(n_cell.size() == SpaceDim);
-  IntVect lo = IntVect::Zero;
-  IntVect hi;
-  for(int ivec = 0; ivec < SpaceDim; ivec++)
-    {
-      if(n_cell[ivec] <= 0)
-        {
-          pout() << " bogus number of cells input = " << n_cell[ivec];
-          MayDay::Error();
-        }
-      hi[ivec] = n_cell[ivec] - 1;
-    }
-
-  a_coarsestDomain = Box(lo, hi);
-  Box finestDomain = a_coarsestDomain;
-  for(int ilev = 0; ilev < max_level; ilev++)
-    {
-      finestDomain.refine(refRatios[ilev]);
-    }
-
-  Real domain_length;//x dir
-  pp.get("domain_length",domain_length);
-  for(int idir = 0;idir<SpaceDim;idir++)
-    {
-      a_dx[idir] = domain_length/n_cell[0];
-    }
-  RealVect fineDx = a_dx;
-  int ebMaxCoarsen = -1;
-  for(int ilev = 0; ilev < max_level; ilev++)
-    {
-      fineDx /= refRatios[ilev];
-    }
-  int ebMaxSize;
-  ppgodunov.get("max_grid_size", ebMaxSize);
-  EBIndexSpace* ebisPtr = Chombo_EBIS::instance();
-
-  pout() << "square cylinder geometry" << endl;
-
-  SchlichtingParams schlicht;
-  ParseSchlichtingParams(schlicht);
-  RealVect schlichtingAxis  = schlicht.m_axis;
-
-  RealVect schlichtNormal[CH_SPACEDIM-1];
-  PolyGeom::getTangentVectors(schlichtNormal, schlicht.m_axis);
-
-  RealVect schlichtCorner= schlicht.m_corner;
-  bool inside = true;
-  
-  PlaneIF ramp(schlichtNormal[0],schlichtCorner,inside);
-  
-  GeometryShop workshop(ramp,0,fineDx);
-
-  ebisPtr->define(finestDomain, origin, fineDx[0], workshop, ebMaxSize, ebMaxCoarsen);
-}
 
 void
 getBoxes(Vector<Vector<Box> >&   a_boxes,
@@ -387,187 +320,6 @@ int getOrderEB()
       MayDay::Error("bogus EBBC order (must be 1 or 2)" );
     }
   return orderEB;
-}
-void
-getEBAMRCNSFactory(      RefCountedPtr<EBAMRCNSFactory>&                  a_fact,
-                         EBAMRCNSParams&                                  a_params,
-                         const RefCountedPtr<EBPatchPolytropicFactory>&   a_patch,
-                         int a_iprob,
-                         Real a_reynoldsNumber
-                         )
-{
-
-  ParmParse pp;
-
-  pp.get("redist_radius",   a_params.m_redistRad);
-  pp.get("domain_length",   a_params.m_domainLength);
-  pp.get("refine_thresh",   a_params.m_refineThresh);
-  pp.get("use_mass_redist", a_params.m_useMassRedist);
-  pp.get("verbosity",       a_params.m_verbosity);
-  pp.get("cfl",             a_params.m_cfl);
-  pp.get("initial_cfl",     a_params.m_initialDtMultiplier);
-  pp.get("do_smushing",     a_params.m_doSmushing);
-  pp.get("verbosity",       a_params.m_verbosity);
-  pp.get("use_air_coefficients", a_params.m_useAirCoefs);
-  a_params.m_variableCoeff =  a_params.m_useAirCoefs;
-  if(a_reynoldsNumber <= 0)
-    {
-      pp.get("mu_viscosity",    a_params.m_viscosityMu);
-      pp.get("lambda_viscosity",a_params.m_viscosityLa);
-    }
-  else
-    {
-      Real radius, maxvel;
-      pp.get("sphere_radius",radius);
-      FORT_GETMAXVEL(CHF_REAL(maxvel));
-
-      a_params.m_viscosityMu = (2*maxvel*radius)/a_reynoldsNumber;
-      a_params.m_viscosityLa = -2.0*a_params.m_viscosityMu/3.0;
-    }
-  pp.get("specific_heat",   a_params.m_specHeatCv);
-  pp.get("thermal_cond",    a_params.m_thermalCond);
-  pp.query("backward_euler", a_params.m_backwardEuler);
-  a_params.m_tagBufferSize = 1;
-
-  fillSolverBCs(a_params, a_iprob);
-
-  Vector<int> domainBC;
-  pp.getarr("dom_bc_type", domainBC, 0, SpaceDim);
- 
-  // The convergence tests are set up to use IBCs for initial conditions, 
-  // so we stick an adaptor in here to make sure that things still work 
-  // the way they should. 
-  RefCountedPtr<EBSpaceTimeFunction> a_ICs(new EBSpaceTimeFunctionIBCAdaptor());
-  a_fact = RefCountedPtr<EBAMRCNSFactory> (new EBAMRCNSFactory(a_params, a_patch, a_ICs));
-
-}
-
-
-void
-getEBAMRGFactory(RefCountedPtr<EBAMRGodunovFactory>&  a_fact,
-                 const  EBPatchPolytropicFactory* const    a_patch)
-{
-  ParmParse pp;
-  Real gamma = 1.4;
-  pp.get("gamma",gamma);
-
-  int redistRad = 0;
-  pp.get("redist_radius",redistRad);
-
-  Real domainLength;
-  pp.get("domain_length",domainLength);
-
-
-  //dummies
-  Real refineThresh = 0.7;
-  if(pp.contains("refine_thresh"))
-    {
-      pp.get("refine_thresh", refineThresh);
-    }
-  int tagBufferSize = 1;
-  int iusemassredist;
-  pp.get("use_mass_redist", iusemassredist);
-  bool useMassRedist    = (iusemassredist ==1);
-  int verbosity;
-  pp.get("verbosity", verbosity);
-
-  Real initialCFL = 0.1;
-  pp.get("initial_cfl",initialCFL);
-  Real cfl = 0.8;
-  pp.get("cfl",cfl);
-
-
-  bool doRZCoords   = false;
-  bool hasSourceTerm = false;
-  bool doSmushing =true;
-  a_fact = RefCountedPtr<EBAMRGodunovFactory>
-    (new EBAMRGodunovFactory(initialCFL,
-                             cfl,
-                             redistRad,
-                             domainLength*RealVect::Unit,
-                             refineThresh,
-                             tagBufferSize,
-                             verbosity,
-                             useMassRedist,
-                             doSmushing,
-                             doRZCoords,
-                             hasSourceTerm,
-                             a_patch));
-
-}
-
-void
-getEBPPFactoryXY(RefCountedPtr<EBPatchPolytropicFactory>&  a_patchGamma,
-                 const  EBPhysIBCFactory*  const           a_ibc)
-{
-  ParmParse pp;
-  Real gamma = 1.4;
-  pp.get("gamma",gamma);
-
-  int uselim;
-  pp.get("use_limiting", uselim);
-  bool useLimiting = (uselim==1);
-  if(useLimiting)
-    {
-      pout() << "limiting ON" << endl;
-    }
-  else
-    {
-      pout() << "limiting OFF" << endl;
-    }
-  Real specHeat = 1.0;
-  pp.get("specific_heat", specHeat);
-
-  int ifourth, iflatten, iartvisc;
-  pp.get("use_fourth_order_slopes", ifourth);
-  pp.get("use_flattening"         , iflatten);
-  pp.get("use_art_visc"           , iartvisc);
-  bool useFourthOrderSlopes = (ifourth  ==1);
-  bool useFlattening        = (iflatten ==1);
-  bool useArtificialVisc    = (iartvisc ==1);
-  bool doRZCoords = false;
-
-  EBPatchPolytropicFactory* newfact =
-    (new EBPatchPolytropicFactory(a_ibc,
-                                  gamma,
-                                  specHeat,
-                                  useFourthOrderSlopes,
-                                  useFlattening,
-                                  useArtificialVisc,
-                                  useLimiting,
-                                  doRZCoords));
-
-  a_patchGamma = RefCountedPtr<EBPatchPolytropicFactory>(newfact);
-}
-/************/
-void
-getVortexIBCFactory(RefCountedPtr<EBCNSVortexIBCFactory>&  a_ibc,
-                    const RealVect& a_center, const Real& a_radius)
-{
-  // read inputs
-  ParmParse pp;
-
-  int testverbosity;
-  pp.get("testverbosity", testverbosity);
-
-  Real gamma = 1.4;
-  pp.get("gamma",gamma);
-  
-  pout() << "vortex iniitial and boundary conditions" << endl;
-
-  vector<Real> centerpp(SpaceDim,0.5);
-  RealVect center;
-  pp.getarr("sphere_center",centerpp,0,SpaceDim);
-  for (int i = 0; i < SpaceDim; i++)
-    center[i] = centerpp[i];
-
-  Real rnot;
-  pp.get("sphere_radius", rnot);
-
-  Real mach;
-  pp.get("mach_number", mach);
-  EBCNSVortexIBCFactory* ptr =  (new EBCNSVortexIBCFactory(gamma, center, mach, rnot));
-  a_ibc = RefCountedPtr<EBCNSVortexIBCFactory> (ptr);
 }
 /************/
 void
@@ -779,291 +531,6 @@ godunovGeometry(Box& a_coarsestDomain,
           //this generates the new EBIS
           ebisPtr->define(finestDomain, origin, fineDx[0], workshop, ebMaxSize, ebMaxCoarsen);
         }
-      else if(whichgeom == 7)
-        {
-          pout() << "multiparabola geometry" << endl;
-          int numParabola;
-          pp.get("num_parabolas", numParabola);
-          int updir;
-          pp.get("parabola_updir", updir);
-          Vector<Real>     amp(numParabola);
-          Vector<RealVect> center(numParabola);
-          for(int iparabola = 0; iparabola < numParabola; iparabola++)
-            {
-              char ampString[80];
-              char centerString[80];
-              sprintf(ampString, "parabola_amplitude_%d", iparabola);
-              sprintf(centerString, "parabola_center_%d", iparabola);
-              vector<Real> parabola_center(SpaceDim);
-              Real parabolaAmp;
-              pp.get(ampString, parabolaAmp);
-              pp.getarr(centerString,parabola_center, 0, SpaceDim);
-              RealVect parabolaCenter;
-              for(int idir = 0; idir < SpaceDim; idir++)
-                {
-                  parabolaCenter[idir] = parabola_center[idir];
-                }
-              center[iparabola] = parabolaCenter;
-              amp[iparabola]    = parabolaAmp;
-            }
-
-          Vector<BaseIF*> parabolas;
-          for(int iparabola = 0; iparabola < numParabola; iparabola++)
-            {
-              Vector<PolyTerm> poly;
-
-              PolyTerm mono;
-              Real coef;
-              IntVect powers;
-
-              if (updir != 0) {
-                // x^2 term
-                coef = amp[iparabola];
-                powers = IntVect::Zero;
-                powers[0] = 2;
-
-                mono.coef   = coef;
-                mono.powers = powers;
-
-                poly.push_back(mono);
-
-                // x term
-                coef = -2.0*amp[iparabola]*center[iparabola][0];
-                powers = IntVect::Zero;
-                powers[0] = 1;
-
-                mono.coef   = coef;
-                mono.powers = powers;
-
-                poly.push_back(mono);
-
-                // y or z term
-                coef = -1.0;
-                powers = IntVect::Zero;
-                powers[updir] = 1;
-
-                mono.coef   = coef;
-                mono.powers = powers;
-
-                poly.push_back(mono);
-
-                // constant
-                coef = amp[iparabola]*center[iparabola][0]*center[iparabola][0] + center[iparabola][updir];
-                powers = IntVect::Zero;
-
-                mono.coef   = coef;
-                mono.powers = powers;
-
-                poly.push_back(mono);
-              } 
-              else 
-                {
-                  // y^2 term
-                  coef = amp[iparabola];
-                  powers = IntVect::Zero;
-                  powers[1] = 2;
-
-                  mono.coef   = coef;
-                  mono.powers = powers;
-
-                  poly.push_back(mono);
-
-                  // y term
-                  coef = -2.0*amp[iparabola]*center[iparabola][1];
-                  powers = IntVect::Zero;
-                  powers[1] = 1;
-
-                  mono.coef   = coef;
-                  mono.powers = powers;
-
-                  poly.push_back(mono);
-
-                  // x term
-                  coef = -1.0;
-                  powers = IntVect::Zero;
-                  powers[updir] = 1;
-
-                  mono.coef   = coef;
-                  mono.powers = powers;
-
-                  poly.push_back(mono);
-
-                  // constant
-                  coef = amp[iparabola]*center[iparabola][1]*center[iparabola][1] + center[iparabola][updir];
-                  powers = IntVect::Zero;
-
-                  mono.coef   = coef;
-                  mono.powers = powers;
-
-                  poly.push_back(mono);
-                }
-
-              bool inside = (amp[iparabola] < 0);
-
-              parabolas.push_back(new PolynomialIF(poly,inside));
-            }
-
-          IntersectionIF allTogether(parabolas);
-
-          GeometryShop workshop(allTogether,verbosity,fineDx);
-          //this generates the new EBIS
-          ebisPtr->define(finestDomain, origin, fineDx[0], workshop, ebMaxSize, ebMaxCoarsen);
-        }
-      else if(whichgeom == 8)
-        {
-          pout() << "parabolic mirror geometry" << endl;
-          Real amplitude;
-          RealVect center;
-          vector<Real> centervec;
-          int updir;
-          pp.get("mirror_updir", updir);
-          pp.get("mirror_amplitude", amplitude);
-          pp.getarr("mirror_center",centervec, 0, SpaceDim);
-          for(int idir = 0; idir < SpaceDim; idir++)
-            {
-              center[idir] = centervec[idir];
-            }
-
-          Vector<PolyTerm> poly;
-
-          PolyTerm mono;
-          Real coef;
-          IntVect powers;
-
-          if (updir != 0) 
-            {
-              // x^2 term
-              coef = amplitude;
-              powers = IntVect::Zero;
-              powers[0] = 2;
-
-              mono.coef   = coef;
-              mono.powers = powers;
-
-              poly.push_back(mono);
-
-              // x term
-              coef = -2.0*amplitude*center[0];
-              powers = IntVect::Zero;
-              powers[0] = 1;
-
-              mono.coef   = coef;
-              mono.powers = powers;
-
-              poly.push_back(mono);
-
-              // y or z term
-              coef = -1.0;
-              powers = IntVect::Zero;
-              powers[updir] = 1;
-
-              mono.coef   = coef;
-              mono.powers = powers;
-
-              poly.push_back(mono);
-
-              // constant
-              coef = amplitude*center[0]*center[0] + center[updir];
-              powers = IntVect::Zero;
-
-              mono.coef   = coef;
-              mono.powers = powers;
-
-              poly.push_back(mono);
-            } 
-          else 
-            {
-              // y^2 term
-              coef = amplitude;
-              powers = IntVect::Zero;
-              powers[1] = 2;
-
-              mono.coef   = coef;
-              mono.powers = powers;
-
-              poly.push_back(mono);
-
-              // y term
-              coef = -2.0*amplitude*center[1];
-              powers = IntVect::Zero;
-              powers[1] = 1;
-
-              mono.coef   = coef;
-              mono.powers = powers;
-
-              poly.push_back(mono);
-
-              // x term
-              coef = -1.0;
-              powers = IntVect::Zero;
-              powers[updir] = 1;
-
-              mono.coef   = coef;
-              mono.powers = powers;
-
-              poly.push_back(mono);
-
-              // constant
-              coef = amplitude*center[1]*center[1] + center[updir];
-              powers = IntVect::Zero;
-
-              mono.coef   = coef;
-              mono.powers = powers;
-
-              poly.push_back(mono);
-            }
-
-          bool inside = (amplitude >= 0);
-
-          PolynomialIF mirror(poly,inside);
-
-          GeometryShop workshop(mirror,verbosity,fineDx);
-          ebisPtr->define(finestDomain, origin, fineDx[0], workshop, ebMaxSize, ebMaxCoarsen);
-        }
-      else if(whichgeom == 9)
-        {
-          pout() << "ovoid geometry" << endl;
-          Real radius, axialdist;
-          RealVect center;
-          vector<Real> centervec;
-          pp.get("ovoid_radius", radius);
-          pp.get("ovoid_axial_dist", axialdist);
-          int axis;
-          pp.get("ovoid_axis", axis);
-          pp.getarr("ovoid_center_lo",centervec, 0, SpaceDim);
-          for(int idir = 0; idir < SpaceDim; idir++)
-            {
-              center[idir] = centervec[idir];
-            }
-
-          RealVect centerLo = center;
-
-          SphereIF sphereLo(radius,centerLo,true);
-
-          RealVect centerHi = center;
-          centerHi[axis] += axialdist;
-
-          SphereIF sphereHi(radius,centerHi,true);
-
-          UnionIF ends(sphereLo,sphereHi);
-
-          RealVect cylinderAxis = RealVect::Zero;
-          cylinderAxis[axis] = 1.0;
-
-          TiltedCylinderIF tube(radius,cylinderAxis,centerLo,true);
-          PlaneIF loBound(cylinderAxis,centerLo,true);
-          PlaneIF hiBound(cylinderAxis,centerHi,false);
-
-          IntersectionIF loHi(loBound,hiBound);
-          IntersectionIF finiteTube(tube,loHi);
-
-          UnionIF capsule(finiteTube,ends);
-
-          ComplementIF ovoid(capsule,true);
-
-          GeometryShop workshop(ovoid,verbosity,fineDx);
-          ebisPtr->define(finestDomain, origin, fineDx[0], workshop, ebMaxSize, ebMaxCoarsen);
-        }
       else if(whichgeom == 10)
         {
 
@@ -1117,27 +584,6 @@ godunovGeometry(Box& a_coarsestDomain,
           //this generates the new EBIS
           ebisPtr->define(finestDomain, origin, fineDx[0], workshop, ebMaxSize, ebMaxCoarsen);
         }
-      else if(whichgeom == 12)
-        {
-          pout() << "DEMIF geometry" << endl;
-          std::string demifFile;
-          pp.get("demif_file",demifFile);
-          IntVect demifNCell = finestDomain.size();
-          int interpType;
-          pp.get("demif_interp_type", interpType);
-          Real bottomBuffer, highGround, verticalScale;
-          pp.get("demif_bottom_buffer", bottomBuffer);
-          pp.get("demif_high_ground", highGround);
-          pp.get("demif_vertical_scale", verticalScale);
-
-
-          DEMIF demifoid(demifNCell, interpType, fineDx, demifFile,
-                         bottomBuffer, 1.e99,highGround, verticalScale);
-          GeometryShop workshop(demifoid,verbosity,fineDx);
-          //this generates the new EBIS
-          ebisPtr->define(finestDomain, origin, fineDx[0], workshop, ebMaxSize, ebMaxCoarsen);
-        }
-
       else if(whichgeom == 16)
         {
           pout() << "Sphere Array geometry" << endl;
@@ -1161,165 +607,123 @@ godunovGeometry(Box& a_coarsestDomain,
           //this generates the new EBIS
           ebisPtr->define(finestDomain, origin, fineDx[0], workshop, ebMaxSize, ebMaxCoarsen);
         }
-      else if(whichgeom == 20)
+      else if (whichgeom == 4586)
         {
-          pout() << "Gas jet nozzle geometry" << endl;
+          pout() << "flattened ramp geometry" << endl;
+          RealVect rampNormal;
+          vector<Real>  rampNormalVect(SpaceDim);
+          pp.getarr("ramp_normal",rampNormalVect, 0, SpaceDim);
+          for(int idir = 0; idir < SpaceDim; idir++)
+            {
+              rampNormal[idir] = rampNormalVect[idir];
+            }
 
-          BaseIF* retval;
+          Real rampAlpha, flatAlpha;
+          pp.get("ramp_alpha",rampAlpha);
+          pp.get("flat_alpha",flatAlpha);
 
-          Vector<Real> prob_lo(SpaceDim,0.0);
-          Vector<Real> prob_hi(SpaceDim,1.0);
-
-          pp.getarr("prob_lo",prob_lo,0,SpaceDim);
-          pp.getarr("prob_hi",prob_hi,0,SpaceDim);
-
+          RealVect rampPoint = RealVect::Zero;
+          RealVect flatPoint = RealVect::Zero;
+          RealVect flatNormal = BASISV(1);
           for (int idir = 0; idir < SpaceDim; idir++)
             {
-              origin[idir] = prob_lo[idir];
-            }
-
-          bool insideRegular = false;
-
-          // Data for polygons making up nozzle
-          Vector<Vector<RealVect> > polygons;
-
-          
-          // Add body (two pieces) which union to one
-          int num_polygons_in_body, num_polygons_in_poppet;
-          pp.get("num_polygons_in_body", num_polygons_in_body);
-          pp.get("num_polygons_in_poppet", num_polygons_in_poppet);
-          int points_in_body_polygon_0;
-          int points_in_body_polygon_1;
-          pp.get("points_in_body_polygon_0", points_in_body_polygon_0);
-          pp.get("points_in_body_polygon_1", points_in_body_polygon_1);
-          int nbodypts[2]; 
-          nbodypts[0] = points_in_body_polygon_0; 
-          nbodypts[1] = points_in_body_polygon_1;
-          
-
-          // Piece 1 - add the points and then save the list as a polygon
-
-          for(int ipoly = 0; ipoly < num_polygons_in_body; ipoly++)
-            {
-              Vector<RealVect> polygon(0);
-              for(int ipt = 0; ipt < nbodypts[ipoly]; ipt++)
+              if (rampNormal[idir] != 0.0)
                 {
-                  Vector<Real> rvpoints(SpaceDim);
-                  char pointname[100];
-                  sprintf(pointname, "bodypt%d%d", ipoly,ipt);
-                  pp.getarr(pointname, rvpoints, 0, SpaceDim);
-                  RealVect point(RealVect::Zero);
-                  for(int idir =0; idir < SpaceDim; idir++)
-                    {
-                      point[idir] = rvpoints[idir];
-                    }
-                  polygon.push_back(point);
+                  rampPoint[idir] = rampAlpha / rampNormal[idir];
                 }
-              polygons.push_back(polygon);
-            }
-
-          // Add poppet - add the points and then save the list as a polygon
-
-          int points_in_poppet_polygon;
-          pp.get("points_in_poppet_polygon", points_in_poppet_polygon);
-          for(int ipoly = 0; ipoly < num_polygons_in_poppet; ipoly++)
-            {
-              Vector<RealVect> polygon(0);
-              for(int ipt = 0; ipt < points_in_poppet_polygon; ipt++)
+              if (flatNormal[idir] != 0.0)
                 {
-                  Vector<Real> rvpoints(SpaceDim);
-                  char pointname[100];
-                  sprintf(pointname, "poppetpt%d%d", ipoly,ipt);
-                  pp.getarr(pointname, rvpoints, 0, SpaceDim);
-                  RealVect point(RealVect::Zero);
-                  for(int idir =0; idir < SpaceDim; idir++)
-                    {
-                      point[idir] = rvpoints[idir];
-                    }
-                  polygon.push_back(point);
+                  flatPoint[idir] = flatAlpha / flatNormal[idir];
                 }
-              polygons.push_back(polygon);
+              
             }
 
-          // Make the vector of (convex) polygons (vectors of points) into a union
-          // of convex polygons, each made from the intersection of a set of half
-          // planes/spaces - all represented by implicit functions.
-          UnionIF* crossSection = makeCrossSection(polygons);
+          Vector<BaseIF*> planes(2);
 
-          if (SpaceDim == 2)
-            {
-              // In 2D use "as is"
+          RealVect normal0, normal1, point0, point1;
+          normal0 = RealVect::Zero;
+          normal1 = RealVect::Zero;
+          
+          normal0[1] = 1;
+          normal1 = rampNormal;
+          
+          point0[1] = flatAlpha;
+          point1[1] = rampAlpha;
+          
+          
 
-              // Complement if necessary
-              ComplementIF insideOut(*crossSection,!insideRegular);
-              retval = insideOut.newImplicitFunction();
-            }
-          else
-            {
-              // In 3D rotate about the z-axis and complement if necessary
-              LatheIF implicit(*crossSection,insideRegular);
-              retval = implicit.newImplicitFunction();
-            }
+          planes[0]   = new PlaneIF(normal0,point0,true);
+          planes[1]   = new PlaneIF(normal1,point1,true);
 
-          GeometryShop workshop(*retval,0,fineDx);
+          UnionIF collection(planes);
+          //IntersectionIF collection(planes);
 
-          // This generates the new EBIS
-          EBIndexSpace* ebisPtr = Chombo_EBIS::instance();
-          ebisPtr->define(finestDomain,origin,fineDx[0],workshop,ebMaxSize,ebMaxCoarsen);
+          //GeometryShop workshop(*planes[1], verbosity,fineDx);
+          GeometryShop workshop(collection, verbosity,fineDx);
 
+          //this generates the new EBIS
+          ebisPtr->define(finestDomain, origin, fineDx[0], workshop, ebMaxSize, ebMaxCoarsen);
         }
-      else if (whichgeom == 21)
+      else if (whichgeom == 6854)
         {
-          pout() << "multicylinder geometry" << endl;
-
-          int numCyl;
-          pp.get("num_cylinders", numCyl);
-
-          Vector<Real>     cylradius(numCyl);
-          Vector<RealVect>   cylaxis(numCyl);
-          Vector<RealVect> cylorigin(numCyl);
-          Vector<BaseIF*>  cylinders(numCyl);
-
-          for(int iCyl = 0; iCyl < numCyl; iCyl++)
+          pout() << "flattened ramp geometry with end (wing) " << endl;
+          RealVect rampNormal;
+          vector<Real>  rampNormalVect(SpaceDim);
+          pp.getarr("ramp_normal",rampNormalVect, 0, SpaceDim);
+          for(int idir = 0; idir < SpaceDim; idir++)
             {
-              char radiusString[80];
-              char axisString[80];
-              char originString[80];
-              sprintf(radiusString, "cylinder_radius_%d", iCyl);
-              sprintf(  axisString, "cylinder_axis_%d"  , iCyl);
-              sprintf(  originString, "cylinder_origin_%d"  , iCyl);
-
-              Real cylRadius;
-              pp.get(radiusString, cylRadius);
-
-              vector<Real> cyl_axis(SpaceDim);
-              pp.getarr(axisString,cyl_axis, 0, SpaceDim);
-
-              vector<Real> cyl_origin(SpaceDim);
-              pp.getarr(originString,cyl_origin, 0, SpaceDim);
-
-              RealVect cylAxis;
-              RealVect cylOrigin;
-              for(int idir = 0; idir < SpaceDim; idir++)
-                {
-                  cylOrigin[idir] = cyl_origin[idir];
-                  cylAxis[  idir] = cyl_axis[  idir];
-                }
-
-              cylaxis[  iCyl] = cylAxis;
-              cylorigin[iCyl] = cylOrigin;
-              cylradius[iCyl] = cylRadius;
-
-              cylinders[iCyl] =  new TiltedCylinderIF(cylRadius,cylAxis,cylOrigin,true);
+              rampNormal[idir] = rampNormalVect[idir];
             }
 
-          bool outsideRegular = false;
-          pp.query("outside",outsideRegular);
+          Real rampAlpha, flatAlpha, rampEnd;
+          pp.get("ramp_alpha",rampAlpha);
+          pp.get("flat_alpha",flatAlpha);
+          pp.get("ramp_end", rampEnd);
 
-          UnionIF impMultisphere(cylinders);
-          ComplementIF sideImpMultisphere(impMultisphere,outsideRegular);
+          RealVect rampPoint = RealVect::Zero;
+          RealVect flatPoint = RealVect::Zero;
+          RealVect flatNormal = BASISV(1);
+          RealVect endNormal  = BASISV(0);
+          RealVect endPoint   = RealVect::Zero;
+          endPoint[0] = rampEnd;
+          for (int idir = 0; idir < SpaceDim; idir++)
+            {
+              if (rampNormal[idir] != 0.0)
+                {
+                  rampPoint[idir] = rampAlpha / rampNormal[idir];
+                }
+              if (flatNormal[idir] != 0.0)
+                {
+                  flatPoint[idir] = flatAlpha / flatNormal[idir];
+                }
+              
+            }
 
-          GeometryShop workshop(sideImpMultisphere,verbosity,fineDx);
+          Vector<BaseIF*> planes(3);
+
+          RealVect normal0, normal1, normal2, point0, point1, point2;
+          normal0 = RealVect::Zero;
+          normal1 = RealVect::Zero;
+          
+          normal0[1] = 1;
+          normal1 = rampNormal;
+          normal2 = endNormal;
+          
+          point0[1] = flatAlpha;
+          point1[1] = rampAlpha;
+          point2 = endPoint;
+          
+          
+
+          planes[0]   = new PlaneIF(normal0,point0,true);
+          planes[1]   = new PlaneIF(normal1,point1,true);
+          planes[2]   = new PlaneIF(normal2,point2,true);
+
+          UnionIF collection(planes);
+          //IntersectionIF collection(planes);
+
+          //GeometryShop workshop(*planes[1], verbosity,fineDx);
+          GeometryShop workshop(collection, verbosity,fineDx);
 
           //this generates the new EBIS
           ebisPtr->define(finestDomain, origin, fineDx[0], workshop, ebMaxSize, ebMaxCoarsen);
@@ -1430,76 +834,88 @@ godunovGeometry(Box& a_coarsestDomain,
           ebisPtr->define(finestDomain, origin, fineDx[0], workshop, ebMaxSize, ebMaxCoarsen);
         }
 
-      else if (whichgeom == 23)
+      else if (whichgeom == 20)
         {
-          pout() << "sphere and cylinder geometry" << endl;
-          Real cylRadius, sphRadius, cylLength;
-          RealVect cylOrigin, sphCenter;
-          RealVect cylAxis;
-          pp.get("cylinder_radius", cylRadius);
-          pp.get("sphere_radius", sphRadius);
-          pp.get("cylinder_length", cylLength);
 
-          vector<Real> cyl_axis(SpaceDim);
-          pp.getarr("cylinder_axis",cyl_axis, 0, SpaceDim);
-          
-          vector<Real> cyl_origin(SpaceDim);
-          pp.getarr("cylinder_origin",cyl_origin, 0, SpaceDim);
+          bool insideRegular = false;
 
-          vector<Real> sph_center(SpaceDim);
-          pp.getarr("sphere_center",sph_center, 0, SpaceDim);
+          // Data for polygons making up nozzle
+          Vector<Vector<RealVect> > polygons;
+
+
+          // For building each polygon
+
+          int num_poly;
+          RealVect translation;
+
           for(int idir = 0; idir < SpaceDim; idir++)
             {
-              cylOrigin[idir] = cyl_origin[idir];
-              cylAxis[  idir] = cyl_axis[  idir];
-              sphCenter[idir] = sph_center[idir];
+              translation[idir] = 0.5*n_cell[idir]*fineDx[idir];
             }
-          
-          bool inside = true;
-          SphereIF* sphereif = new SphereIF(sphRadius,sphCenter,inside);
+          Real scale = finestDomain.size(0)*fineDx[0];
+          pp.get("num_poly", num_poly);
+          // Nothing initially
+          polygons.resize(num_poly);
+          pout() << "num poly = " << num_poly << endl;
+          for(int ipoly = 0; ipoly < num_poly; ipoly++)
+            {
+              string nptsstr = "poly_" + convertIntGG(ipoly) + "_num_pts";
+              int num_pts;
+              pp.get(nptsstr.c_str(), num_pts);
+              Vector<RealVect> polygon(num_pts);
+              for(int ipt = 0; ipt < num_pts; ipt++)
+                {
+                  RealVect point(RealVect::Zero);
+                  string    pointstr = "poly_" + convertIntGG(ipoly) + "_point_" + convertIntGG(ipt);
+                  pp.getarr(pointstr.c_str(), ParmParse::ppDouble, point.dataPtr(), 0, SpaceDim);
+                  //now scale by the size of the domain
+                  point *= scale;
+                  polygon[ipt] = point;
+                }
+      
+              pout() << "scaled poly" << ipoly << " = " << endl;
+              for(int ipt = 0; ipt < num_pts; ipt++)
+                {
+                  pout() << polygon[ipt] << " ";
+                }
+              pout() << endl;
+              polygons[ipoly] = polygon;
+            }
 
-          // Start with an infinite cylinder whose axis is the x-axis
-          RealVect zero(D_DECL(0.0,0.0,0.0));
-          RealVect xAxis(D_DECL(1.0,0.0,0.0));
+  
+          // Make the vector of (convex) polygons (vectors of points) into a union
+          // of convex polygons, each made from the intersection of a set of half
+          // planes/spaces - all represented by implicit functions.
+          UnionIF* crossSection = makeCrossSection(polygons);
+          //SmoothUnion* crossSection = makeSmoothCrossSection(polygons, fineDx[0]);
 
-          TiltedCylinderIF cylinder(cylRadius,xAxis,zero,inside);
-          RealVect normal1(D_DECL(1.0,0.0,0.0));
-          RealVect point1(D_DECL(-cylLength/2.0,0.0,0.0));
-          PlaneIF  plane1(normal1,point1,inside);
+          BaseIF* retval;
+          if (SpaceDim == 2)
+            {
+              // In 2D use "as is"
 
-          RealVect normal2(D_DECL(-1.0,0.0,0.0));
-          RealVect point2(D_DECL(cylLength/2.0,0.0,0.0));
-          PlaneIF  plane2(normal2,point2,inside);
+              // Complement if necessary
+              ComplementIF insideOut(*crossSection,!insideRegular);
+              retval = insideOut.newImplicitFunction();
+            }
+          else
+            {
+              // In 3D rotate about the z-axis and complement if necessary
+              LatheIF lathe(*crossSection,insideRegular);
+              //we are starting around the y axis so we need to translate
+              //over to the center 
 
-          IntersectionIF interval(plane1,plane2);
-          IntersectionIF finiteCylinder(cylinder,interval);
+              translation[2] = 0;
+              TransformIF implicit(lathe);
+              implicit.translate(translation);
+              retval = implicit.newImplicitFunction();
+            }
 
-          SphereIF sphere1(cylRadius,point1,inside);
-          SphereIF sphere2(cylRadius,point2,inside);
+          GeometryShop workshop(*retval,0, fineDx);
 
-          UnionIF spheres(sphere1,sphere2);
-          UnionIF cappedCylinder(finiteCylinder,spheres);
-
-          TransformIF*    transformif = new TransformIF(cappedCylinder);
-          
-          // Rotate the x-axis to the cylinder axis
-          transformif->rotate(xAxis, cylAxis);
-
-          // Translate to the center
-          transformif->translate(cylOrigin);
-
-          Vector<BaseIF*> cylinders(2);
-          cylinders[0] = sphereif;
-          cylinders[1] = transformif;
-          UnionIF impMultisphere(cylinders);
-          bool outsideRegular = false;
-          pp.query("outside",outsideRegular);
-
-          ComplementIF sideImpMultisphere(impMultisphere,outsideRegular);
-
-          GeometryShop workshop(sideImpMultisphere,verbosity,fineDx);
-
-          //this generates the new EBIS
+          // This generates the new EBIS
+          EBIndexSpace* ebisPtr = Chombo_EBIS::instance();
+          ebMaxSize = 1024;
           ebisPtr->define(finestDomain, origin, fineDx[0], workshop, ebMaxSize, ebMaxCoarsen);
 
         }
@@ -1584,6 +1000,71 @@ UnionIF* makeCrossSection(const Vector<Vector<RealVect> >& a_polygons)
   // Union all the polygon implicit functions to get the implicit function
   // returned
   retval = new UnionIF(polytopes);
+
+  return retval;
+}
+
+
+SmoothUnion* makeSmoothCrossSection(const Vector<Vector<RealVect> >& a_polygons, 
+                                    const Real& a_delta)
+{
+  // The final result
+  SmoothUnion* retval;
+
+  // Get the number of polygons and make this inside of the domain
+  // the inside of the polygons
+  int numPolys = a_polygons.size();
+  bool inside = true;
+
+  // A list of all the polygons as implicit functions
+  Vector<BaseIF*> polytopes;
+  polytopes.resize(0);
+
+  // Process each polygon
+  for (int p = 0; p < numPolys; p++)
+    {
+      // All the half planes/spaces used to make a polygon
+      Vector<BaseIF*> planes;
+      planes.resize(0);
+
+      // Get the current polygon (as a vector of points)
+      const Vector<RealVect>& polygon = a_polygons[p];
+
+      // Get the number of points in the polygon
+      int numPts = polygon.size();
+
+      // Process each pair of points
+      for (int n = 0; n < numPts; n++)
+        {
+          // The normal and point is space used to specify each half plane/space
+          RealVect normal(RealVect::Zero);
+          RealVect point;
+
+          // Set the normal remembering that the last point connects to the first
+          // point.
+          normal[0] = -(polygon[(n+1) % numPts][1] - polygon[n][1]);
+          normal[1] =  (polygon[(n+1) % numPts][0] - polygon[n][0]);
+
+          point = polygon[n];
+
+          // Generate the appropriate half plane/space (as an implicit function)
+          PlaneIF* plane;
+          plane = new PlaneIF(normal,point,inside);
+
+          // Save the result
+          planes.push_back(plane);
+        }
+
+      // Intersect all the half planes/spaces to create an implicit function
+      // that represents the polygon
+      SmoothIntersection* polygonIF = new SmoothIntersection(planes, a_delta);
+
+      polytopes.push_back(polygonIF);
+    }
+
+  // Union all the polygon implicit functions to get the implicit function
+  // returned
+  retval = new SmoothUnion(polytopes, a_delta);
 
   return retval;
 }
@@ -1684,66 +1165,73 @@ fillSolverBCs(EBAMRCNSParams& a_params, const int& a_iprob)
   pp.get("do_diffusion", a_params.m_doDiffusion);
   if(a_params.m_doDiffusion)
     {
-      pout() << " Homogeneous Neumann boundary conditions for our smoothing operators " << endl;
-      NeumannPoissonEBBCFactory* neumbcSmooth = new NeumannPoissonEBBCFactory();
-      neumbcSmooth->setValue(0.);
-      a_params.m_ebBCSmooth = RefCountedPtr<BaseEBBCFactory>(neumbcSmooth);
-      NeumannPoissonDomainBCFactory* neumdobcSmooth = new NeumannPoissonDomainBCFactory();
-      neumdobcSmooth->setValue(0.);
-      a_params.m_doBCSmooth = RefCountedPtr<BaseDomainBCFactory>(neumdobcSmooth);
-
       pout() << " Thermally insulated embedded boundaries "  << endl;
       NeumannConductivityEBBCFactory* neumbctemp = new NeumannConductivityEBBCFactory();
       neumbctemp->setValue(0.);
       a_params.m_ebBCTemp = RefCountedPtr<BaseEBBCFactory>(neumbctemp);
-      if(a_iprob == 2)
-        {
-          pout() << "Schlichting problem " << endl;
-          SchlichtingParams schlicht;
-          ParseSchlichtingParams(schlicht);
 
-          a_params.m_ebBCVelo = RefCountedPtr<BaseEBBCFactory>(    new SchlichtingVelocityEBBCFactory(schlicht));
-          a_params.m_doBCVelo = RefCountedPtr<BaseDomainBCFactory>(new SchlichtingVeloDomainBCFactory(schlicht));
-          a_params.m_doBCTemp = RefCountedPtr<BaseDomainBCFactory>(new SchlichtingTempDomainBCFactory(schlicht));
-        }
-      else
+      if(a_iprob == 1)
         {
+          pout() << "planar shock domain bcs" << endl;
+          int inormal;
+
           pout() << "No slip, no flow velocity EBBC" << endl;
           DirichletViscousTensorEBBCFactory* diribc = new DirichletViscousTensorEBBCFactory();
           diribc->setValue(0.);
           a_params.m_ebBCVelo = RefCountedPtr<BaseEBBCFactory>(diribc);
 
-          if(a_iprob == 1)
-            {
-              pout() << "planar shock domain bcs" << endl;
-              int inormal;
+          pp.get("shock_normal",inormal);
 
-              pp.get("shock_normal",inormal);
+          int ishockback;
+          pp.get("shock_backward",ishockback);
+          bool shockback = (ishockback == 1);
+          a_params.m_doBCVelo = RefCountedPtr<BaseDomainBCFactory>(new EBPlanarShockSolverBCFactory(inormal, shockback, a_params.m_slipBoundaries));
 
-              int ishockback;
-              pp.get("shock_backward",ishockback);
-              bool shockback = (ishockback == 1);
-              a_params.m_doBCVelo = RefCountedPtr<BaseDomainBCFactory>(new EBPlanarShockSolverBCFactory(inormal, shockback, a_params.m_slipBoundaries));
+          a_params.m_doBCTemp = RefCountedPtr<BaseDomainBCFactory>(new EBPlanarShockTemperatureBCFactory(inormal, shockback, a_params.m_slipBoundaries));
+        }
+      else if(a_iprob == 0)
+        {
+          pout() << "no slip no flow, thermally insulated domain bcs" << endl;
+          DirichletViscousTensorDomainBCFactory* diribcdom = new DirichletViscousTensorDomainBCFactory();
+          diribcdom->setValue(0.);
+          a_params.m_doBCVelo = RefCountedPtr<BaseDomainBCFactory>(diribcdom);
 
-              a_params.m_doBCTemp = RefCountedPtr<BaseDomainBCFactory>(new EBPlanarShockTemperatureBCFactory(inormal, shockback, a_params.m_slipBoundaries));
-            }
-          else if(a_iprob == 0)
-            {
-              pout() << "no slip no flow, thermally insulated domain bcs" << endl;
-              DirichletViscousTensorDomainBCFactory* diribc = new DirichletViscousTensorDomainBCFactory();
-              diribc->setValue(0.);
-              a_params.m_doBCVelo = RefCountedPtr<BaseDomainBCFactory>(diribc);
+          pout() << "No slip, no flow velocity EBBC" << endl;
+          DirichletViscousTensorEBBCFactory* diribceb = new DirichletViscousTensorEBBCFactory();
+          diribceb->setValue(0.);
+          a_params.m_ebBCVelo = RefCountedPtr<BaseEBBCFactory>(diribceb);
 
-              NeumannConductivityDomainBCFactory* neumdobc = new NeumannConductivityDomainBCFactory();
-              neumdobc->setValue(0.);
-              a_params.m_doBCTemp = RefCountedPtr<BaseDomainBCFactory>(neumdobc);
-            }
-          else
-            {
-              MayDay::Error("bogus problem identifier");
-            }
-        }    
-    }
+          NeumannConductivityDomainBCFactory* neumdobc = new NeumannConductivityDomainBCFactory();
+          neumdobc->setValue(0.);
+          a_params.m_doBCTemp = RefCountedPtr<BaseDomainBCFactory>(neumdobc);
+        }
+      else if(a_iprob == 2)
+        {
+          Real stickyStart = 0;
+          pp.get("no_slip_start", stickyStart);
+          int flow_dir = SpaceDim-1;
+          pout() << "No slip, no flow velocity EBBC after a fixed point, Neumann before that" << endl;
+          pout() << "dirichlet starts at point " << stickyStart << " in the " << flow_dir << " direction" << endl;
+          InflowOutflowViscousTensorEBBCFactory* inoutbc = new InflowOutflowViscousTensorEBBCFactory(stickyStart, flow_dir);
+          //v        NeumannViscousTensorEBBCFactory* inoutbc = new NeumannViscousTensorEBBCFactory();
+          //          inoutbc->setValue(0.);
+
+
+          a_params.m_ebBCVelo = RefCountedPtr<BaseEBBCFactory>(inoutbc);
+          pout() << "inflow-outflow---using neumann for temperature and velocity diffusion at boundaries" << endl;
+          NeumannViscousTensorDomainBCFactory* neumbc = new NeumannViscousTensorDomainBCFactory();
+          neumbc->setValue(0.);
+          a_params.m_doBCVelo = RefCountedPtr<BaseDomainBCFactory>(neumbc);
+
+          NeumannConductivityDomainBCFactory* neumdobc = new NeumannConductivityDomainBCFactory();
+          neumdobc->setValue(0.);
+          a_params.m_doBCTemp = RefCountedPtr<BaseDomainBCFactory>(neumdobc);
+        }
+      else
+        {
+          MayDay::Error("bogus problem identifier");
+        }
+    }    
 }
 /***************/
 void
@@ -1767,9 +1255,19 @@ fillAMRParams(EBAMRCNSParams& a_params, int a_iprob)
     }
   
   ppgodunov.query("backward_euler",a_params.m_backwardEuler);
-  if(a_params.m_backwardEuler)
+  ppgodunov.query("crank_nicolson",a_params.m_crankNicolson);
+  if(a_params.m_backwardEuler && a_params.m_crankNicolson)
     {
-      pout() << "advancing parabolic terms using backward euler" << endl;
+      pout() << "both crank nicolson and backward euler set to true so I chose crank nicolson" << endl;
+      a_params.m_backwardEuler = false;
+    }
+  if(a_params.m_crankNicolson)
+    {
+      pout() << "advancing parabolic terms using Crank Nicolson" << endl;
+    }
+  else if(a_params.m_backwardEuler)
+    {
+      pout() << "advancing parabolic terms using backward Euler" << endl;
     }
   else
     {
@@ -1777,7 +1275,23 @@ fillAMRParams(EBAMRCNSParams& a_params, int a_iprob)
     }
 
   ppgodunov.query("slip_boundaries",a_params.m_slipBoundaries);
-  ppgodunov.query("use_backward_euler",a_params.m_backwardEuler);
+  ppgodunov.query("load_balance_type", a_params.m_loadBalanceType);
+//  if(a_params.m_loadBalanceType == 0)
+//    {
+//      pout() << "using standard (number of points in box) load balance" << endl;
+//    }
+//  else if(a_params.m_loadBalanceType == 1)
+//    {
+//      pout() << "using EBElliptic load balance (uses EBPoissonOp::applyOp times for loads)" << endl;
+//    }
+//  else if(a_params.m_loadBalanceType == 2)
+//    {
+//      pout() << "using NWOEBVTOLoadBalance (uses NWOEBViscousTensorOp::relax times for loads)" << endl;
+//    }
+//  else
+//    {
+//      MayDay::Error("bogus load balance flag");
+//    }
   
   if(a_params.m_slipBoundaries)
     {
@@ -1811,23 +1325,25 @@ fillAMRParams(EBAMRCNSParams& a_params, int a_iprob)
     {
       ppgodunov.get("do_smushing", a_params.m_doSmushing);
     }
-  ppgodunov.get ("refine_thresh", a_params.m_refineThresh);
-  ppgodunov.get("tag_buffer_size",a_params.m_tagBufferSize);
-
-  ppgodunov.get("use_air_coefficients", a_params.m_useAirCoefs);
-  a_params.m_variableCoeff = (a_params.m_useAirCoefs);
-  if(!a_params.m_useAirCoefs)
+  ppgodunov.query("variable_transport_coeffs", a_params.m_variableTransportCoeffs);
+  if(a_params.m_variableTransportCoeffs)
     {
-      ppgodunov.get("specific_heat",        a_params.m_specHeatCv );
-      ppgodunov.get("thermal_conductivity", a_params.m_thermalCond);
-      ppgodunov.get("mu_viscosity",         a_params.m_viscosityMu);
-      ppgodunov.get("lambda_viscosity",     a_params.m_viscosityLa);
+      pout() << "using transport coeffs that vary with temperature" << endl;
+      ppgodunov.get("reference_temperature", a_params.m_referenceTemperature);
+      pout() << " reference temperature for coefficient calculation = " << a_params.m_referenceTemperature << endl;
     }
   else
     {
-      ppgodunov.get("specific_heat",        a_params.m_specHeatCv );
-      //the others are not used
+      pout() << "using constant transport coefficients"  << endl;
     }
+  ppgodunov.get ("refine_thresh", a_params.m_refineThresh);
+  ppgodunov.get("tag_buffer_size",a_params.m_tagBufferSize);
+
+  ppgodunov.get("specific_heat",        a_params.m_specHeatCv );
+  ppgodunov.get("thermal_conductivity", a_params.m_thermalCond);
+  ppgodunov.get("mu_viscosity",         a_params.m_viscosityMu);
+  ppgodunov.get("lambda_viscosity",     a_params.m_viscosityLa);
+
   int iusemassredist;
   ppgodunov.get("use_mass_redist", iusemassredist);
   a_params.m_useMassRedist    = (iusemassredist ==1);

@@ -29,6 +29,7 @@
 int EBLoadBalance(Vector<int>& a_proc,
                   const Vector<Box>& a_boxes,
                   const ProblemDomain& a_domain,
+                  const int& a_ghosts = 0,
                   int  a_coveredLoad = 10,
                   int  a_irregFactor = 10,
                   bool a_verbose = false,

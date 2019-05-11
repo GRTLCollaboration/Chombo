@@ -83,7 +83,6 @@ public:
   */
   void define(const DisjointBoxLayout& a_dblFine,
               const DisjointBoxLayout& a_dblCoar,
-              const EBISLayout& a_ebislFine,
               const EBISLayout& a_ebislCoar,
               const Box& a_domainCoar,
               const int& a_nref,
@@ -143,7 +142,7 @@ protected:
   LayoutData<IntVectSet> m_setsCoar;
 
   //ebisl of input fine grid
-  EBISLayout m_ebislFine;
+  //EBISLayout m_ebislFine;
   //ebisl of input coar grid
   EBISLayout m_ebislCoar;
   //ebisl of coarsened fine layout

@@ -77,7 +77,8 @@ public:
                      const Real&                                   a_alpha,
                      const Real&                                   a_beta,
                      const IntVect&                                a_ghostCellsPhi,
-                     const IntVect&                                a_ghostCellsRhs);
+                     const IntVect&                                a_ghostCellsRhs,
+                     bool a_forceNocoarser = false);
 
   ///
   virtual EBPoissonOp*

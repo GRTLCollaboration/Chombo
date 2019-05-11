@@ -32,7 +32,7 @@ C     --------------------------------------------------------------
      &     )
 
       integer CHF_DDECL[i;j;k]
-      integer ncompsrc
+      integer ncompsrc,counter
       REAL_T eps, rabs, vfrac
       logical isreg, iscov, isirr, usethis, useirr, usereg
 
@@ -54,7 +54,7 @@ C     volume = zero
       eps = 1.0e-9
       usereg = (idoreg .eq. 1)
       useirr = (idoirr .eq. 1)
-
+      counter=0
 C     loop over all cells
       CHF_MULTIDO[region; i; j; k]
 
@@ -70,6 +70,7 @@ C     determine whether this cell gets counted
 
 C     compute whether to use this cell
       if(usethis) then
+         counter=counter+1
          if(pval .eq. 0) then
             rabs  = abs(src(CHF_IX[i;j;k],comp))
             norm  = max(norm,  rabs)
@@ -87,6 +88,7 @@ C     compute whether to use this cell
 
       CHF_ENDDO
 
+      ch_flops=ch_flops+CHF_POINTS[region] + counter*(pval+1)
       return
       end
 
@@ -124,7 +126,7 @@ C     incompatible fabs input
          CHF_ENDDO
          ndest = ndest + 1
       enddo
-
+      ch_flops=ch_flops+CHF_POINTS[region]*numcomp
       return
       end
 
@@ -163,7 +165,7 @@ C     incompatible fabs input
          CHF_ENDDO
          ndest = ndest + 1
       enddo
-
+      ch_flops=ch_flops+CHF_POINTS[region]*2*numcomp
       return
       end
 
@@ -204,7 +206,7 @@ C     incompatible fabs input
          CHF_ENDDO
          ndest = ndest + 1
       enddo
-
+      ch_flops=ch_flops+CHF_POINTS[region]*3*numcomp
       return
       end
 
@@ -232,7 +234,7 @@ C     --------------------------------------------------------------
      &     + y(CHF_IX[i;j;k],ycomp) * b
 
       CHF_ENDDO
-
+      ch_flops=ch_flops+CHF_POINTS[region]*3
       return
       end
 
@@ -270,7 +272,7 @@ C     incompatible fabs input
          CHF_ENDDO
          ndest = ndest + 1
       enddo
-
+      ch_flops=ch_flops+CHF_POINTS[region]*numcomp
       return
       end
 
@@ -308,7 +310,7 @@ C     incompatible fabs input
          CHF_ENDDO
          ndest = ndest + 1
       enddo
-
+      ch_flops=ch_flops+CHF_POINTS[region]*numcomp
       return
       end
 
@@ -346,7 +348,7 @@ C     incompatible fabs input
          CHF_ENDDO
          ndest = ndest + 1
       enddo
-
+      ch_flops=ch_flops+CHF_POINTS[region]*numcomp
       return
       end
 
@@ -372,7 +374,7 @@ C     --------------------------------------------------------------
 
          CHF_ENDDO
       enddo
-
+      ch_flops=ch_flops+CHF_POINTS[region]*ncompdst
       return
       end
 
@@ -398,7 +400,7 @@ C     --------------------------------------------------------------
 
          CHF_ENDDO
       enddo
-
+      ch_flops=ch_flops+CHF_POINTS[region]*ncompdst
       return
       end
 
@@ -424,7 +426,7 @@ C     --------------------------------------------------------------
 
          CHF_ENDDO
       enddo
-
+      ch_flops=ch_flops+CHF_POINTS[region]*ncompdst
       return
       end
 
@@ -450,7 +452,7 @@ C     --------------------------------------------------------------
 
          CHF_ENDDO
       enddo
-
+      ch_flops=ch_flops+CHF_POINTS[region]*ncompdst
       return
       end
 
@@ -481,7 +483,7 @@ C=======================================================
      &     CHF_BOX[region],
      &     CHF_CONST_INT[icomp])
 
-      integer CHF_DDECL[i;j;k], ncomp
+      integer CHF_DDECL[i;j;k], ncomp, counter
       REAL_T eps
 
       if(icomp .lt. 0) then
@@ -501,16 +503,18 @@ C     bfab does not have enough components
 
       dotprodout = zero
       eps = 1.0e-10
+      counter=0
 
       CHF_MULTIDO[region; i; j; k]
 
       if(volfrac(CHF_IX[i;j;k],0) .gt. eps) then
+         counter=counter+1
          dotprodout = dotprodout +
      &        afab(CHF_IX[i;j;k],icomp)*bfab(CHF_IX[i;j;k],icomp)
       endif
 
       CHF_ENDDO
-
+      ch_flops=ch_flops+counter*2
       return
       end
 

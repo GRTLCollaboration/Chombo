@@ -26,55 +26,75 @@ using std::cerr;
 using std::endl;
 #include "EBFaceFAB.H"
 #include <iomanip>
+#include "EBLevelDataOps.H"
 #include "NamespaceHeader.H"
 IntVect EBDebugPoint::s_ivd = IntVect::Zero;
 
-void printMaxMinEBFF(EBFluxFAB* a_data)
+void checkLDFlux(const LevelData<EBFluxFAB>* a_flux)
+{
+  EBLevelDataOps::checkData(*a_flux, "flux data");
+}
+
+void checkLDCell(const LevelData<EBCellFAB>* a_flux)
+{
+  EBLevelDataOps::checkData(*a_flux, "cell data");
+}
+
+void printMaxMinEBFlux(EBFluxFAB* a_data)
 {
 
 
   for (int idir = 0; idir < SpaceDim; idir ++)
     {
-      for (int comp = 0; comp < a_data->nComp(); comp++)
+      EBFaceFAB& ebface = (*a_data)[idir];
+      printMaxMinEBFace(&ebface);
+    }
+}
+
+void printMaxMinEBFace(EBFaceFAB* a_data)
+{
+
+  int idir = a_data->direction();
+
+  for (int comp = 0; comp < a_data->nComp(); comp++)
+    {
+      Real maxVal = -1.e99;
+      Real minVal =  1.e99;
+      FaceIndex fmax, fmin;
+
+      const EBFaceFAB& dataEBFAB = (*a_data);
+      const Box&        dblBox   = a_data->getCellRegion();
+      const IntVectSet ivsBox(dblBox);
+      const EBISBox& ebisBox = dataEBFAB.getEBISBox();
+
+      for (FaceIterator fit(ivsBox, ebisBox.getEBGraph(), idir, FaceStop::SurroundingWithBoundary);
+           fit.ok(); ++fit)
         {
-          Real maxVal = -1.e99;
-          Real minVal =  1.e99;
-          FaceIndex fmax, fmin;
-
-          const EBFaceFAB& dataEBFAB = (*a_data)[idir];
-          const Box&        dblBox   = a_data->getRegion();
-          const IntVectSet ivsBox(dblBox);
-          const EBISBox& ebisBox = dataEBFAB.getEBISBox();
-
-          for (FaceIterator fit(ivsBox, ebisBox.getEBGraph(), idir, FaceStop::SurroundingWithBoundary);
-               fit.ok(); ++fit)
+          const FaceIndex& face = fit();
+          const Real& val = dataEBFAB(face,comp);
+          if (val > maxVal)
             {
-              const FaceIndex& face = fit();
-              const Real& val = dataEBFAB(face,comp);
-              if (val > maxVal)
-                {
-                  maxVal = val;
-                  fmax = face;
-                }
-              if (val < minVal)
-                {
-                  minVal = val;
-                  fmin = face;
-                }
+              maxVal = val;
+              fmax = face;
             }
-          pout() << " "
-                 << setprecision(4)
-                 << setiosflags(ios::showpoint)
-                 << setiosflags(ios::scientific)
-                 <<  "comp = " <<  comp
-                 << ", dir = " <<  idir
-                 << ", max = " << maxVal
-                 << ", min = " << minVal
-                 << ", imaxlo =" << fmax.gridIndex(Side::Lo)
-                 << ", imaxhi =" << fmax.gridIndex(Side::Hi)
-                 << ", iminlo =" << fmin.gridIndex(Side::Lo)
-                 << ", iminhi =" << fmin.gridIndex(Side::Hi) << endl;
+          if (val < minVal)
+            {
+              minVal = val;
+              fmin = face;
+            }
         }
+      pout() << " "
+             << setprecision(4)
+             << setiosflags(ios::showpoint)
+             << setiosflags(ios::scientific)
+             <<  "comp = " <<  comp
+             << ", dir = " <<  idir
+             << ", max = " << maxVal
+             << ", min = " << minVal
+             << ", imaxlo =" << fmax.gridIndex(Side::Lo)
+             << ", imaxhi =" << fmax.gridIndex(Side::Hi)
+             << ", iminlo =" << fmin.gridIndex(Side::Lo)
+             << ", iminhi =" << fmin.gridIndex(Side::Hi) << endl;
     }
 }
 void printMaxMinLDFlux(LevelData<EBFluxFAB>* a_data)
@@ -421,6 +441,7 @@ void dumpEBFaceThresh(const EBFaceFAB* a_fab, Real a_thresh)
 {
   const EBFaceFAB& fab = *a_fab;
   Box box = fab.getCellRegion();
+  box &=  fab.getEBISBox().getDomain();
   IntVectSet ivs(box);
   pout() << "valid and ghost data in ebcellfab" << endl;
   dumpEBFaceIVS(a_fab, &ivs, a_thresh);
@@ -484,6 +505,25 @@ void dumpEBLevelAll(const LevelData<EBCellFAB>* a_level)
       dumpEBFABIVS(&(lev[dit()]), &ivs, 0.0);
     }
 }
+
+void dumpEBLevelGhost(const LevelData<EBCellFAB>* a_level)
+{
+  const LevelData<EBCellFAB>& lev = *a_level;
+  pout() << "ghost irregular data in eblevel" << endl;
+  const DisjointBoxLayout& dbl = a_level->disjointBoxLayout();
+  for (DataIterator dit = dbl.dataIterator(); dit.ok(); ++dit)
+    {
+      Box gridbox = dbl[dit()];
+      Box box = gridbox;
+      //      box.grow(a_level->ghostVect());
+      box.grow(1);
+      box &= lev[dit()].getEBISBox().getDomain();
+      IntVectSet ivs(box);
+      ivs -= gridbox;
+      dumpEBFABIVS(&(lev[dit()]), &ivs, 0.0);
+    }
+}
+
 void dumpEBLevelThresh(const LevelData<EBCellFAB>* a_level, Real a_thresh)
 {
   const LevelData<EBCellFAB>& lev = *a_level;
@@ -687,6 +727,31 @@ void dumpLDBIVF(const LayoutData< BaseIVFAB<Real> >* a_ldptr)
     }
 }
 
+void dumpIVFAB(const MiniIVFAB<Real>* a_vectPtr)
+{
+ 
+  if(a_vectPtr->numVoFs()==0) 
+    {
+      pout()<<"empty ";
+      return;
+    }
+  const Vector<VolIndex>& vofs = a_vectPtr->getVoFs();
+  for(int i=0; i<vofs.size(); i++)
+    {
+      const VolIndex& vof=vofs[i];
+      pout() << "vof= " << vof.gridIndex() << ", " << vof.cellIndex();
+      pout() << ";      data=";
+      for (int ivar = 0; ivar < a_vectPtr->nComp(); ivar++)
+        {
+          pout() << " "
+                 << setprecision(8)
+                 << setiosflags(ios::showpoint)
+                 << setiosflags(ios::scientific)
+                 << a_vectPtr->operator()(vof, ivar);
+        }
+    }
+  pout() << endl;
+}
 void dumpIVFAB(const BaseIVFAB<Real>* a_vectPtr)
 {
   const BaseIVFAB<Real>& ivfab = *a_vectPtr;
@@ -721,6 +786,8 @@ void dumpIVFAB(const BaseIVFAB<Real>* a_vectPtr)
       pout() << endl;
     }
 }
+
+
 void dumpIFFAB(const BaseIFFAB<Real>* a_vectPtr)
 {
   const BaseIFFAB<Real>& iffab = *a_vectPtr;

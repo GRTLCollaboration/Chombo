@@ -21,6 +21,7 @@
 #include <cstdio>
 #include "EBAMRIO.H"
 #include "EBArith.H"
+#include "memusage.H"
 #include "NamespaceHeader.H"
 int EBLevelGodunov::s_timestep = 0;
 /*****************************/
@@ -28,8 +29,9 @@ int EBLevelGodunov::s_timestep = 0;
 EBLevelGodunov::EBLevelGodunov()
 {
   m_isDefined = false;
-  m_ebPatchGodunov = NULL;
+  m_ebPatchGodunovSP = NULL;
 }
+
 /*****************************/
 /*****************************/
 bool
@@ -41,9 +43,24 @@ EBLevelGodunov::isDefined() const
 /*****************************/
 EBLevelGodunov::~EBLevelGodunov()
 {
-  if (m_ebPatchGodunov != NULL)
-    delete m_ebPatchGodunov;
+  if(m_isDefined)
+    {
+      DataIterator dit = m_thisGrids.dataIterator();
+      int nbox=dit.size();
+      for (int ibox=0; ibox <nbox; ibox++)
+        {
+          delete(m_ebPatchGodunov[dit[ibox]]);
+          m_ebPatchGodunov[dit[ibox]] = NULL;
+        }
+    }
+  if(m_ebPatchGodunovSP != NULL)
+    {
+      delete(m_ebPatchGodunovSP);
+      m_ebPatchGodunovSP = NULL;
+    }
+
 }
+
 /*****************************/
 /*****************************/
 void
@@ -60,15 +77,30 @@ EBLevelGodunov::define(const DisjointBoxLayout&      a_thisDBL,
                        const bool&                   a_hasSourceTerm,
                        const EBPatchGodunovFactory*  const a_patchGodunov,
                        const bool&                   a_hasCoarser,
-                       const bool&                   a_hasFiner)
+                       const bool&                   a_hasFiner,
+                       const IntVect &               a_ivGhost,
+                       const bool&                   a_forceNoEBCF
+                       )
 {
   CH_TIME("EBLevelGodunov::define");
   CH_assert(a_dx[0] > 0.0);
   CH_assert(a_nRefine > 0);
 
-  m_isDefined = true;
-  m_useMassRedist = a_useMassRedist;
+  m_ivGhost = a_ivGhost;
   m_thisGrids = a_thisDBL;
+  if(m_isDefined)
+    {
+      
+      for (DataIterator dit = m_ebPatchGodunov.dataIterator(); dit.ok(); ++dit)
+        {
+          delete(m_ebPatchGodunov[dit()]);
+          m_ebPatchGodunov[dit()] = NULL;
+        }
+    }
+
+  m_isDefined = true;
+  m_forceNoEBCF = a_forceNoEBCF;
+  m_useMassRedist = a_useMassRedist;
   m_thisEBISL = a_thisEBISL;
   m_refRatCrse= a_nRefine;
   m_dx = a_dx;
@@ -78,6 +110,32 @@ EBLevelGodunov::define(const DisjointBoxLayout&      a_thisDBL,
   m_doSmushing = a_doSmushing;
   m_doRZCoords = a_doRZCoords;
   m_hasSourceTerm = a_hasSourceTerm;
+  m_ebPatchGodunov.define(m_thisGrids);
+
+  // Determing the number of ghost cells necessary here
+  m_nGhost = 4;
+
+  if(m_ebPatchGodunovSP != NULL)
+    {
+      delete(m_ebPatchGodunovSP);
+      m_ebPatchGodunovSP = NULL;
+    }
+  m_ebPatchGodunovSP = a_patchGodunov->create();
+
+  DataIterator dit = m_thisGrids.dataIterator();
+  int nbox=dit.size();
+  for (int ibox=0; ibox <nbox; ibox++)
+    {
+      EBPatchGodunov* ebPatchGodunov = a_patchGodunov->create();
+      m_ebPatchGodunov[dit[ibox]] = dynamic_cast<EBPatchGodunov*>(ebPatchGodunov);
+      if (m_ebPatchGodunov[dit[ibox]] == NULL)
+        {
+          MayDay::Error("problem in casting to patch advection class");
+        }
+
+      m_ebPatchGodunov[dit[ibox]]->define(m_domain, m_dx);
+    }
+
   if (m_doRZCoords && !m_hasSourceTerm)
     {
       MayDay::Error("LG: RZ implies need of a source term--inconsistent inputs");
@@ -88,21 +146,15 @@ EBLevelGodunov::define(const DisjointBoxLayout&      a_thisDBL,
       m_coarEBISL = a_coarEBISL;
     }
 
-  if (m_ebPatchGodunov != NULL)
-    delete m_ebPatchGodunov;
-
-  m_ebPatchGodunov = a_patchGodunov->create();
-  m_ebPatchGodunov->define(m_domain, m_dx);
-
-  // Determing the number of ghost cells necessary here
-  m_nGhost = 4;
-  m_nCons = m_ebPatchGodunov->numConserved();
-  m_nFlux = m_ebPatchGodunov->numFluxes();
+  m_nCons = m_ebPatchGodunovSP->numConserved();
+  m_nFlux = m_ebPatchGodunovSP->numFluxes();
 
   //define redistribution object for this level
   //for now set to volume weighting
+  //print_memory_line("before redist define");
   m_ebLevelRedist.define(m_thisGrids, m_thisEBISL,
                          m_domain, m_nCons);
+  //print_memory_line("after redist define");
 
   if (m_hasCoarser)
     {
@@ -110,39 +162,52 @@ EBLevelGodunov::define(const DisjointBoxLayout&      a_thisDBL,
       ProblemDomain domainCrse = coarsen(m_domain, m_refRatCrse);
 
       //patcher is defined with the number of conserved vars.
+      //print_memory_line("before patcher define");
       m_patcher.define(m_thisGrids, m_coarGrids,
                        m_thisEBISL, m_coarEBISL,
                        domainCrse, m_refRatCrse, m_nCons,
-                       m_nGhost);
+                       m_nGhost, m_ivGhost, m_forceNoEBCF,
+                       Chombo_EBIS::instance());
+      //print_memory_line("after patcher define");
     }
 
+  //print_memory_line("before irregsets define");
+
   m_irregSetsSmall.define(m_thisGrids);
-  for (DataIterator dit = m_thisGrids.dataIterator();
-      dit.ok(); ++dit)
+
+  for (int ibox=0; ibox <nbox; ibox++)
     {
-      const EBISBox& ebisBox = m_thisEBISL[dit()];
+      const EBISBox& ebisBox = m_thisEBISL[dit[ibox]];
       if (!ebisBox.isAllCovered())
         {
-          const Box&     thisBox = m_thisGrids.get(dit());
-          m_irregSetsSmall[dit()] = ebisBox.getIrregIVS(thisBox);
+          const Box&     thisBox = m_thisGrids.get(dit[ibox]);
+          m_irregSetsSmall[dit[ibox]] = ebisBox.getIrregIVS(thisBox);
 
         }
     }
+  //print_memory_line("after irregsets define");
+
   for (int faceDir = 0; faceDir < SpaceDim; faceDir++)
     {
       CH_TIME("flux_interpolant_defs");
+      //print_memory_line("before flux interpolant");
       EBArith::defineFluxInterpolant(m_fluxInterpolants[faceDir],
                                      m_irregSetsGrown  [faceDir],
                                      m_thisGrids, m_thisEBISL,
                                      m_domain, m_nFlux, faceDir);
+      //print_memory_line("after flux_interpolant");
     }
   {
     CH_TIME("EBIrregFlux_defs");
     BaseIVFactory<Real> cellFactorySmall(m_thisEBISL, m_irregSetsSmall);
+
+    //print_memory_line("before dnc");
     m_nonConsDivergence.define(m_thisGrids, m_nCons,
                                IntVect::Zero, cellFactorySmall);
+    //print_memory_line("after dnc");
     m_ebIrregFaceFlux.define(m_thisGrids, m_nCons,
                              IntVect::Zero, cellFactorySmall);
+    //print_memory_line("after ebirreg flux");
   }
 
   {
@@ -174,6 +239,15 @@ EBLevelGodunov::define(const DisjointBoxLayout&      a_thisDBL,
       }
   }
 
+  for (int ibox=0; ibox <nbox; ibox++)
+    {
+      const IntVectSet& cfivs = m_cfIVS[dit[ibox]];
+      //IntVectSet cfivs; //not used here.  only used in flux interpolation
+      Real time = 0; //needs to get reset later
+      Real dt   = 0; //needs to get reset later
+      m_ebPatchGodunov[dit[ibox]]->setValidBox(m_thisGrids[dit[ibox]], m_thisEBISL[dit[ibox]], cfivs, time, dt);
+    }
+
   {
     CH_TIME("flattening_defs");
     //create temp data with the correct number of ghost cells
@@ -189,14 +263,16 @@ EBLevelGodunov::
 floorConserved(LevelData<EBCellFAB>&         a_consState,
                Real a_time, Real a_dt)
 {
-  for (DataIterator dit = m_thisGrids.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = m_thisGrids.dataIterator();
+  int nbox=dit.size();
+  for (int ibox=0; ibox <nbox; ibox++)
     {
-      EBCellFAB& consState = a_consState[dit()];
-      const IntVectSet& cfivs = m_cfIVS[dit()];
-      const EBISBox& ebisBox = m_thisEBISL[dit()];
-      const Box& cellBox = m_thisGrids.get(dit());
-      m_ebPatchGodunov->setValidBox(cellBox, ebisBox, cfivs, a_time, a_dt);
-      m_ebPatchGodunov->floorConserved(consState, cellBox);
+      EBCellFAB& consState = a_consState[dit[ibox]];
+      //const IntVectSet& cfivs = m_cfIVS[dit[ibox]];
+      //const EBISBox& ebisBox = m_thisEBISL[dit[ibox]];
+      const Box& cellBox = m_thisGrids.get(dit[ibox]);
+      //      m_ebPatchGodunov[dit[ibox]]->setValidBox(cellBox, ebisBox, cfivs, a_time, a_dt);
+      m_ebPatchGodunov[dit[ibox]]->floorConserved(consState, cellBox);
     }
 }
 /*****************************/
@@ -214,6 +290,8 @@ fillConsState(LevelData<EBCellFAB>&         a_consState,
 
   if (m_hasCoarser)
     {
+      //aggsten needs to know ghost up front
+      CH_assert(a_consState.ghostVect() == m_ivGhost);
       m_patcher.interpolate(a_consState,
                             a_consStateCoarseOld,
                             a_consStateCoarseNew,
@@ -236,29 +314,32 @@ computeFlattening(Real a_time, Real a_dt,
   //compute flattening coefficients. this saves a ghost cell. woo hoo.
   int ibox = 0;
   bool verbose = false;
-  for (DataIterator dit = m_thisGrids.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = m_thisGrids.dataIterator();
+  int nbox=dit.size();
+  for (int jbox=0; jbox <nbox; jbox++)
     {
-      EBCellFAB& consState = a_consState[dit()];
-      const EBISBox& ebisBox = m_thisEBISL[dit()];
+      EBCellFAB& consState = a_consState[dit[jbox]];
+      const EBISBox& ebisBox = m_thisEBISL[dit[jbox]];
       if (!ebisBox.isAllCovered())
         {
-          const Box& cellBox = m_thisGrids.get(dit());
-          const IntVectSet& cfivs = m_cfIVS[dit()];
-          m_ebPatchGodunov->setValidBox(cellBox, ebisBox, cfivs, a_time, a_dt);
-          m_ebPatchGodunov->setCoveredConsVals(consState);
-          int nPrim  = m_ebPatchGodunov->numPrimitives();
+          const Box& cellBox = m_thisGrids.get(dit[jbox]);
+          //const IntVectSet& cfivs = m_cfIVS[dit[jbox]];
+          //          m_ebPatchGodunov[dit[jbox]]->setValidBox(cellBox, ebisBox, cfivs, a_time, a_dt);
+          m_ebPatchGodunov[dit[jbox]]->setTimeAndDt(a_time, a_dt);
+          m_ebPatchGodunov[dit[jbox]]->setCoveredConsVals(consState);
+          int nPrim  = m_ebPatchGodunov[dit[jbox]]->numPrimitives();
           EBCellFAB primState(ebisBox, consState.getRegion(), nPrim);
           int logflag = 0;
           //debug
           //verbose = true;
           //end debug
-          m_ebPatchGodunov->consToPrim(primState, consState, consState.getRegion(), logflag, verbose);
-          EBCellFAB& flatteningFAB = m_flattening[dit()];
+          m_ebPatchGodunov[dit[jbox]]->consToPrim(primState, consState, consState.getRegion(), logflag, verbose);
+          EBCellFAB& flatteningFAB = m_flattening[dit[jbox]];
           //this will set the stuff over the coarse-fine interface
           flatteningFAB.setVal(1.);
-          if (m_ebPatchGodunov->usesFlattening())
+          if (m_ebPatchGodunov[dit[jbox]]->usesFlattening())
             {
-              m_ebPatchGodunov->computeFlattening(flatteningFAB,
+              m_ebPatchGodunov[dit[jbox]]->computeFlattening(flatteningFAB,
                                                   primState,
                                                   cellBox);
             }
@@ -277,43 +358,46 @@ doRegularUpdate(EBFluxRegister&               a_fineFluxRegister,
                 LevelData<EBCellFAB>&         a_consState)
 {
   bool verbose = false;
-  int ibox = 0;
+  //int ibox = 0;
   Interval consInterv(0, m_nCons-1);
   Interval fluxInterv(0, m_nFlux-1);
-  for (DataIterator dit = m_thisGrids.dataIterator(); dit.ok(); ++dit, ibox++)
+  DataIterator dit = m_thisGrids.dataIterator();
+  int nbox=dit.size();
+  for (int jbox=0; jbox <nbox; jbox++)
     {
-      const Box& cellBox = m_thisGrids.get(dit());
-      const EBISBox& ebisBox = m_thisEBISL[dit()];
+      const Box& cellBox = m_thisGrids.get(dit[jbox]);
+      const EBISBox& ebisBox = m_thisEBISL[dit[jbox]];
       if (!ebisBox.isAllCovered())
         {
-          const IntVectSet& cfivs = m_cfIVS[dit()];
+          //const IntVectSet& cfivs = m_cfIVS[dit[jbox]];
 
-          EBCellFAB& consState = a_consState[dit()];
-          m_ebPatchGodunov->setValidBox(cellBox, ebisBox, cfivs, a_time, a_dt);
+          EBCellFAB& consState = a_consState[dit[jbox]];
+          //          m_ebPatchGodunov[dit[jbox]]->setValidBox(cellBox, ebisBox, cfivs, a_time, a_dt);
+          m_ebPatchGodunov[dit[jbox]]->setTimeAndDt(a_time, a_dt);
 
           EBCellFAB source;
           if (m_hasSourceTerm)
             {
               const Box& bigBox = consState.box();
-              int nPrim = m_ebPatchGodunov->numPrimitives();
+              int nPrim = m_ebPatchGodunov[dit[jbox]]->numPrimitives();
               source.define(ebisBox, bigBox, nPrim);
               //this setval is important
               source.setVal(0.);
-              m_ebPatchGodunov->setSource(source, consState, bigBox);
+              m_ebPatchGodunov[dit[jbox]]->setSource(source, consState, bigBox);
             }
 
           EBFluxFAB flux(ebisBox, cellBox, m_nFlux);
-          BaseIVFAB<Real>& nonConsDiv    = m_nonConsDivergence[dit()];
-          BaseIVFAB<Real>& ebIrregFlux   = m_ebIrregFaceFlux[dit()];
+          BaseIVFAB<Real>& nonConsDiv    = m_nonConsDivergence[dit[jbox]];
+          BaseIVFAB<Real>& ebIrregFlux   = m_ebIrregFaceFlux[dit[jbox]];
           flux.setVal(7.89);
           ebIrregFlux.setVal(7.89);
-          const IntVectSet& ivsIrreg     = m_irregSetsSmall[dit()];
-          const EBCellFAB& flatteningFAB = m_flattening[dit()];
+          const IntVectSet& ivsIrreg     = m_irregSetsSmall[dit[jbox]];
+          const EBCellFAB& flatteningFAB = m_flattening[dit[jbox]];
 
-          m_ebPatchGodunov->regularUpdate(consState, flux, ebIrregFlux,
+          m_ebPatchGodunov[dit[jbox]]->regularUpdate(consState, flux, ebIrregFlux,
                                           nonConsDiv,flatteningFAB,
                                           source, cellBox, ivsIrreg,
-                                          dit(),verbose);
+                                          dit[jbox],verbose);
 
           //do fluxregister cha-cha
           /*
@@ -331,12 +415,12 @@ doRegularUpdate(EBFluxRegister&               a_fineFluxRegister,
                 {
                   //gather fluxes into flux-register compatible form
                   fluxRegFlux.define(ebisBox, cellBox, idir, m_nCons);
-                  m_ebPatchGodunov->assembleFluxReg(fluxRegFlux, flux[idir],
+                  m_ebPatchGodunov[dit[jbox]]->assembleFluxReg(fluxRegFlux, flux[idir],
                                                     idir, cellBox);
                 }
               if (m_hasFiner)
                 {
-                  a_fineFluxRegister.incrementCoarseRegular(flux[idir], scale,dit(),
+                  a_fineFluxRegister.incrementCoarseRegular(flux[idir], scale,dit[jbox],
                                                             consInterv, idir);
                 }
 
@@ -344,7 +428,7 @@ doRegularUpdate(EBFluxRegister&               a_fineFluxRegister,
                 {
                   for (SideIterator sit; sit.ok(); ++sit)
                     {
-                      a_coarFluxRegister.incrementFineRegular(flux[idir],scale, dit(),
+                      a_coarFluxRegister.incrementFineRegular(flux[idir],scale, dit[jbox],
                                                               consInterv, idir,sit());
                     }
                 }
@@ -353,11 +437,11 @@ doRegularUpdate(EBFluxRegister&               a_fineFluxRegister,
           //copy fluxes into sparse interpolant
           for (int faceDir = 0; faceDir < SpaceDim; faceDir++)
             {
-              IntVectSet ivsIrregGrown = m_irregSetsGrown[faceDir][dit()];
+              IntVectSet ivsIrregGrown = m_irregSetsGrown[faceDir][dit[jbox]];
               ivsIrregGrown &= cellBox;
               FaceStop::WhichFaces stopCrit = FaceStop::SurroundingWithBoundary;
 
-              BaseIFFAB<Real>& interpol = m_fluxInterpolants[faceDir][dit()];
+              BaseIFFAB<Real>& interpol = m_fluxInterpolants[faceDir][dit[jbox]];
               interpol.setVal(7.7777e7);
               EBFaceFAB& fluxDir = flux[faceDir];
               for (FaceIterator faceit(ivsIrregGrown, ebisBox.getEBGraph(),
@@ -393,43 +477,47 @@ doIrregularUpdate(EBFluxRegister&               a_fineFluxRegister,
   int ibox = 0;
   Interval consInterv(0, m_nCons-1);
   Interval fluxInterv(0, m_nFlux-1);
-  for (DataIterator dit = m_thisGrids.dataIterator(); dit.ok(); ++dit, ibox++)
+  DataIterator dit = m_thisGrids.dataIterator();
+  int nbox=dit.size();
+  for (int jbox=0; jbox <nbox; jbox++, ibox++)
+    //  for (DataIterator dit = m_thisGrids.dataIterator(); dit.ok(); ++dit, ibox++)
     {
-      const Box& cellBox = m_thisGrids.get(dit());
-      const EBISBox& ebisBox = m_thisEBISL[dit()];
+      const Box& cellBox = m_thisGrids.get(dit[jbox]);
+      const EBISBox& ebisBox = m_thisEBISL[dit[jbox]];
       if (!ebisBox.isAllCovered())
         {
-          const IntVectSet& cfivs = m_cfIVS[dit()];
+          //const IntVectSet& cfivs = m_cfIVS[dit[jbox]];
 
-          EBCellFAB& consState = a_consState[dit()];
-          BaseIVFAB<Real>& redMass = a_massDiff[dit()];
+          EBCellFAB& consState = a_consState[dit[jbox]];
+          BaseIVFAB<Real>& redMass = a_massDiff[dit[jbox]];
 
-          m_ebPatchGodunov->setValidBox(cellBox, ebisBox, cfivs, a_time, a_dt);
+          //          m_ebPatchGodunov[dit[jbox]]->setValidBox(cellBox, ebisBox, cfivs, a_time, a_dt);
+          m_ebPatchGodunov[dit[jbox]]->setTimeAndDt(a_time, a_dt);
 
           BaseIFFAB<Real> centroidFlux[SpaceDim];
           const BaseIFFAB<Real>* interpolantGrid[SpaceDim];
-          const IntVectSet& ivsIrregSmall = m_irregSetsSmall[dit()];
+          const IntVectSet& ivsIrregSmall = m_irregSetsSmall[dit[jbox]];
           for (int idir = 0; idir < SpaceDim; idir++)
             {
-              const BaseIFFAB<Real>& interpol = m_fluxInterpolants[idir][dit()];
+              const BaseIFFAB<Real>& interpol = m_fluxInterpolants[idir][dit[jbox]];
               interpolantGrid[idir] = &interpol;
               BaseIFFAB<Real>& fluxDir= centroidFlux[idir];
               fluxDir.define(ivsIrregSmall, ebisBox.getEBGraph(), idir, m_nFlux);
             }
-          m_ebPatchGodunov->interpolateFluxToCentroids(centroidFlux,
+          m_ebPatchGodunov[dit[jbox]]->interpolateFluxToCentroids(centroidFlux,
                                                        interpolantGrid,
                                                        ivsIrregSmall);
 
           Real maxWaveSpeedGrid = 0.0;
           //update the state and interpolate the flux
-          const BaseIVFAB<Real>& nonConsDiv = m_nonConsDivergence[dit()];
-          const BaseIVFAB<Real>& ebIrregFlux = m_ebIrregFaceFlux[dit()];
-          m_ebPatchGodunov->irregularUpdate(consState,
+          const BaseIVFAB<Real>& nonConsDiv = m_nonConsDivergence[dit[jbox]];
+          const BaseIVFAB<Real>& ebIrregFlux = m_ebIrregFaceFlux[dit[jbox]];
+          m_ebPatchGodunov[dit[jbox]]->irregularUpdate(consState,
                                             maxWaveSpeedGrid, redMass,
                                             centroidFlux, ebIrregFlux, nonConsDiv,
                                             cellBox, ivsIrregSmall);
 
-          m_ebLevelRedist.increment(redMass, dit(), consInterv);
+          m_ebLevelRedist.increment(redMass, dit[jbox], consInterv);
           maxWaveSpeed = Max(maxWaveSpeed, maxWaveSpeedGrid);
 
           //do fluxregister mambo
@@ -448,14 +536,14 @@ doIrregularUpdate(EBFluxRegister&               a_fineFluxRegister,
                 {
                   //gather fluxes into flux-register compatible form
                   fluxRegFlux.define(ivsIrregSmall, ebisBox.getEBGraph(), idir, m_nCons);
-                  m_ebPatchGodunov->assembleFluxIrr(fluxRegFlux, centroidFlux[idir],
+                  m_ebPatchGodunov[dit[jbox]]->assembleFluxIrr(fluxRegFlux, centroidFlux[idir],
                                                     idir,  cellBox, ivsIrregSmall);
                 }
 
               if (m_hasFiner)
                 {
                   a_fineFluxRegister.incrementCoarseIrregular(centroidFlux[idir],
-                                                              scale,dit(),
+                                                              scale,dit[jbox],
                                                               consInterv, idir);
                 }
 
@@ -464,7 +552,7 @@ doIrregularUpdate(EBFluxRegister&               a_fineFluxRegister,
                   for (SideIterator sit; sit.ok(); ++sit)
                     {
                       a_coarFluxRegister.incrementFineIrregular(centroidFlux[idir],
-                                                                scale, dit(),
+                                                                scale, dit[jbox],
                                                                 consInterv, idir,sit());
                     }
                 }
@@ -493,13 +581,14 @@ step(LevelData<EBCellFAB>&         a_consState,
   Interval fluxInterv(0, m_nFlux-1);
   CH_assert(isDefined());
   CH_assert(a_consState.disjointBoxLayout() == m_thisGrids);
-
+  //pout() << "eblg here1" << endl;
   {
     CH_TIME("fillConsState");
     //cf interpolation and exchange
     fillConsState(a_consState, a_consStateCoarseOld, a_consStateCoarseNew, a_time, a_coarTimeOld, a_coarTimeNew);
   }
 
+  //pout() << "eblg here2" << endl;
   {
     CH_TIME("early_coarse_fine");
     m_ebLevelRedist.setToZero();
@@ -511,12 +600,14 @@ step(LevelData<EBCellFAB>&         a_consState,
       }
   }
 
+  //pout() << "eblg here3" << endl;
   {
     CH_TIME("computeFlattening");
     //compute flattening coefficients. this saves a ghost cell. woo hoo.
     computeFlattening(a_time, a_dt, a_consState);
   }
 
+  //pout() << "eblg here3.5" << endl;
   {
     CH_TIME("doRegularUpdate");
     //this includes copying flux into flux interpolant and updating
@@ -524,6 +615,7 @@ step(LevelData<EBCellFAB>&         a_consState,
     doRegularUpdate(a_fineFluxRegister, a_coarFluxRegister, a_time, a_dt, a_consState);
   }
 
+  //pout() << "eblg here4" << endl;
   Real maxWaveSpeed;
   {
     CH_TIME("doIrregularUpdate");
@@ -532,6 +624,7 @@ step(LevelData<EBCellFAB>&         a_consState,
     maxWaveSpeed = doIrregularUpdate(a_fineFluxRegister, a_coarFluxRegister, a_massDiff, a_time, a_dt, a_consState);
   }
 
+  //pout() << "eblg here5" << endl;
   if (m_doSmushing)
     {
       CH_TIME("smushing");
@@ -539,7 +632,8 @@ step(LevelData<EBCellFAB>&         a_consState,
         {
           //if use mass weighting, need to
           //fix weights of redistribution object
-          int densityIndex = m_ebPatchGodunov->densityIndex();
+          DataIterator dit=m_thisGrids.dataIterator();
+          int densityIndex = m_ebPatchGodunovSP->densityIndex();
           a_consState.exchange(consInterv);
           m_ebLevelRedist.resetWeights(a_consState, densityIndex);
         }
@@ -550,6 +644,7 @@ step(LevelData<EBCellFAB>&         a_consState,
       m_ebLevelRedist.redistribute(a_consState, consInterv);
     }
 
+  //pout() << "eblg here6" << endl;
   {
     CH_TIME("floors");
     floorConserved(a_consState, a_time, a_dt);
@@ -561,6 +656,7 @@ step(LevelData<EBCellFAB>&         a_consState,
   // Find the minimum of dt's over this level
   Real dtNew = m_dx[0] / maxWaveSpeed;
 
+  //pout() << "eblg here7" << endl;
   //return the maximum stable time step
   return dtNew;
 }
@@ -571,16 +667,18 @@ EBLevelGodunov::getDrhoDtOverRho(LevelData<EBCellFAB>& a_drhoDt,
                                  const LevelData<EBCellFAB>& a_rhoOld,
                                  const Real& a_dt)
 {
-  for (DataIterator dit = m_thisGrids.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = m_thisGrids.dataIterator();
+  int nbox=dit.size();
+  for (int jbox=0; jbox <nbox; jbox++)
     {
-      EBCellFAB& drhodt = a_drhoDt[dit()];
-      EBCellFAB& rhoold = (EBCellFAB&) a_rhoOld[dit()];
-      EBCellFAB& rhonew = (EBCellFAB&) a_rhoNew[dit()];
+      EBCellFAB& drhodt = a_drhoDt[dit[jbox]];
+      EBCellFAB& rhoold = (EBCellFAB&) a_rhoOld[dit[jbox]];
+      EBCellFAB& rhonew = (EBCellFAB&) a_rhoNew[dit[jbox]];
 
       drhodt.setVal(0.);
-      drhodt.setInvalidData(1.0, 0);
-      rhonew.setInvalidData(1.0, 0);
-      rhoold.setInvalidData(1.0, 0);
+      drhodt.setCoveredCellVal(1.0, 0);
+      rhonew.setCoveredCellVal(1.0, 0);
+      rhoold.setCoveredCellVal(1.0, 0);
 
       drhodt += rhoold;
       drhodt -= rhonew;
@@ -593,18 +691,21 @@ Real EBLevelGodunov::getMaxWaveSpeed(const LevelData<EBCellFAB>& a_state)
 {
   CH_assert(a_state.disjointBoxLayout() == m_thisGrids);
   Real speed = 0.0;
-  for (DataIterator dit = m_thisGrids.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = m_thisGrids.dataIterator();
+  int nbox=dit.size();
+  for (int jbox=0; jbox <nbox; jbox++)
     {
-      const Box& validBox   = m_thisGrids.get(dit());
-      const EBISBox& ebisBox= m_thisEBISL[dit()];
+      const Box& validBox   = m_thisGrids.get(dit[jbox]);
+      const EBISBox& ebisBox= m_thisEBISL[dit[jbox]];
       if (!ebisBox.isAllCovered())
         {
           //place holder not used maxWaveSpeed calc
           Real time = 0.0;
-          const IntVectSet& cfivs = m_cfIVS[dit()];
+          //const IntVectSet& cfivs = m_cfIVS[dit[jbox]];
 
-          m_ebPatchGodunov->setValidBox(validBox, ebisBox, cfivs, time, time);
-          Real speedOverBox = m_ebPatchGodunov->getMaxWaveSpeed(a_state[dit()],
+          //          m_ebPatchGodunov[dit[jbox]]->setValidBox(validBox, ebisBox, cfivs, time, time);
+          m_ebPatchGodunov[dit[jbox]]->setTimeAndDt(time,time);
+          Real speedOverBox = m_ebPatchGodunov[dit[jbox]]->getMaxWaveSpeed(a_state[dit[jbox]],
                                                                 validBox);
           speed = Max(speed,speedOverBox);
         }

@@ -59,6 +59,13 @@ public:
    */
   virtual Real value(const IndexTM<Real,GLOBALDIM>& a_point) const;
 
+  ///
+  /**
+     Return the partial derivative of the function at a_point.
+   */
+  virtual Real value(const IndexTM<int,GLOBALDIM> & a_partialDerivative,
+                     const IndexTM<Real,GLOBALDIM>& a_point) const;
+
   virtual BaseIF* newImplicitFunction() const;
 
   ///
@@ -81,6 +88,7 @@ protected:
   int       m_numPts;           // number of sample points in meighborhood
 
   Real      m_dx;               // spacing in the sampled neighborhood
+  Real      m_vol;              // volume of a sample
   Box       m_sampleBox;        // the sample box
 
   // These are "mutable" so they can be modified in "const" methods - this is

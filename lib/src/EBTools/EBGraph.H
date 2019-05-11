@@ -70,15 +70,9 @@ public:
 
   ///
   /**
-     If the graph has irregular cells
-     get a mask over the size of the graph.
-     -1 for covered cells or multivalued cells, 0 for singlevalued irregular, and 1 for regular.
-     If the graph is all regular, regIrregCovered returns 1 and
-     the mask is undefined.
-     If the graph is all regular, regIrregCovered returns -1 and
-     the mask is undefined.
+   changing this definition to make things run faster/better
    */
-  const BaseFab<int>& getMask(int& a_regIrregCovered) const;
+  const BaseFab<char>& getMask(int& a_regIrregCovered) const;
 
   ///
   /**
@@ -138,6 +132,9 @@ public:
 
   ///
   bool isCovered(const IntVect& a_iv) const;
+
+  ///
+  bool isMultiValued(const IntVect& a_iv) const;
 
   ///
   bool isConnected(const VolIndex& a_vof1,
@@ -318,7 +315,11 @@ public:
   Vector<FaceIndex>
   getIrregFaces(const Box& a_box, int a_dir) const;
 
-
+///
+  /**
+  0       outside problem domain, multi-valued, covered
+  1       regular
+  */
   void fillMask(BaseFab<char>& a_mask) const;
 
   ///
@@ -327,17 +328,10 @@ public:
   1       covered
   2       regular
   3       irregular
+  handy for debugging, can write out to hdf5 files.
   */
   void fillCellTypeMask(BaseFab<char>& a_mask) const;
 
-
-  ///
-  /**
-    1 = regular
-    0 = irregular
-    -1 = covered
-   */
-  void fillIntMask(BaseFab<int>& a_mask) const;
 
 
   ///
@@ -404,7 +398,7 @@ private:
   static bool s_verbose;
 
   //mutable because it gets built when needed
-  mutable BaseFab<int> m_mask;
+  mutable BaseFab<char> m_mask;
   mutable bool m_isMaskBuilt;
 
 private:
@@ -464,7 +458,7 @@ public:
      If the graph is all regular, regIrregCovered returns -1 and
      the mask is undefined.
    */
-  const  BaseFab<int>& getMask(int& a_regIrregCovered) const;
+  const  BaseFab<char>& getMask(int& a_regIrregCovered) const;
 
   ///
   /**
@@ -473,7 +467,10 @@ public:
   Vector<VolIndex> getVoFs(const IntVect& a_iv) const;
 
   ///
-  int numVoFs(const IntVect& a_iv) const;
+  long long numVoFs(const IntVect& a_iv) const;
+
+  ///
+  long long numVoFs(const Box& a_box) const;
 
   ///
   /**
@@ -518,6 +515,9 @@ public:
 
   ///
   bool isCovered(const IntVect& a_iv) const;
+
+  ///
+  bool isMultiValued(const IntVect& a_iv) const;
 
   ///
   bool isConnected(const VolIndex& a_vof1,
@@ -702,7 +702,7 @@ public:
      0 = irregular
      -1 = covered
    */
-  void fillIntMask(BaseFab<int>& a_mask) const;
+  //void fillIntMask(BaseFab<int>& a_mask) const;
 
 
   ///
@@ -744,8 +744,6 @@ public:
 
   ///
   Vector<FaceIndex> getMultiValuedFaces(const int& a_idir, const Box& a_box) const;
-
-  long long numVoFs(const Box& a_box) const ;
 
   long long numFaces(const Box& a_box, int a_dir) const ;
 
@@ -792,7 +790,7 @@ const char* name(const EBGraph& a_dummySpecializationArg);
 /*******************************/
 
 inline
-const BaseFab<int>&
+const BaseFab<char>&
 EBGraph::getMask(int& a_regIrregCovered) const
 {
   return m_implem->getMask(a_regIrregCovered);
@@ -881,6 +879,11 @@ inline bool EBGraph::isIrregular(const IntVect& a_iv) const
 inline bool EBGraph::isCovered(const IntVect& a_iv) const
 {
   return m_implem->isCovered(a_iv);
+}
+/*******************************/
+inline bool EBGraph::isMultiValued(const IntVect& a_iv) const
+{
+  return m_implem->isMultiValued(a_iv);
 }
 /*******************************/
 inline bool EBGraph::isCovered(const Box& a_box) const
@@ -982,10 +985,16 @@ EBGraph::getAllFaces(const IntVect& a_iv,
 
 /*******************************/
 
-inline int
+inline long long
 EBGraph::numVoFs(const IntVect& a_iv) const
 {
   return m_implem->numVoFs(a_iv);
+}
+
+inline long long
+EBGraph::numVoFs(const Box& a_box) const
+{
+  return m_implem->numVoFs(a_box);
 }
 
 inline

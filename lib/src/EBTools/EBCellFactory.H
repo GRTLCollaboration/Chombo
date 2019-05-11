@@ -39,6 +39,8 @@ public:
   virtual EBCellFAB* create(const Box& a_box, int a_ncomps,
                             const DataIndex& a_dit) const;
 
+  inline virtual const EBISBox& ebisBox(const DataIndex& a_dit) const
+  {return m_ebisl[a_dit];}
   ///
   /**
      create the factory with an ispace.  calls full define function

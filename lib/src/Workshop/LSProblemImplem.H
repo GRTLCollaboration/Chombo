@@ -76,7 +76,7 @@ template<int dim> void LSProblem<dim>::monoMaxMin(Real                   & a_max
       Real monoCorner = 1.0;
       for (int idir = 0; idir < dim ; ++idir)
         {
-          monoCorner *= pow(cornerCoord[idir],a_mono[idir]);
+          monoCorner *= POW(cornerCoord[idir],a_mono[idir]);
         }
 
       if (monoCorner > a_maxVal)
@@ -180,11 +180,11 @@ template<int dim> void LSProblem<dim>::computeBounds(const IndexTM<Real,dim>   &
           // Note that we already have integral(mono) from previous steps
           IvDim whichMono;
           // Real valAtWhichMono=LARGEREALVAL;
-          for (typename CutCellMoments<dim>::PthMoment::const_iterator it = a_ccm.m_moments.begin();
-              it != a_ccm.m_moments.end();++it)
+          for (typename CutCellMoments<dim>::PthMoment::const_iterator it2 = a_ccm.m_moments.begin();
+              it2 != a_ccm.m_moments.end();++it2)
             {
-              IvDim mono = it->first;
-              Real val = it->second;
+              IvDim mono = it2->first;
+              Real val = it2->second;
               Real maxMono = 0.0;
               Real minMono = 0.0;
               monoMaxMin(maxMono,minMono,mono,a_ccm.m_IFData);
@@ -208,33 +208,6 @@ template<int dim> void LSProblem<dim>::computeBounds(const IndexTM<Real,dim>   &
                 }
             }
           lobnd = Max(lobnd, zeroDegreeLoBnd);
-#ifdef CH_REALM
-          // This represents the assumption that kappa3d < kappa2d
-          IndexTM<Real,dim> largestVol=IndexTM<Real,dim>::Zero;
-
-          //Refine lower bound based on assumption that kappa3d < kappa2d*dz
-          for (typename CutCellMoments<dim>::BdCutCellMoments::const_iterator it = a_ccm.m_bdCutCellMoments.begin();
-               it != a_ccm.m_bdCutCellMoments.end();
-               ++it)
-            {
-              Iv2 bdId = it->first;
-              int idir = bdId[BDID_DIR];
-              EBorVol doVol = VolMoment;
-              Real volSide = it->second.getVol(doVol);
-              if (volSide > largestVol[idir])
-                {
-                  largestVol[idir] = volSide;
-                }
-            }
-          Real noUndercutBnd = LARGEREALVAL;
-          if (a_ccm.m_IFData.m_globalCoord.m_dx[0] != a_ccm.m_IFData.m_globalCoord.m_dx[dim-1])
-            {
-              Real vol= largestVol[dim-1];
-              Real normalDx = a_ccm.m_IFData.m_globalCoord.m_dx[dim-1];
-              noUndercutBnd = Min(noUndercutBnd, vol*normalDx);
-            }
-          hibnd = Min(hibnd, noUndercutBnd);
-#endif
         }
 
 
@@ -279,7 +252,7 @@ template<int dim> void LSProblem<dim>::momentBounds(Real              & a_lobnd,
       for (int idir = 0; idir < dim ; ++idir)
         {
           Real pPlus1 =(Real)( a_mono[idir]+1);
-          partialCellMag *= pow(cornerCoord[idir],pPlus1)/pPlus1;
+          partialCellMag *= POW(cornerCoord[idir],pPlus1)/pPlus1;
           if (cornerCoord[idir] < 0.0) partialCellMag *=-1.0;
         }
       if (partialCellMag > 0.0) a_hibnd += partialCellMag;

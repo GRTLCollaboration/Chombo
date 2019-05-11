@@ -11,7 +11,7 @@ godunov.xcorner = 0.05
 godunov.verbosity = 1
 
 # Number of steps, final time, and time step
-godunov.max_step = 4
+godunov.max_step = 50
 godunov.max_time = 0.064
 # godunov.fixed_dt = 0.002
 
@@ -54,14 +54,14 @@ godunov.use_artificial_viscosity = 1
 godunov.artificial_viscosity = 0.1
 
 # Plot file information
-godunov.plot_interval = 10
+godunov.plot_interval = 20
 # godunov.plot_interval = 1
 godunov.plot_prefix  = ramp.
 
 # Checkpoint file information
-godunov.checkpoint_interval = -1
-# godunov.checkpoint_interval = 1
-# godunov.chk_prefix = check.
+#godunov.checkpoint_interval = -1
+godunov.checkpoint_interval = 10
+godunov.chk_prefix = check.
 
 # Restart file information
 # godunov.restart_file = check.20.2d.hdf5

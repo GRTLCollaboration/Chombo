@@ -1,11 +1,11 @@
 #ifdef CH_LANG_CC
 /*
-*      _______              __
-*     / ___/ /  ___  __ _  / /  ___
-*    / /__/ _ \/ _ \/  V \/ _ \/ _ \
-*    \___/_//_/\___/_/_/_/_.__/\___/
-*    Please refer to Copyright.txt, in Chombo's root directory.
-*/
+ *      _______              __
+ *     / ___/ /  ___  __ _  / /  ___
+ *    / /__/ _ \/ _ \/  V \/ _ \/ _ \
+ *    \___/_//_/\___/_/_/_/_.__/\___/
+ *    Please refer to Copyright.txt, in Chombo's root directory.
+ */
 #endif
 
 #include "ParmParse.H"
@@ -174,6 +174,9 @@ main(int a_argc, char* a_argv[])
   {
     // Check for an input file
     char* inFile = NULL;
+#ifdef _OPENMP
+    pout() << "starting program num THREADS = " << getMaxThreads() << endl;
+#endif
 
     EBDebugPoint::s_ivd = IntVect(D_DECL(16,45,0));
     if (a_argc > 1)
@@ -188,6 +191,8 @@ main(int a_argc, char* a_argv[])
       }
     // Parse the command line and the input file (if any)
     ParmParse pp(a_argc-2,a_argv+2,NULL,inFile);
+
+    pp.dumpTable(pout());
 
     Box coarsestDomain;
     RealVect dx;

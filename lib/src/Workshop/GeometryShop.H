@@ -42,7 +42,7 @@ public:
   GeometryShop(const BaseIF& a_localGeom,
                int           a_verbosity,
                RealVect      a_vectDx,
-               Real          a_thrshdVoF = 0.0);
+               Real          a_thrshdVoF = 1.0e-16);
 
   ///
   ~GeometryShop();
@@ -96,7 +96,8 @@ public:
                          const Box&           a_ghostRegion,
                          const ProblemDomain& a_domain,
                          const RealVect&      a_origin,
-                         const Real&          a_dx) const;
+                         const Real&          a_dx,
+                         const DataIndex&     a_di) const;
 
   /**
   */
@@ -111,6 +112,7 @@ public:
                            RealVect&            a_bndryCentroid,
                            Vector<RealVect>     a_loFaceCentroid[SpaceDim],
                            Vector<RealVect>     a_hiFaceCentroid[SpaceDim],
+                           const BaseFab<int>&  a_regIrregCovered,
                            const IntVectSet&    a_ivsIrreg,
                            const VolIndex&      a_vof,
                            const ProblemDomain& a_domain,
@@ -119,6 +121,34 @@ public:
                            const RealVect&      a_vectDx,
                            const IntVect&       a_iv) const;
 
+  void
+  getFullNodeWithCoveredFace(IrregNode            & a_newNode, 
+                             const BaseFab<int>   & a_regIrregCovered,
+                             const IntVect        & a_iv,
+                             const ProblemDomain  & a_domain) const;
+
+  void
+  fixRegularCellsNextToCovered(Vector<IrregNode>    & a_nodes, 
+                               BaseFab<int>         & a_regIrregCovered,
+                               const Box            & a_validRegion,
+                               const ProblemDomain  & a_domain,
+                               const IntVect        & a_iv,
+                               const Real           & a_dx) const;
+
+  ///
+  /**
+     A GeometryService has three options for implementing this function
+     1) do nothing, allow the empty base implementation to remain in place as a null-op
+     2) take the makeGrids call as a directive: Here are the grids EBIndexSpace is wanting to use, configure
+         yourself accordingly to make this efficient for you.  
+     3) discard the DisjointBoxLayout EBIndexSpace would like and insert your own implementation of layout
+        EBIndexSpace will faithfully use a_grids returned from this function, including it's load balance. 
+  */
+  virtual void makeGrids( const ProblemDomain&      a_domain,
+                          DisjointBoxLayout&        a_grids,
+                          const int&                a_maxGridSize,
+                          const int&                a_maxIrregGridSize );
+  
   int m_phase;
 
 private:
@@ -129,7 +159,7 @@ private:
 
   RealVect m_vectDx;
 
-  const BaseIF* m_implicitFunction;
+  BaseIF* m_implicitFunction;  // the call to makeGrids might alter this IF object
   const STLIF* m_stlIF;
   mutable bool m_STLBoxSet;
 

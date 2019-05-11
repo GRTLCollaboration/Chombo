@@ -136,13 +136,20 @@ public:
               const DisjointBoxLayout& a_grids,
               const int& a_nghost,
               const LevelData<EBGraph>& a_graph,
-              const LevelData<EBData> & a_data);
+              const LevelData<EBData> & a_data,
+              const Real& a_dx,
+              bool a_hasMoments);
 
   bool isDefined() const;
 
   //multifluid things.  tamper not with these unless you REALLY know what you are doing.
   const EBIndexSpace* getEBIS() const;
   void setEBIS(const EBIndexSpace* const a_ebisPtr);
+
+  int refCount() const { return m_implem.refCount();}
+
+  ///
+  const ProblemDomain& getDomain() const ;
 private:
   ///
   RefCountedPtr<EBISLayoutImplem> m_implem;
@@ -252,7 +259,9 @@ public:
               const DisjointBoxLayout& a_grids,
               const int& a_nghost,
               const LevelData<EBGraph>& a_graph,
-              const LevelData<EBData> & a_data);
+              const LevelData<EBData> & a_data,
+              const Real& a_dx,
+              bool a_hasMoments);
 
   ///
   static void setVerbose(bool a_verbose);
@@ -266,6 +275,11 @@ public:
   void setEBIS(const EBIndexSpace* const a_ebisPtr)
   {
     m_ebisPtr = a_ebisPtr;
+  }
+
+  const ProblemDomain& getDomain() const 
+  {
+    return m_domain;
   }
 private:
 

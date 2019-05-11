@@ -960,8 +960,6 @@ void EBAMRDataOps::setCoveredAMRVal(Vector<LevelData<EBCellFAB>* >& a_data,
     }
 }
 
-
-
 void EBAMRDataOps::setCoveredVal(Vector<LevelData<EBCellFAB>* >&a_data,
                                  const Real& a_value)
 {
@@ -970,6 +968,21 @@ void EBAMRDataOps::setCoveredVal(Vector<LevelData<EBCellFAB>* >&a_data,
   for (int ilev = 0; ilev < numLevels; ilev++)
     {
       EBLevelDataOps::setCoveredVal(*a_data[ilev],
+                                    a_value);
+    }
+
+}
+
+void EBAMRDataOps::setCoveredVal(Vector<LevelData<EBCellFAB>* >&a_data,
+                                 const int&           a_comp,
+                                 const Real& a_value)
+{
+  CH_TIME("EBAMRDataOps::setCoveredVal");
+  int numLevels = a_data.size();
+  for (int ilev = 0; ilev < numLevels; ilev++)
+    {
+      EBLevelDataOps::setCoveredVal(*a_data[ilev],
+                                    a_comp,
                                     a_value);
     }
 
@@ -1115,6 +1128,7 @@ void EBAMRDataOps::axby(Vector<LevelData<EBCellFAB>* >&       a_lhs,
                            a_b);
     }
 }
+/*
 void EBAMRDataOps::axby(Vector<LevelData<EBCellFAB>* >&       a_lhs,
                         const Vector<LevelData<EBCellFAB>* >& a_x,
                         const Vector<LevelData<EBCellFAB>* >& a_y,
@@ -1137,6 +1151,7 @@ void EBAMRDataOps::axby(Vector<LevelData<EBCellFAB>* >&       a_lhs,
                            a_yComp);
     }
 }
+*/
 void EBAMRDataOps::assign(Vector<LevelData<EBCellFAB>* >&       a_to,
                           const Vector<LevelData<EBCellFAB>* >& a_from,
                           const Interval&                       a_toInterval,
@@ -1493,6 +1508,7 @@ void EBAMRDataOps::setMaxMin(Vector<LevelData<EBCellFAB>* >& a_data,
                              const int&                      a_comp)
 {
   //this function sets the max and min values
+
   int numLevels = a_data.size();
   for (int ilev = 0; ilev < numLevels; ilev++)
     {
@@ -1516,7 +1532,8 @@ void EBAMRDataOps::setMaxMin(Vector<LevelData<EBCellFAB>* >& a_data,
 void EBAMRDataOps::getMaxMin(Real&                                 a_maxVal,
                              Real&                                 a_minVal,
                              const Vector<LevelData<EBCellFAB>* >& a_data,
-                             const int&                            a_comp)
+                             const int&                            a_comp,
+                             Vector<int>                    a_refRat)
 {
   //this function gets the max and min values
   a_maxVal = -1.e99;
@@ -1526,10 +1543,37 @@ void EBAMRDataOps::getMaxMin(Real&                                 a_maxVal,
     {
       Real maxThis = -1.e99;
       Real minThis =  1.e99;
-      EBLevelDataOps::getMaxMin(maxThis,minThis,*a_data[ilev],a_comp);
+      for (DataIterator dit=a_data[ilev]->dataIterator();dit.ok();++dit)
+        {
+          EBCellFAB& dataEBFAB = (*a_data[ilev])[dit()];
+          const Box& region = dataEBFAB.getRegion();
+          IntVectSet ivsBox(region);
+          if((ilev  < numLevels - 1) && (a_refRat.size() > ilev))
+            {
+              //subtract off finer level regions from ivs
+              const DisjointBoxLayout finer =  a_data[ilev+1]->disjointBoxLayout();
+              for(LayoutIterator lit = finer.layoutIterator(); lit.ok(); ++lit)
+                {
+                  Box coarsenedFine = finer[lit()];
+                  coarsenedFine.coarsen(a_refRat[ilev]);
+                  ivsBox -= coarsenedFine;
+                }
+            }
+          const EBISBox& ebisBox = dataEBFAB.getEBISBox();
+          for (VoFIterator vofit(ivsBox, ebisBox.getEBGraph());vofit.ok(); ++vofit)
+            {
+              const VolIndex& vof = vofit();
+              const Real& val = dataEBFAB(vof,a_comp);
+              maxThis = Max(maxThis, val );
+              minThis = Min(minThis, val );
+            }
+        }
       a_maxVal = Max(maxThis,a_maxVal);
       a_minVal = Min(minThis,a_minVal);
     }
+  a_minVal = EBLevelDataOps::parallelMin(a_minVal);
+  a_maxVal = EBLevelDataOps::parallelMax(a_maxVal);
+
 }
 Real EBAMRDataOps::subtractOffMean(Vector<LevelData<EBCellFAB>* >&  a_data,
                                    const Vector<DisjointBoxLayout>& a_grids,
@@ -1666,7 +1710,8 @@ bool EBAMRDataOps::checkNANINF(const Vector<LevelData<EBCellFAB>* >& a_data,
   if (dataIsNANINF)
     {
 #ifdef CH_USE_HDF5
-      char* fname = tempnam(NULL,NULL);
+      string fnamestr("ebamrdata.hdf5");
+      const char* fname = fnamestr.c_str(); 
       writeEBAMRname(&a_data, fname);
       pout() << "   bad data written to an hdf5 file: " << fname << std::endl;
 #else
@@ -1717,9 +1762,7 @@ bool EBAMRDataOps::checkNANINF(const Vector<LevelData<EBFluxFAB>* >& a_data)
   if (dataIsNANINF)
     {
 #ifdef CH_USE_HDF5
-      //char* fname = tempnam(NULL,NULL);
-      //writeEBAMRname(&a_data, fname);
-      //pout() << "   bad data written to an hdf5 file: " << fname << std::endl;
+
       pout() << "   bad face data...not sure how to output this data type...anyone know how?" << std::endl;
 #else
       pout() << "   found a NaN or Infinity.  Recompile with HDF5 to get a data dump." << std::endl ;
@@ -1727,6 +1770,76 @@ bool EBAMRDataOps::checkNANINF(const Vector<LevelData<EBFluxFAB>* >& a_data)
     }
 
   return dataIsNANINF;
+}
+
+/////////
+void EBAMRDataOps::incr(Vector<LevelData<EBFluxFAB>* >&       a_lhs,
+                        const Vector<LevelData<EBFluxFAB>* >& a_rhs,
+                        const Real& a_scale)
+{
+  CH_TIME("EBAMRDataOps::incr(lhs,rhs,scale)");
+  int numLevels = a_lhs.size();
+  for (int ilev = 0; ilev < numLevels; ilev++)
+    {
+      
+      int ibox = 0;
+      for(DataIterator dit = a_lhs[ilev]->dataIterator(); dit.ok(); ++dit)
+        {
+          
+          const EBFluxFAB& rhsfab = (*a_rhs[ilev])[dit()];
+          EBFluxFAB&       lhsfab = (*a_lhs[ilev])[dit()];
+          EBFluxFAB incr(rhsfab.getEBISBox(), rhsfab.box(), rhsfab.nComp());
+          incr.setVal(0.);
+          incr += rhsfab;
+          for(int idir = 0; idir < SpaceDim; idir++)
+            {
+              incr[idir] *= a_scale;
+            }
+
+          lhsfab += incr;
+          ibox++;
+        }
+
+    }
+}
+
+/////////
+Real
+EBAMRDataOps::sum(const Vector<LevelData<EBCellFAB>* >& a_data,
+                  const Vector<EBLevelGrid>&            a_eblg,
+                  const Vector<int> &                   a_refRat,
+                  int   a_comp,
+                  bool  a_multiplyByKappa)
+{
+  Real retval = 0.0;
+  int maxlev = a_data.size()-1;
+
+  for (int ilev  = 0; ilev <= maxlev; ilev++)
+    {
+      //don't count stuff covered by finer levels
+      IntVectSet ivsExclude;
+      if (ilev < maxlev)
+        {
+          //put next finer grids into an IVS
+          for (LayoutIterator lit = a_eblg[ilev+1].getDBL().layoutIterator(); lit.ok(); ++lit)
+            {
+              ivsExclude |= a_eblg[ilev+1].getDBL().get(lit());
+            }
+          //coarsen back down to this level.
+          //ivs will now hold the image of the next finer level
+          ivsExclude.coarsen(a_refRat[ilev]);
+        }
+
+      Real sumLev;
+      sumLev = EBLevelDataOps::sum(*(a_data[ilev]),  
+                                   a_eblg[ilev].getDBL(),
+                                   a_eblg[ilev].getEBISL(),  
+                                   ivsExclude,
+                                   a_comp, a_multiplyByKappa);
+      retval += sumLev;
+    }
+
+  return retval;
 }
 
 #include "NamespaceFooter.H"

@@ -87,6 +87,12 @@ public:
   static size_t iv_offset, index_offset;
   static int initializeOffsets();
 
+  ///for stencil gymnastics
+  void shift(const IntVect& a_iv)
+  {
+    m_iv += a_iv;
+  }
+
 private:
 
   //cell of the VolIndex

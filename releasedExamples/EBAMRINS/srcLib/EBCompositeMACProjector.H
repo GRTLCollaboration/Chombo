@@ -77,6 +77,18 @@ public:
                           const int&                                      a_relaxType,
                           const int&                                      a_bottomSolverType);
 
+  ///fill tangential gradient one cell over the coarse-fine interface
+  static void
+  fillCoarseFineTangentialGradient(EBFluxFAB           & a_grad, 
+                                   const Box           & a_grid, 
+                                   const IntVectSet    & a_ivs,
+                                   const EBGraph       & a_ebgraph);
+
+  ///fill tangential gradient one cell over the coarse-fine interface
+  static void
+  fillCoarseFineTangentialGradient(LevelData<EBFluxFAB>& a_grad, 
+                                   const EBLevelGrid   & a_eblg);
+
   ///
   /**
      velocity--input and output as divergence-free

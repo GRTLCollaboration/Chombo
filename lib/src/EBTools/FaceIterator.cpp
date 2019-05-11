@@ -142,7 +142,6 @@ FaceIterator::doDefine(const IntVectSet&           a_ivs,
     }
   reset();
 }
-
 /********************************/
 void
 FaceIterator::reset()

@@ -17,6 +17,20 @@
 #include "NamespaceHeader.H"
 
 /**********************/
+template <class T>
+BaseEBFaceFAB<T>::BaseEBFaceFAB(const Interval& a_interval, BaseEBFaceFAB<T>& a_original)
+:m_irrFAB(a_interval,a_original.m_irrFAB),
+ m_regFAB(a_interval,a_original.m_regFAB),
+ m_nComp(a_interval.size()),
+ m_iDir(a_original.m_iDir),
+ m_regionFace(a_original.m_regionFace),
+ m_region(a_original.m_region),
+ m_isDefined(a_original.m_isDefined),
+ m_ebisBox(a_original.m_ebisBox)
+{
+  if(!m_isDefined) MayDay::Error("Calling alias constructor on undefined BaseEBFaceFAB.  Probably an earlier error");
+
+}
 /**********************/
 template <class T>
 void
@@ -153,6 +167,11 @@ BaseEBFaceFAB<T>::copy(const Box& a_regionFrom,
   m_regFAB.copy(RFromFace, a_dstInt, RToFace, a_src.m_regFAB, a_srcInt);
   //this has to be cell centered because that is how
   //it is defined.
+  // GHM next 4 lines determine if irregular cells can be copied.
+  const Box& db = m_ebisBox.getDomain().domainBox();
+  Box rfi = RFromCell & db;
+  Box rti = RToCell & db;
+  if( !rfi.isEmpty() && !rti.isEmpty() )
   m_irrFAB.copy(RFromCell, a_dstInt, RToCell, a_src.m_irrFAB, a_srcInt);
 }
 /**********************/
@@ -191,19 +210,21 @@ BaseEBFaceFAB<T>::define(const EBISBox&  a_ebisBox,
 
   m_ebisBox = a_ebisBox;
   m_region =  a_region;
+  // GHM don't mask region
   m_region &= a_ebisBox.getDomain().domainBox();
   CH_assert(!m_region.isEmpty());
-  //if this fails, you need an ebisbox with more ghost cells
-  CH_assert(a_ebisBox.getRegion().contains(m_region));
 
   m_nComp = a_nComp;
   m_iDir = a_iDir;
-  m_regionFace= surroundingNodes(m_region, a_iDir);
-  Box grownRegion = m_region;
+  m_regionFace= surroundingNodes(a_region, a_iDir);
+  Box grownRegion = a_region;
   grownRegion.grow(a_iDir, 1);
-  grownRegion &= a_ebisBox.getDomain().domainBox();
+  // GHM don't mask region
+  //  grownRegion &= a_ebisBox.getDomain().domainBox();
+  Box checkRegion = grownRegion;
+  checkRegion &= a_ebisBox.getDomain().domainBox();
   //if this fails, you need an ebisbox with more ghost cells
-  CH_assert(a_ebisBox.getRegion().contains(grownRegion));
+  CH_assert(a_ebisBox.getRegion().contains(checkRegion));
 
   m_regFAB.resize(m_regionFace, m_nComp);
 

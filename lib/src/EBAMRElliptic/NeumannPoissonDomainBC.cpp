@@ -54,8 +54,7 @@ NeumannPoissonDomainBC::getFaceVel(Real&                 a_faceFlux,
                                    const int&            a_idir,
                                    const int&            a_icomp,
                                    const Real&           a_time,
-                                   const Side::LoHiSide& a_side,
-                                   const bool&           a_doDivFreeOutflow)
+                                   const Side::LoHiSide& a_side)
 {
   a_faceFlux =  a_vel[a_idir](a_face, a_icomp);
 }

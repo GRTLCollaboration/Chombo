@@ -11,11 +11,18 @@ makefiles += releasedExamples_AMRPoisson
 CHOMBO_HOME = ../../lib
 
 # the subdirectories to build
+ifeq ($USE_PETSC),TRUE)
 exec_dirs = execCell          \
             execNode          \
             execVariableCoefficient   \
             execViscousTensor \
             execPETSc
+else 
+exec_dirs = execCell          \
+            execNode          \
+            execVariableCoefficient   \
+            execViscousTensor 
+endif
 
 # the shared code for building in example subdirectories
 include $(CHOMBO_HOME)/mk/Make.example.subdirs

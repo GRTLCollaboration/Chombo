@@ -1268,7 +1268,7 @@ AMRNavierStokes::postInitialize()
             ofstream os("grids.out", ios::out);
             if (os.fail())
               {
-                pout() << "cannot open grid output file " << os << endl;
+                pout() << "cannot open grid output file grids.out" << endl;
                 MayDay::Error();
               }
 

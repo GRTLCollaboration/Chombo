@@ -22,6 +22,10 @@
 //#include "CoordinateSystem.H"
 #include "NamespaceHeader.H"
 
+//leave to default faulse.   Moving the coords works better
+//but makes for weird convergence tests
+bool LocalCoordMoveSwitch::s_turnOffMoveLocalCoords = true;
+
 // empty constructor (dim == 1)
 IFData<1>::IFData()
 {
@@ -42,9 +46,7 @@ IFData<1>::IFData(const IFData<1>& a_IFData)
 
 // Constructor from the implicit function
 IFData<1>::IFData(const IFData<2> & a_2DIFData,
-#if RECURSIVE_GEOMETRY_GENERATION != 0
                   const int       & a_maxOrder,
-#endif
                   const int       & a_idir,
                   const int       & a_hilo)
   :m_globalCoord(a_2DIFData.m_globalCoord,a_idir),

@@ -20,7 +20,6 @@ src_dirs =
 
 # input file for 'run' target
 INPUT = regression.inputs
-
 # shared code for building example programs
 include $(CHOMBO_HOME)/mk/Make.example
 

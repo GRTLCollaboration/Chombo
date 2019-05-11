@@ -14,7 +14,7 @@
 #include "MayDay.H"
 #include "RealVect.H"
 
-#include "BaseIF.H"
+#include "HyperPlaneIF.H"
 
 #include "NamespaceHeader.H"
 
@@ -22,7 +22,7 @@
 /**
     This implicit function specifies a plane.
  */
-class PlaneIF: public BaseIF
+class PlaneIF: public HyperPlaneIF
 {
 public:
   ///
@@ -35,58 +35,16 @@ public:
           const RealVect& a_point,
           const bool&     a_inside);
 
-  /// Copy constructor
-  PlaneIF(const PlaneIF& a_inputIF);
-
   /// Destructor
-  virtual ~PlaneIF();
+  virtual ~PlaneIF()
+  {
+  }
 
-  ///
-  /**
-      Return the parameter information
-   */
-  virtual void GetParams(RealVect& a_normal,
-                         RealVect& a_point,
-                         bool&     a_inside) const;
-
-  ///
-  /**
-      Set the parameter information
-   */
-  virtual void SetParams(const RealVect& a_normal,
-                         const RealVect& a_point,
-                         const bool&     a_inside);
-
-  ///
-  /**
-      Return the value of the function at a_point.
-   */
-  virtual Real value(const RealVect& a_point) const;
-
-  virtual BaseIF* newImplicitFunction() const;
-
-  virtual bool fastIntersection(const RealVect& a_low,
-                                const RealVect& a_high)const
-  {return true;}
-
-
-  virtual GeometryService::InOut InsideOutside(const RealVect& a_low,
-                                               const RealVect& a_high) const ;
 protected:
-  RealVect m_normal;    // plane normal
-  RealVect m_point;     // point on the plane
-  bool     m_inside;    // inside flag
 
 private:
-  PlaneIF()
-  {
-    MayDay::Abort("PlaneIF uses strong construction");
-  }
+  PlaneIF();
 
-  void operator=(const PlaneIF& a_inputIF)
-  {
-    MayDay::Abort("PlaneIF doesn't allow assignment");
-  }
 };
 
 #include "NamespaceFooter.H"

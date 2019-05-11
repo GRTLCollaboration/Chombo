@@ -196,7 +196,7 @@ protected:
   ProblemDomain m_fineDomain;
   EBISLayout m_coarEBISL;
   EBISLayout m_fineEBISL;
-
+  LevelData<EBCellFAB> m_buffer;
   int m_refRat;
   int m_nComp;
 

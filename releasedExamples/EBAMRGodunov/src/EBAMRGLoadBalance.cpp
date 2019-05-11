@@ -28,7 +28,8 @@
 void getEBAMRGLoadsAndBoxes(Vector<unsigned long long>&            a_loads,
                             Vector<Box> &                          a_boxes,
                             const DisjointBoxLayout&               a_dblOrig,
-                            const ProblemDomain&                   a_domain)
+                            const ProblemDomain&                   a_domain,
+                            bool a_useTime)
 {
   const EBIndexSpace* const ebisPtr = Chombo_EBIS::instance();
   int nghost = 4;
@@ -36,9 +37,17 @@ void getEBAMRGLoadsAndBoxes(Vector<unsigned long long>&            a_loads,
   ebisPtr->fillEBISLayout(ebisl, a_dblOrig, a_domain, nghost);
 
   //and we need to remap
-  TimedDataIterator dit = a_dblOrig.timedDataIterator();
-  dit.clearTime();
-  dit.enableTime();
+  DataIterator dit = a_dblOrig.dataIterator();
+  if(a_useTime)
+    {
+      dit.clearTime();
+      dit.enableTime();
+    }
+  else
+    {
+      dit. clearPeak();
+      dit.enablePeak();
+    }
   Real gamma = 1.4;
   Real dx = 1.0e-1;
   Real dt = 0.001;
@@ -75,25 +84,38 @@ void getEBAMRGLoadsAndBoxes(Vector<unsigned long long>&            a_loads,
               centroidflux[idir].define(ivsIrreg, ebisl[dit()].getEBGraph(), idir, ncomp);
               centroidflux[idir].setVal(0.);
             }
-          consstate.setVal(1.0);
-          flattening.setVal(1.0);
-          flux.setVal(0.);
-          ebirregflux.setVal(0.);
-          nonconsdiv.setVal(0.);
-          massdiff.setVal(0.);
-          patch.setValidBox(a_dblOrig.get(dit()), ebisl[dit()], cfivs, dumm, dt);
+          if(a_useTime)
+            {
+              consstate.setVal(1.0);
+              flattening.setVal(1.0);
+              flux.setVal(0.);
+              ebirregflux.setVal(0.);
+              nonconsdiv.setVal(0.);
+              massdiff.setVal(0.);
+              patch.setValidBox(a_dblOrig.get(dit()), ebisl[dit()], cfivs, dumm, dt);
 
-          patch.regularUpdate(consstate, flux, ebirregflux, nonconsdiv,
-                              flattening, source,  a_dblOrig.get(dit()),
-                              ivsIrreg, dit(), false);
+              patch.regularUpdate(consstate, flux, ebirregflux, nonconsdiv,
+                                  flattening, source,  a_dblOrig.get(dit()),
+                                  ivsIrreg, dit(), false);
 
-          patch.irregularUpdate(consstate, maxwave, massdiff, centroidflux,
-                                ebirregflux, nonconsdiv, a_dblOrig.get(dit()), ivsIrreg);
+              patch.irregularUpdate(consstate, maxwave, massdiff, centroidflux,
+                                    ebirregflux, nonconsdiv, a_dblOrig.get(dit()), ivsIrreg);
+            }
         }
     }
-  dit.disableTime();
-  dit.mergeTime();
-  a_loads = dit.getTime();
+  if(a_useTime)
+    {
+      dit.disableTime();
+      dit.mergeTime();
+      a_loads = dit.getTime();
+    }
+  else
+    {
+      dit.disablePeak();
+      dit.  mergePeak();
+      a_loads = dit.getPeak();
+    }
+
   a_boxes = dit.getBoxes();
 
 }
@@ -128,10 +150,10 @@ resetLoadOrderEBAMRG(Vector<unsigned long long>&   a_loads,
 }
 ///////////////
 int
-EBAMRGLoadBalance(Vector<int>&         a_procs,
-                  const Vector<Box>&   a_boxes,
-                  const ProblemDomain& a_domain,
-                  bool a_verbose)
+EBAMRGLoadBalanceTime(Vector<int>&         a_procs,
+                      const Vector<Box>&   a_boxes,
+                      const ProblemDomain& a_domain,
+                      bool a_verbose)
 {
 #ifndef CH_MPI
   a_procs.resize(a_boxes.size(),0);
@@ -152,7 +174,53 @@ EBAMRGLoadBalance(Vector<int>&         a_procs,
 
   Vector<unsigned long long> loads;
   Vector<Box>  boxes;
-  getEBAMRGLoadsAndBoxes(loads, boxes, dblOrig, a_domain);
+  getEBAMRGLoadsAndBoxes(loads, boxes, dblOrig, a_domain, true);
+
+  resetLoadOrderEBAMRG(loads, boxes, inBoxes);
+  if (a_verbose)
+    {
+      pout() << "EBAMRGLoadBalance loads:" << endl;
+      for (int ibox = 0; ibox < a_boxes.size(); ibox++)
+        {
+          pout()
+            << "   box[" << ibox << "]=" <<   a_boxes[ibox]
+            << ", load[" << ibox << "]=" <<     loads[ibox] << endl;
+        }
+    }
+  //do the load balance with our EB load estimates and the original a_boxes vector
+  retval = UnLongLongLoadBalance(a_procs,  loads, a_boxes);
+#endif
+
+  return retval;
+}
+
+///////////////
+int
+EBAMRGLoadBalancePeak(Vector<int>&         a_procs,
+                      const Vector<Box>&   a_boxes,
+                      const ProblemDomain& a_domain,
+                      bool a_verbose)
+{
+#ifndef CH_MPI
+  a_procs.resize(a_boxes.size(),0);
+  int retval=0;
+#else
+  //first load balance the conventional way.
+  Vector<Box> inBoxes = a_boxes;
+  Vector<int> origProcs;
+  int retval=LoadBalance(origProcs, inBoxes);
+  a_procs = origProcs;
+
+  //we shall make fully covered boxes = constant load = covered load
+  //we shall say that irregular points get irregular factor more load than
+  //regular points.
+  //compute a load for each box.   by evaluating the poisson operator
+  //use one scratch space for everything
+  DisjointBoxLayout dblOrig(inBoxes, origProcs, a_domain);
+
+  Vector<unsigned long long> loads;
+  Vector<Box>  boxes;
+  getEBAMRGLoadsAndBoxes(loads, boxes, dblOrig, a_domain, false);
 
   resetLoadOrderEBAMRG(loads, boxes, inBoxes);
   if (a_verbose)

@@ -1,15 +1,15 @@
 #ifdef CH_LANG_CC
 /*
-*      _______              __
-*     / ___/ /  ___  __ _  / /  ___
-*    / /__/ _ \/ _ \/  V \/ _ \/ _ \
-*    \___/_//_/\___/_/_/_/_.__/\___/
-*    Please refer to Copyright.txt, in Chombo's root directory.
-*/
+ *      _______              __
+ *     / ___/ /  ___  __ _  / /  ___
+ *    / /__/ _ \/ _ \/  V \/ _ \/ _ \
+ *    \___/_//_/\___/_/_/_/_.__/\___/
+ *    Please refer to Copyright.txt, in Chombo's root directory.
+ */
 #endif
 
-#ifndef _GODUNOVGEOM__
-#define _GODUNOVGEOM__
+#ifndef _GODUNOVGEOM_H_
+#define _GODUNOVGEOM_H_
 
 #include <cmath>
 
@@ -19,9 +19,8 @@
 #include "EBAMRCNSFactory.H"
 #include "UnionIF.H"
 #include "AMR.H"
-#include "EBCNSVortexIBC.H"
+#include "SmoothUnion.H"
 #include "EBAMRCNSParams.H"
-#include "EBCNSVortexIBC.H"
 #include "EBAMRCNSFactory.H"
 
 #include "NamespaceHeader.H"
@@ -54,6 +53,8 @@ extern "C"
              const EBISBox&    a_ebisBox,
              const RealVect&   a_cylinderAxis,
              const Real& a_dx);
+
+  extern string convertIntGG(int number);
 
   extern void
   getNormMinTrueNormDotAxis(BaseIVFAB<Real>&  a_error,
@@ -97,10 +98,6 @@ godunovFixedGrids(Vector<Vector<Box> >& a_amrGrids,
 
 
 extern void
-getVortexIBCFactory(RefCountedPtr<EBCNSVortexIBCFactory>&  a_ibc,
-                    const RealVect& a_center, const Real& a_radius);
-
-extern void
 getBoxes(Vector<Vector<Box> >&   a_boxes,
          Vector<int>&            a_refRat,
          const Box&              a_domain);
@@ -111,23 +108,6 @@ coarsenBoxes(Vector< Vector<Box>      >&    a_boxesCoar,
              const Vector<Vector<Box> >&    a_boxesFine,
              int a_refToCoar);
 
-///
-extern void
-schlichtingGeometry(Box& a_coarsestDomain,
-                    RealVect& a_dx);
-///
-/**
-**/
-extern void
-getEBPPFactoryXY(RefCountedPtr<EBPatchPolytropicFactory>&  a_patchGamma,
-                 const  EBPhysIBCFactory*  const           a_ibc);
-
-///
-/**
- **/
-extern void
-getEBAMRGFactory(RefCountedPtr<EBAMRGodunovFactory>&       a_fact,
-                 const  EBPatchPolytropicFactory*  const   a_patch);
 ///
 /**
  **/
@@ -141,15 +121,8 @@ godunovGeometry(Box& a_coarsestDomain,
 extern UnionIF*
 makeCrossSection(const Vector<Vector<RealVect> >& a_polygons);
 
-///
-/**
- **/
-extern void
-getEBAMRCNSFactory(RefCountedPtr<EBAMRCNSFactory>&                  a_fact,
-                   EBAMRCNSParams&                                  a_params,
-                   const RefCountedPtr<EBPatchPolytropicFactory>&   a_patch,
-                   int a_iprob,
-                   Real a_reynoldsNumber = -1);
+extern SmoothUnion*
+makeSmoothCrossSection(const Vector<Vector<RealVect> >& a_polygons, const Real& a_delta);
 
 ///
 /**

@@ -7,6 +7,7 @@
  *    Please refer to Copyright.txt, in Chombo's root directory.
  */
 #endif
+
 #include <iostream>
 #include <fstream>
 #include <stdio.h>
@@ -18,7 +19,7 @@
 #include "ParmParse.H"
 #include "Vector.H"
 #include "BRMeshRefine.H"
-
+#include "CH_HDF5.H"
 #include "EBAMRIO.H"
 #include "EBIndexSpace.H"
 #include "SlabService.H"
@@ -675,6 +676,31 @@ AMRINSGeometry(const AMRParameters&   a_params,
       origin[idir] = originVect[idir];
     }
 
+  bool  memory_balance_geometry = true;
+  pp.query("memory_balance_geometry", memory_balance_geometry);
+  if(memory_balance_geometry)
+    {
+      pout() << "load balancing EBIndexSpace based upon memory"<< endl;
+      EBIndexSpace::s_useMemoryLoadBalance = true;
+    }
+  else
+    {
+      pout() << "EBIndexSpace does standard load balancing" << endl;
+      EBIndexSpace::s_useMemoryLoadBalance = false;
+    }
+  bool  use_recursive_boxes = false;
+  pp.query("use_recursive_boxes",use_recursive_boxes );
+  if(use_recursive_boxes)
+    {
+      pout() << "EBISLevel using fancy recursive boxes" << endl;
+      EBISLevel::s_recursive = true;
+    }
+  else
+    {
+      pout() << "EBISLevel using fancy domainSplit boxes" << endl;
+      EBISLevel::s_recursive = false;
+    }
+
   int whichgeom;
   if (a_whichGeomForced < 0)
     {
@@ -730,6 +756,578 @@ AMRINSGeometry(const AMRParameters&   a_params,
           GeometryShop workshop(ramp,verbosity,vectDx);
           //this generates the new EBIS
           a_ebisPtr->define(finestDomain, origin, fineDx, workshop, ebMaxSize);
+        }
+      else if (whichgeom == 25)
+        { 
+          pout() << "Channel with non-overlapping spheres" << endl;
+      
+          bool     insideRegular;
+          Real     sphMinRadius;
+          Real     sphMaxRadius;
+          RealVect cylDirection;
+          RealVect cylPoint;
+          Real     cylRadius;
+          RealVect cylCenter;
+          RealVect cylAxis;
+          int      sphNumber;
+
+          bool useDomainBoundary = false;
+          pp.query("useDomainBoundary",useDomainBoundary);
+
+          int packingType = 1;
+          pp.query("packingType",packingType);
+
+          Vector<Real> vectorDirection;
+          pp.getarr("cylDirection",vectorDirection,0,SpaceDim);
+
+          for (int idir = 0; idir < SpaceDim; idir++)
+            {
+              cylDirection[idir] = vectorDirection[idir];
+            }
+
+          Vector<Real> vectorPoint;
+          pp.getarr("cylPoint",vectorPoint,0,SpaceDim);
+
+          for (int idir = 0; idir < SpaceDim; idir++)
+            {
+              cylPoint[idir] = vectorPoint[idir];
+            }
+
+          pp.get("cylRadius",cylRadius);
+
+          pp.get("sphNumber",sphNumber);
+
+          MAXHEIGHT* sortedList = new MAXHEIGHT[sphNumber];
+
+          pp.get("sphMinRadius",sphMinRadius);
+          pp.get("sphMaxRadius",sphMaxRadius);
+
+          // Parm Parse doesn't get bools, so work-around with int
+          int intInsideRegular;
+          pp.get("insideRegular",intInsideRegular);
+
+          Real minDistCyl;
+          pp.get("minDistCyl",minDistCyl);
+
+          Real minDistSph;
+          pp.get("minDistSph",minDistSph);
+
+          int numPackingZones = 1;
+          pp.query("numPackingZones",numPackingZones);
+          Vector<Real>     minDistSph1(numPackingZones);
+          Vector<Real>     sphMinRadius1(numPackingZones);
+          Vector<Real>     sphMaxRadius1(numPackingZones);
+          Vector<RealVect> cutting_plane(numPackingZones);
+          minDistSph1[0] = minDistSph;
+          sphMinRadius1[0] = sphMinRadius;
+          sphMaxRadius1[0] = sphMaxRadius;
+          cutting_plane[0] = origin;
+
+          // Real     minDistSph1 = minDistSph;
+          // Real     sphMinRadius1 = sphMinRadius;
+          // Real     sphMaxRadius1 = sphMaxRadius;
+          for(int izone=1; izone<numPackingZones; izone++)
+            {
+              char minDistSphString[80];
+              char sphMinRadString[80];
+              char sphMaxRadString[80];
+              sprintf(minDistSphString, "minDistSph_%d", izone);
+              sprintf(sphMinRadString, "sphMinRadius_%d", izone);
+              sprintf(sphMaxRadString, "sphMaxRadius_%d", izone);
+              // pp.query("minDistSph_1",minDistSph1);
+              // pp.get("sphMinRadius_1",sphMinRadius1);
+              // pp.get("sphMaxRadius_1",sphMaxRadius1);
+              pp.query(minDistSphString,minDistSph1[izone]);
+              pp.get(sphMinRadString,sphMinRadius1[izone]);
+              pp.get(sphMaxRadString,sphMaxRadius1[izone]);
+
+              Vector<Real> zone_plane(SpaceDim,1.0);
+              char planeString[80];
+              sprintf(planeString, "plane_%d", izone);
+              // pp.getarr("plane_1",zone_plane,0,SpaceDim);
+              pp.getarr(planeString,zone_plane,0,SpaceDim);
+
+              for (int idir = 0; idir < SpaceDim; idir++)
+                {
+                  cutting_plane[izone][idir] = zone_plane[idir];
+                }
+            }
+
+          Real minDistInlet;
+          pp.get("minDistInlet",minDistInlet);
+
+          Real minDistOutlet;
+          pp.get("minDistOutlet",minDistOutlet);
+
+          double maxDrops;
+          pp.get("maxDrops",maxDrops);
+
+          double maxTries = sphNumber * maxDrops;
+
+          if (intInsideRegular != 0) insideRegular = true;
+          if (intInsideRegular == 0) insideRegular = false;
+
+          // Stay inside until the end
+          bool inside = true;
+
+          Vector<int> n_cell(SpaceDim);
+          pp.getarr("n_cell",n_cell,0,SpaceDim);
+
+          Vector<Real> prob_lo(SpaceDim,1.0);
+          
+          pp.getarr("origin",prob_lo,0,SpaceDim);
+
+          Vector<Real> domain_length(SpaceDim,1.0);
+          pp.getarr("domain_length",domain_length,0,SpaceDim);
+
+          RealVect domainLengthVect;
+
+          for (int idir = 0; idir < SpaceDim; idir++)
+            {
+              // domainLengthVect[idir] = n_cell[idir] * fineDx;
+              domainLengthVect[idir] = domain_length[idir];
+              origin[idir] = prob_lo[idir];
+            }
+
+          Vector<RealVect> centerArray(sphNumber);
+          Vector<Real>     radiusArray(sphNumber);
+
+          int randSeed;
+          pp.get("randSeed",randSeed);
+
+          srand48(randSeed);
+
+          // Place random spheres inside the cylinder
+          int packed = 0;
+          double count = 0;
+
+          RealVect curDirection = cylDirection;
+
+          if (curDirection.dotProduct(BASISREALV(0)) > 0)
+          {
+            curDirection = -curDirection;
+          }
+
+          curDirection /= curDirection.vectorLength();
+
+          Real a = curDirection.dotProduct(curDirection);
+
+          while (packed < sphNumber && count < maxTries)
+            {
+              if (packingType == 1)
+                {
+                  RealVect& center = centerArray[packed];
+                  Real&     radius = radiusArray[packed];
+                  
+                  // Get a random center and radius for a sphere
+                  for (int idir = 0; idir < SpaceDim; idir++)
+                    {
+                      center[idir] = domainLengthVect[idir]*drand48() + origin[idir];
+                    }
+                  
+                  radius = (sphMaxRadius - sphMinRadius)*drand48() + sphMinRadius;
+                  if(numPackingZones > 1)
+                    {
+                      for(int izone=1; izone<numPackingZones; izone++)
+                        {
+                          if(center[1] > cutting_plane[izone][1])
+                            {
+                              radius = (sphMaxRadius1[izone] - sphMinRadius1[izone])*drand48() + sphMinRadius1[izone];
+                            }
+                        }
+                    }
+                  
+                  bool isOkay = true;
+                  
+                  // Get the distance from the center of the sphere to the axis of the
+                  // cylinder
+                  Real dist = getDistance(center,cylDirection,cylPoint);
+                  
+                  // If the sphere is inside cylinder, use it
+                  if (dist + radius > cylRadius - minDistCyl)
+                    {
+                      isOkay = false;
+                    }
+                  
+                  // Check against x domain boundaries
+                  if (center[0] - radius - minDistInlet < origin[0])
+                    {
+                      isOkay = false;
+                    }
+                  
+                  if (center[0] + radius + minDistOutlet > origin[0] + domainLengthVect[0])
+                    {
+                      isOkay = false;
+                    }
+                  
+                  if (isOkay)
+                    {
+                      Real minDistSphIsOkay = minDistSph;
+                      if(numPackingZones > 1)
+                        {
+                          for(int izone=1; izone<numPackingZones; izone++)
+                            {
+                              if(center[1] > cutting_plane[izone][1])
+                                {
+                                  minDistSphIsOkay = minDistSph1[izone];
+                                }
+                            }
+                        }
+                      
+                      // Check if this overlaps another sphere
+                      for (int i = 0; i < packed; i++)
+                        {
+                          RealVect diff = center;
+                          diff -= centerArray[i];
+                          
+                          Real dist = diff.vectorLength();
+                          
+                          if (dist <= radius + radiusArray[i] + minDistSphIsOkay)
+                            {
+                              isOkay = false;
+                              break;
+                            }
+                          
+                        }
+                    }
+                  
+                  if (isOkay)
+                    {
+                      packed++;
+                    }
+                  
+                  count++;
+                }
+              else if (packingType == 2)
+#if 1
+                {
+                  RealVect& bestCenter = centerArray[packed];
+                  Real&     bestRadius = radiusArray[packed];
+                  bool      bestOkay = false;
+                  
+                  // Get a random radius for a sphere
+                  Real radius;
+                  radius = (sphMaxRadius - sphMinRadius)*drand48() + sphMinRadius;
+                  
+                  for (double tries = 0; tries < maxDrops; tries++)
+                    {
+                      RealVect center;
+                      center[0] = 2*domainLengthVect[0] + origin[0];
+                      
+                      // Get a random center the sphere
+                      for (int idir = 1; idir < SpaceDim; idir++)
+                        {
+                          center[idir] = domainLengthVect[idir]*drand48() + origin[idir];
+                        }
+
+                      Real minDistSphPerDrop = minDistSph;
+                      if(numPackingZones > 1)
+                        {
+                          for(int izone=1; izone<numPackingZones; izone++)
+                            {
+                               if(center[1] > cutting_plane[izone][1])
+                                {
+                                  radius = (sphMaxRadius1[izone] - sphMinRadius1[izone])*drand48() + sphMinRadius1[izone];
+                                  minDistSphPerDrop = minDistSph1[izone];
+                                }
+                            }
+                        }
+                      
+                      bool isOkay = true;
+                      
+                      // Get the distance from the center of the sphere to the axis of the
+                      // cylinder
+                      Real dist = getDistance(center,cylDirection,cylPoint);
+                      
+                      // If the sphere is inside cylinder, use it
+                      if (dist + radius > cylRadius - minDistCyl)
+                        {
+                          isOkay = false;
+                        }
+                      
+                      if (isOkay)
+                        {
+                          Real minS = 0;
+                          bool foundMin = false;
+                          Real minCenterX = origin[0];
+                          
+                          // Compute the minimum distance it can "fall"
+                          for (int i = packed-1; i >= 0; i--)
+                            {
+                              if (foundMin && (sortedList[i].max < (minCenterX - radius - minDistSphPerDrop)))
+                                {
+                                  break;
+                                }
+                              
+                              RealVect& curCenter = centerArray[sortedList[i].index];
+                              Real&     curRadius = radiusArray[sortedList[i].index];
+                              
+                              RealVect diff = center;
+                              diff -= curCenter;
+                              
+                              dist = radius + curRadius + minDistSphPerDrop;
+                              
+                              Real b = 2*curDirection.dotProduct(diff);
+                              Real c = diff.dotProduct(diff) - dist*dist;
+                              
+                              Real discrim = b*b - 4*a*c;
+                              
+                              if (discrim > 0)
+                                {
+                                  Real s1 = (-b - sqrt(discrim))/(2*a);
+                                  
+                                  if (s1 > 0 && (!foundMin || s1 < minS))
+                                    {
+                                      minS = s1;
+                                      foundMin = true;
+                                      minCenterX = center[0] + minS * curDirection[0];
+                                    }
+                                }
+                            }
+                          
+                          if (!foundMin)
+                            {
+                              minS = (origin[0] + radius + minDistInlet - center[0]) / curDirection[0];
+                              minCenterX = center[0] + minS * curDirection[0];
+                            }
+                          
+                          center += minS * curDirection;
+                        }
+                      
+                      // Check against high x domain boundary
+                      if (center[0] + radius + minDistOutlet > origin[0] + domainLengthVect[0])
+                        {
+                          isOkay = false;
+                        }
+                      
+                      if (isOkay)
+                        {
+                          if (bestOkay)
+                            {
+                              if (center[0] < bestCenter[0])
+                                {
+                                  bestCenter = center;
+                                  bestRadius = radius;
+                                }
+                            }
+                          else
+                            {
+                              bestCenter = center;
+                              bestRadius = radius;
+                              
+                              bestOkay   = true;
+                            }
+                        }
+                      
+                      count++;
+                    }
+                  
+                  if (bestOkay)
+                    {
+                      sortedList[packed].index = packed;
+                      sortedList[packed].max   = centerArray[packed][0] + radiusArray[packed];
+                      
+                      packed++;
+                      
+                      qsort(sortedList,packed,sizeof(sortedList[0]),compMax);
+                    }
+                }
+#else
+              {
+                RealVect& bestCenter = centerArray[packed];
+                Real&     bestRadius = radiusArray[packed];
+                bool      bestOkay = false;
+                
+                for (int tries = 0; tries < maxDrops; tries++)
+                  {
+                    RealVect center;
+                    Real     radius;
+                    
+                    center[0] = 2*domainLengthVect[0] + origin[0];
+                    
+                    // Get a random center and radius for a sphere
+                    for (int idir = 1; idir < SpaceDim; idir++)
+                      {
+                        center[idir] = domainLengthVect[idir]*drand48() + origin[idir];
+                      }
+                    
+                    radius = (sphMaxRadius - sphMinRadius)*drand48() + sphMinRadius;
+                    
+                    bool isOkay = true;
+                    
+                    // Get the distance from the center of the sphere to the axis of the
+                    // cylinder
+                    Real dist = getDistance(center,cylDirection,cylPoint);
+                    
+                    // If the sphere is inside cylinder, use it
+                    if (dist + radius > cylRadius - minDistCyl)
+                      {
+                        isOkay = false;
+                      }
+                    
+                    if (isOkay)
+                      {
+                        RealVect curDirection = cylDirection;
+                        
+                        if (curDirection.dotProduct(BASISREALV(0)) > 0)
+                          {
+                            curDirection = -curDirection;
+                          }
+                        
+                        Real minS = 0;
+                        bool foundMin = false;
+                        
+                        // Compute the minimum distance it can "fall"
+                        for (int i = 0; i < packed; i++)
+                          {
+                            RealVect diff = center;
+                            diff -= centerArray[i];
+                            
+                            dist = radius + radiusArray[i] + minDistSphPerDrop;
+                            
+                            Real a = curDirection.dotProduct(curDirection);
+                            Real b = 2*curDirection.dotProduct(diff);
+                            Real c = diff.dotProduct(diff) - dist*dist;
+                            
+                            Real discrim = b*b - 4*a*c;
+                            
+                            if (discrim > 0)
+                              {
+                                Real s1 = (-b - sqrt(discrim))/(2*a);
+                                
+                                if (s1 > 0 && (!foundMin || s1 < minS))
+                                  {
+                                    minS = s1;
+                                    foundMin = true;
+                                  }
+                              }
+                          }
+                        
+                        if (!foundMin)
+                          {
+                            minS = (origin[0] + radius + minDistInlet - center[0]) / curDirection[0];
+                          }
+                        
+                        center += minS * curDirection / curDirection.vectorLength();
+                      }
+                    
+                    // Check against high x domain boundary
+                    if (center[0] + radius + minDistOutlet > origin[0] + domainLengthVect[0])
+                      {
+                        isOkay = false;
+                      }
+                    
+                    if (isOkay)
+                      {
+                        if (bestOkay)
+                          {
+                            if (center[0] < bestCenter[0])
+                              {
+                                bestCenter = center;
+                                bestRadius = radius;
+                              }
+                          }
+                        else
+                          {
+                            bestCenter = center;
+                            bestRadius = radius;
+                            
+                            bestOkay   = true;
+                          }
+                      }
+                    
+                    count++;
+                  }
+                
+                if (bestOkay)
+                  {
+                    packed++;
+                  }
+              }
+#endif
+              else
+                {
+                  MayDay::Abort("Unknown packing type");
+                }
+              
+              if (remainder(count,1000000) == 0)
+                {
+                  pout() << "Tried " << count
+                         << ", packed " << packed
+                         << ", " << sphNumber-packed << " left"
+                         << endl;
+                }
+            }
+          pout() << "Packed " << packed << " spheres" << endl;
+          
+          
+          if (packed > 0)
+            {
+              // The vector of spheres
+              Vector<BaseIF*> spheres(packed);
+              
+              for (int i = 0; i < packed; i++)
+                {
+                  spheres[i] = new SphereIF(radiusArray[i],centerArray[i],inside);
+                }
+
+              // Take the union of the insides of the spheres
+              UnionIF insideSpheres(spheres);
+
+              // Complement to get the outside of the spheres
+              ComplementIF outsideSpheres(insideSpheres,true);
+
+              // Define the cylinder
+              TiltedCylinderIF cylinder(cylRadius,cylDirection,cylPoint,inside);
+          
+              // Intersect the inside of the cylinder with the outside of the spheres
+              IntersectionIF implicit(cylinder,outsideSpheres);
+          
+              // Complement if necessary
+              ComplementIF finalIF(implicit,!insideRegular);
+
+              Vector<Real> spheresTransVect(SpaceDim, 0.0);
+              pp.queryarr("spheres_translate", spheresTransVect, 0, SpaceDim);
+              RealVect spheresTranslate;
+          
+              for (int idir = 0; idir < SpaceDim; idir++)
+                {
+                  spheresTranslate[idir] = spheresTransVect[idir];
+                }
+
+              TransformIF finalIFT(finalIF);
+              finalIFT.translate(spheresTranslate);
+          
+              RealVect vectDx = RealVect::Unit;
+              vectDx *= fineDx;
+              if(useDomainBoundary)
+                {
+                  GeometryShop workshop(outsideSpheres,verbosity,vectDx);
+
+                  // This generates the new EBIS
+                  a_ebisPtr->define(finestDomain, origin, fineDx, workshop, ebMaxSize, ebMaxCoarsen);
+                }
+              else
+                {
+                  GeometryShop workshop(finalIFT,verbosity,vectDx);
+              
+                  // This generates the new EBIS
+                  a_ebisPtr->define(finestDomain, origin, fineDx, workshop, ebMaxSize, ebMaxCoarsen);
+                }
+            }
+          else if (sphNumber == 0) // just no spheres
+            {
+              // Define the cylinder
+              TiltedCylinderIF cylinder(cylRadius,cylDirection,cylPoint,inside);
+              
+              RealVect vectDx = RealVect::Unit;
+              vectDx *= fineDx;
+              GeometryShop workshop(cylinder,verbosity,vectDx);
+              // This generates the new EBIS
+              a_ebisPtr->define(finestDomain, origin, fineDx, workshop, ebMaxSize, ebMaxCoarsen);
+            }
+
+          delete [] sortedList;
         }
       else if (whichgeom == 2)
         {
@@ -2786,6 +3384,14 @@ AMRINSGeometry(const AMRParameters&   a_params,
       handleIn.close();
 #endif
     }
+#ifdef CH_USE_HDF5
+  std::string ebis_out_file("eb.hdf5");
+  pp.query("ebis_out_file", ebis_out_file);
+  HDF5Handle geomHandle(ebis_out_file, HDF5Handle::CREATE);
+  pout() << "outputting EBIS to file " << ebis_out_file << endl;
+  a_ebisPtr->write(geomHandle);
+  geomHandle.close();
+#endif
 }
 
 BaseIF* makeChamber(const Real& radius,

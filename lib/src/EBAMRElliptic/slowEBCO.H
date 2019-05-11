@@ -27,7 +27,7 @@
 
 #include "EBLevelDataOps.H"
 #include "BaseEBBC.H"
-#include "BaseDomainBC.H"
+#include "ConductivityBaseDomainBC.H"
 #include "CFIVS.H"
 #include "EBFluxRegister.H"
 #include "EBFastFR.H"
@@ -443,7 +443,8 @@ protected:
   EBMGInterp                     m_ebInterp;
 
   //stencils for operator evaluation
-  LayoutData<RefCountedPtr<EBStencil> >  m_opEBStencil;
+  //LayoutData<RefCountedPtr<EBStencil> >  m_opEBStencil;
+  LayoutData<BaseIVFAB<VoFStencil> >  m_opStencil;
   //stencils for operator evaluation on gauss-seidel colors
   LevelData<EBCellFAB>       m_relCoef;
 

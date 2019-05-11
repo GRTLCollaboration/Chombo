@@ -35,6 +35,6 @@ C    Please refer to Copyright.txt, in Chombo's root directory.
          chf_enddo
 
       enddo
-
+      ch_flops=ch_flops+CHF_POINTS[dcalc]*3*nconserved
       return
       end

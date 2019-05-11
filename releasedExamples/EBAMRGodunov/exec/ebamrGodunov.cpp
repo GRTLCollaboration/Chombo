@@ -45,6 +45,7 @@
 #include "EBDebugDump.H"
 #include "EBFABView.H"
 #include "memtrack.H"
+#include "memusage.H"
 #include "GodunovGeom.H"
 #include "CH_Attach.H"
 #include "EBAMRGLoadBalance.H"
@@ -105,6 +106,7 @@ main(int a_argc, char* a_argv[])
 
   amrGodunov(coarsestDomain, dx);
   }
+ Chombo_EBIS::instance()->clear();
 #ifdef CH_MPI
   CH_TIMER_REPORT();
   dumpmemoryatexit();
@@ -259,16 +261,26 @@ void amrGodunov(const Box&      a_domain,
                                 hasSourceTerm,
                                 &patchGamma);
 
-  bool useTimedLoadBalance = false;
+  bool useTimedLoadBalance  = false;
+  bool useMemoryLoadBalance = false;
   ppgodunov.query("use_timed_load_balance", useTimedLoadBalance);
+  ppgodunov.query("use_memory_load_balance", useMemoryLoadBalance);
+  //cannot use both
+  CH_assert((!useTimedLoadBalance)  || (!useMemoryLoadBalance) );
   if (useTimedLoadBalance)
     {
       pout() << "using timed load balance"  << endl;
-      EBAMRGodunov::setLoadBalance(EBAMRGLoadBalance);
+      EBAMRGodunov::setLoadBalance(EBAMRGLoadBalanceTime);
     }
-
+  if (useMemoryLoadBalance)
+    {
+      pout() << "using memory based load balance"  << endl;
+      EBAMRGodunov::setLoadBalance(EBAMRGLoadBalancePeak);
+    }
+  print_memory_line("before AMR define");
   AMR amr;
   amr.define(max_level,ref_ratios,prob_domain,&amrg_fact);
+  print_memory_line("after AMR define");
 
   if (fixed_dt > 0)
     {
@@ -352,7 +364,9 @@ void amrGodunov(const Box&      a_domain,
 #ifdef CH_USE_HDF5
       HDF5Handle handle(restart_file,HDF5Handle::OPEN_RDONLY);
       // read from checkpoint file
+      print_memory_line("before restart");
       amr.setupForRestart(handle);
+      print_memory_line("after restart");
       handle.close();
 #else
       MayDay::Error("amrGodunov restart only defined with hdf5");
@@ -360,7 +374,9 @@ void amrGodunov(const Box&      a_domain,
     }
 
   // run
+  print_memory_line("before AMR run");
   amr.run(stopTime,nstop);
+  print_memory_line("after AMR run");
 
   // output last pltfile and statistics
   //cleanup

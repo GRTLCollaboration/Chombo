@@ -16,7 +16,7 @@
 #include "EBAMRDataOps.H"
 #include "FaceIterator.H"
 #include "MACProjectorF_F.H"
-
+#include "ParmParse.H"
 #include "NamespaceHeader.H"
 
 /*********/
@@ -149,6 +149,23 @@ setSolverParams(int  a_numSmooths,
                                a_normThresh);
 
   m_solver.m_verbosity = a_verbosity;
+  //sometimes you want a minimum number of solver iterations
+
+  ParmParse pp;
+  if(pp.contains("mg_iter_min"))
+    {
+      int itermin = -1;      
+      pp.query("mg_iter_min", itermin);
+      m_solver.m_iterMin = itermin;
+      pout() << "setting minimum projectionsolver iterations to " << itermin << endl;
+    }
+  if(pp.contains("mg_iter_max"))
+    {
+      int itermax = 10;
+      pp.query("mg_iter_max", itermax);
+      m_solver.m_iterMax = itermax;
+      pout() << "setting maximum projectionsolver iterations to " << itermax << endl;
+    }
 
   if (m_bottomSolverType==0)
     {
@@ -487,6 +504,7 @@ correctVelocityComponent(Vector<LevelData<EBFluxFAB>* >&       a_velocity,
       CH_assert(a_velocity[ilev]->nComp() == 1);
 
       a_gradient[ilev]->exchange(Interval(0,0));
+      int ibox = 0;
       for (DataIterator dit = m_eblg[ilev].getDBL().dataIterator(); dit.ok(); ++dit)
         {
           //same comp (a_icomp) of velocity on every face.
@@ -495,6 +513,14 @@ correctVelocityComponent(Vector<LevelData<EBFluxFAB>* >&       a_velocity,
           const EBFaceFAB& gradFAB = (*a_gradient[ilev])[dit()][a_icomp];
           for (int idir = 0; idir < SpaceDim; idir++)
             {
+              //debug
+              int ifnerg = 0;
+              if(((ilev == 2) && ibox == 7) && (idir ==1 ))
+                {
+                  ifnerg = 1;
+                }
+              //end debug
+
               EBFaceFAB& velFAB = (*a_velocity[ilev])[dit()][idir];
               if (idir == a_icomp)
                 {
@@ -506,8 +532,10 @@ correctVelocityComponent(Vector<LevelData<EBFluxFAB>* >&       a_velocity,
                                             m_eblg[ilev].getDBL().get(dit()),
                                             m_eblg[ilev].getEBISL()[dit()],
                                             (*m_eblg[ilev].getCFIVS())[dit()]);
+                  ifnerg++;
                 }
             }
+          ibox++;
         }
       a_velocity[ilev]->exchange();
     }
@@ -560,13 +588,23 @@ correctTangentialVelocity(EBFaceFAB&        a_velocity,
   IntVectSet ivsGrid(a_grid);
   ivsGrid -= interiorBox;
   ivsGrid |= ivsIrreg;
+  IntVect ivdeblo(D_DECL(16, 111, 0));
+  IntVect ivdebhi(D_DECL(16, 112, 0));
+  VolIndex vofdeblo(ivdeblo, 0);
+  VolIndex vofdebhi(ivdebhi, 0);
+  FaceIndex debface(vofdeblo, vofdebhi);
   FaceIterator faceit(ivsGrid, a_ebisBox.getEBGraph(), velDir, FaceStop::SurroundingWithBoundary);
+  int ihere = 0;
   for (faceit.reset(); faceit.ok(); ++faceit)
     {
       //average neighboring grads in grad dir direction
       int numGrads = 0;
       Real gradAve = 0.0;
       const FaceIndex& velFace = faceit();
+      if(velFace == debface)
+        {
+          ihere = 1;
+        }
       for (SideIterator sitVel; sitVel.ok(); ++sitVel)
         {
           const VolIndex& vofSide = velFace.getVoF(sitVel());
@@ -655,6 +693,104 @@ gradient(Vector<LevelData<EBFluxFAB>* >&       a_grad,
       macGradient(*a_grad[ilev],  *a_phi[ilev],
                   m_eblg[ilev].getDBL(), m_eblg[ilev].getEBISL(),
                   m_eblg[ilev].getDomain(),   m_dx[ilev]);
+      //for tangential velocities, the mac gradient needs to be filled
+      //one cell over the coarse-fine interface
+      if (ilev>0)
+        {
+          fillCoarseFineTangentialGradient(*a_grad[ilev],  m_eblg[ilev]);
+        }
+    }
+}
+/***/
+//for tangential velocities, the mac gradient needs to be filled
+//one cell over the coarse-fine interface
+void
+EBCompositeMACProjector::
+fillCoarseFineTangentialGradient(LevelData<EBFluxFAB>& a_grad, 
+                                 const EBLevelGrid   & a_eblg)
+{
+  const LayoutData<IntVectSet> &  ldivs = *(a_eblg.getCFIVS());
+
+  IntVect ghostVect = a_grad.ghostVect();
+  for(int velFaceDir = 0; velFaceDir < SpaceDim; velFaceDir++)
+    {
+      if(ghostVect[velFaceDir] < 1)
+        {
+          MayDay::Error("gradient has no ghost cells");
+        }
+    }
+  for(DataIterator dit = a_eblg.getDBL().dataIterator(); dit.ok(); ++dit)
+    {
+      const Box       & grid    = a_eblg.getDBL()[dit()];
+      const IntVectSet& ivs     = ldivs[dit()];
+      const EBGraph   & ebgraph = a_eblg.getEBISL()[dit()].getEBGraph();
+      if(!ivs.isEmpty())
+        {
+          fillCoarseFineTangentialGradient(a_grad[dit()], grid, ivs, ebgraph);
+        }
+    }
+}
+/***/
+//for tangential velocities, the mac gradient needs to be filled
+//one cell over the coarse-fine interface
+void
+EBCompositeMACProjector::
+fillCoarseFineTangentialGradient(EBFluxFAB           & a_grad, 
+                                 const Box           & a_grid, 
+                                 const IntVectSet    & a_ivs,
+                                 const EBGraph       & a_ebgraph)
+{
+  CH_assert(a_grad.nComp() == 1);
+  for(int velFaceDir = 0; velFaceDir < SpaceDim; velFaceDir++)
+    {
+      for(int gridDir = 0; gridDir < SpaceDim; gridDir++)
+        {
+          //remember that this is only for tangential velocities
+          //the normal velocities are already correct.
+          if(gridDir != velFaceDir)
+            {
+              for(SideIterator sit; sit.ok(); ++sit)
+                {
+                  Box boxFlap;
+                  if(sit() == Side::Lo)
+                    {   
+                      boxFlap = adjCellLo(a_grid, gridDir,  1);
+                    }
+                  else
+                    {
+                      boxFlap = adjCellHi(a_grid, gridDir,  1);
+                    }
+
+                  int isign = sign(sit());
+                  IntVectSet ivsFlap = a_ivs;
+                  ivsFlap &= boxFlap;
+                  if(!ivsFlap.isEmpty())
+                    {
+                      
+                      FaceIterator faceit(ivsFlap, a_ebgraph, velFaceDir, FaceStop::SurroundingWithBoundary);
+                      for(faceit.reset(); faceit.ok(); ++faceit)
+                        {
+                          //face over coarse-fine interface
+                          const FaceIndex& cfface = faceit();
+                          IntVect cfivlo = cfface.gridIndex(Side::Lo);
+                          IntVect cfivhi = cfface.gridIndex(Side::Hi);
+                          //graph walking is too slow and unnneccessary here as we refine all cut cells.  I will put this
+                          //here to make sure that stays true.
+                          if((!a_ebgraph.isRegular(cfivlo) ||(!a_ebgraph.isRegular(cfivhi))))
+                            {
+                              MayDay::Error("this function not equipped for EB/CF crossing"); 
+                            }
+                          IntVect gridivlo = cfivlo - isign*BASISV(gridDir);
+                          IntVect gridivhi = cfivhi - isign*BASISV(gridDir);
+                          FaceIndex gridface(VolIndex(gridivlo, 0), VolIndex(gridivhi, 0));
+                          //should be true by construction
+                          CH_assert(gridface.direction() == velFaceDir);
+                          a_grad[velFaceDir](cfface, 0) = a_grad[velFaceDir](gridface, 0);
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 /***/

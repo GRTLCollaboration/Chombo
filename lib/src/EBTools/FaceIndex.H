@@ -153,6 +153,14 @@ public:
   // not user functions
   static size_t lo_offset, hi_offset, rest_offset;
   static int initializeOffsets();
+
+  ///for stencil gymnastics
+  void shift(const IntVect& a_iv)
+  {
+    m_loiv += a_iv;
+    m_hiiv += a_iv;
+  }
+
 private:
 
   ///the intvect of the low vof

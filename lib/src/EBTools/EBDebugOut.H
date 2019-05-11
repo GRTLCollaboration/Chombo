@@ -16,6 +16,7 @@
 #include "BoxLayout.H"
 #include "BaseIFFAB.H"
 #include "BaseIVFAB.H"
+#include "MiniIVFAB.H"
 #include "FaceIterator.H"
 #include "Vector.H"
 #include "Box.H"
@@ -40,8 +41,14 @@ class EBFluxFAB;
 //{
 ///
 ///
-void printMaxMinEBFF(EBFluxFAB* a_data);
+void dumpEBLevelGhost(const LevelData<EBCellFAB>* a_level);
 
+void printMaxMinEBFlux(EBFluxFAB* a_data);
+
+void printMaxMinEBFace(EBFaceFAB* a_data);
+
+void checkLDFlux(const LevelData<EBFluxFAB>* a_flux);
+void checkLDCell(const LevelData<EBCellFAB>* a_flux);
 ///
 void printMaxMinEBCF(EBCellFAB* a_data);
 
@@ -126,6 +133,12 @@ void dumpIFFAB(const BaseIFFAB<Real>* a_stenPtr);
    Dump inputs to standard out.  For use inside debuggers.
 */
 void dumpIVFAB(const BaseIVFAB<Real>* a_stenPtr);
+
+///
+/**
+   Dump inputs to standard out.  For use inside debuggers.
+*/
+void dumpIVFAB(const MiniIVFAB<Real>* a_stenPtr);
 
 
 ///

@@ -64,8 +64,8 @@ getFaceVel(Real&                 a_faceFlux,
            const int&            a_idir,
            const int&            a_icomp,
            const Real&           a_time,
-           const Side::LoHiSide& a_side,
-           const bool&           a_doDivFreeOutflow)
+           const Side::LoHiSide& a_side)
+
 {
   int velcomp =  DirichletPoissonEBBC::s_velComp;
   CH_assert(a_vel.nComp() == 1);
@@ -325,8 +325,7 @@ getFaceVel(Real&                 a_faceFlux,
            const int&            a_idir,
            const int&            a_icomp,
            const Real&           a_time,
-           const Side::LoHiSide& a_side,
-           const bool&           a_doDivFreeOutflow)
+           const Side::LoHiSide& a_side)
 {
   MayDay::Error("InflowOutflowHelmholtzDomainBC::getFaceVel is not needed for Helmholtz.");
 }

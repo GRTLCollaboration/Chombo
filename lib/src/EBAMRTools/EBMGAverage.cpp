@@ -125,6 +125,11 @@ EBMGAverage::define(const DisjointBoxLayout& a_dblFine,
       CH_STOP(t1);
     }
 
+  if (m_layoutChanged)
+    {
+      EBCellFactory ebcellfact(m_buffEBISL);
+      m_buffer.define(m_buffGrids, m_nComp, m_ghost, ebcellfact);
+    }
   defineStencils();
 }
 void
@@ -236,7 +241,7 @@ EBMGAverage::average(LevelData<EBCellFAB>&       a_coarData,
                      const LevelData<EBCellFAB>& a_fineData,
                      const Interval&             a_variables)
 {
-  CH_TIMERS("EBMGAverage::average");
+  CH_TIMERS("EBMGAverage::average(level)");
   CH_TIMER("layout_changed_coarsenable", t1);
   CH_TIMER("layout_changed_not_coarsenable", t2);
   CH_TIMER("not_layout_changed", t3);
@@ -250,8 +255,7 @@ EBMGAverage::average(LevelData<EBCellFAB>&       a_coarData,
       if (m_coarsenable)
         {
           CH_START(t1);
-          EBCellFactory ebcellfact(m_buffEBISL);
-          LevelData<EBCellFAB> coarsenedFineData(m_buffGrids, m_nComp, m_ghost, ebcellfact);
+          LevelData<EBCellFAB>& coarsenedFineData  = m_buffer;
           EBLevelDataOps::setVal(coarsenedFineData, 0.0);
 
           for (DataIterator dit = m_fineGrids.dataIterator(); dit.ok(); ++dit)
@@ -268,8 +272,7 @@ EBMGAverage::average(LevelData<EBCellFAB>&       a_coarData,
       else
         {
           CH_START(t2);
-          EBCellFactory ebcellfact(m_buffEBISL);
-          LevelData<EBCellFAB> refinedCoarseData(m_buffGrids, m_nComp, m_ghost, ebcellfact);
+          LevelData<EBCellFAB>& refinedCoarseData = m_buffer;
           EBLevelDataOps::setVal(refinedCoarseData, 0.0);
 
           a_fineData.copyTo(a_variables, refinedCoarseData, a_variables, m_copier);
@@ -321,7 +324,7 @@ EBMGAverage::averageFAB(EBCellFAB&       a_coar,
                         const DataIndex& a_datInd,
                         const Interval&  a_variables) const
 {
-  CH_TIMERS("EBMGAverage::average");
+  CH_TIMERS("EBMGAverage::average(EBCellFAB)");
   CH_TIMER("regular_average", t1);
   CH_TIMER("irregular_average", t2);
   CH_assert(isDefined());

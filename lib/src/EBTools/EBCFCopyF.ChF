@@ -30,6 +30,6 @@ C    Please refer to Copyright.txt, in Chombo's root directory.
             finelevel(chf_ix[iif;jjf;kkf]) = coarval
           chf_enddo
         chf_enddo
-
+        ch_flops=ch_flops+CHF_POINTS[refbox]*CHF_POINTS[coarbox]
         return
         end

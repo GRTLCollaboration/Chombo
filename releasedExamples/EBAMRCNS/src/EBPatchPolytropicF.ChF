@@ -6,8 +6,6 @@ C    Please refer to Copyright.txt, in Chombo's root directory.
 
 #include "EBLGIntegrator.H"
 #include "CONSTANTS.H"
-cccccccccccccccc
-
         subroutine setgammaandsmall(
      &    chf_const_real[augamma])
 
@@ -347,7 +345,7 @@ c     centered (in time and space) u
       primitive(QRHO)  = dense
       primitive(QENTR) = entropy
       primitive(QINTERN) = internal
-      primitive(QCVTEMP) = internal/dense
+      primitive(QCVTEMP) = cvtemp
       primitive(QC)    = soundspeed
       primitive(QPRES) = press
 
@@ -374,7 +372,7 @@ cccccccccccccccc
       dense       = primitive(QRHO)
       entropy     = primitive(QENTR)
       internal    = primitive(QINTERN)
-      internal    = primitive(QCVTEMP)
+      cvtemp      = primitive(QCVTEMP)
       soundspeed  = primitive(QC)
       press       = primitive(QPRES)
 
@@ -438,48 +436,29 @@ cccccccccccccccc
      &     chf_const_int[iverbose]
      &     )
 
-      integer chf_ddecl[i; j; k]
+      integer chf_ddecl[i; j; k], ivec
+      real_t   prim(0:QNUM-1)
+      real_t   cons(0:CNUM-1)
 
       real_t vel, dense, internal, cvtemp, kinetic, press, mgam, msmp
-      integer idir
+      integer idir, qnum, cnum
 
 #include "EBEOSCommon.fh"
 
+      qnum = QNUM-1
+      cnum = CNUM-1
+
       chf_multido[dcalc;i;j;k]
 
-      dense = max(u(chf_ix[i;j;k], CRHO), smallr)
-c     density
-      q(chf_ix[i;j;k], QRHO) = dense
-
-      kinetic = zero
-      do idir = 0, CH_SPACEDIM-1
-c     velocity
-         vel = u(chf_ix[i;j;k], CMOMX+idir)/dense
-         q(chf_ix[i;j;k], QVELX+idir) = vel
-         kinetic = kinetic + half*vel*vel
+      do ivec = 0, CNUM-1
+         cons(ivec) = u(chf_ix[i;j;k], ivec)
       enddo
-      internal = u(chf_ix[i;j;k], CENG)-kinetic*dense
-      cvtemp = internal/dense
-      mgam = gamma
-      msmp = smallp
-      press = max((gamma-one)*internal, smallp)
 
-c     pressure
-      q(chf_ix[i;j;k], QPRES) = press
-c     entropy set to zero when not in output mode
-      q(chf_ix[i;j;k], QENTR) = zero
-c     internal energy
-      q(chf_ix[i;j;k], QINTERN) = internal
-c     cv * temperature
-      q(chf_ix[i;j;k], QCVTEMP) = cvtemp
-c     soundspeed
-      q(chf_ix[i;j;k], QC) = sqrt(gamma*press/dense)
+      call pointcons2prm(cons, cnum, prim, qnum, logflag)
 
-      if (logflag .ne. 0) then
-         q(chf_ix[i;j;k], QENTR) = log10(press) - gamma*log10(dense)
-         q(chf_ix[i;j;k], QRHO) = log10(dense)
-         q(chf_ix[i;j;k], QPRES)= log10(press)
-      endif
+      do ivec = 0, QNUM-1
+         q(chf_ix[i;j;k], ivec) = prim(ivec)
+      enddo
 
       chf_enddo
 
@@ -588,7 +567,7 @@ cccccccccccccccc
       enddo
       internal = energ-kinetic*dense
       cvtemp = internal/dense
-      temper = internal/specificheat
+      temper = cvtemp/specificheat
 
       return
       end
@@ -1185,6 +1164,109 @@ cccccccccccccccc
       qgod(chf_ix[i;j;k], QVELX + itan2) = velgod(itan2)]
 
       chf_enddo
+
+      return
+      end
+
+      subroutine OUTFLOWBC(
+     &     CHF_FRA[F],
+     &     CHF_CONST_FRA[Wextrap],
+     &     CHF_CONST_INT[lohisign],
+     &     CHF_CONST_INT[facedir],
+     &     CHF_BOX[box])
+
+      integer chf_ddecl[i; j; k]
+      real_t    veloc(0:CH_SPACEDIM-1)
+      real_t   fluxvec(0:FNUM-1)
+      real_t   prim(0:QNUM-1)
+      real_t press, dense,  entropy, internal, cvtemp, sound
+      integer qnum, fnum, idir,sdim
+#include "EBEOSCommon.fh"
+
+      qnum = QNUM-1
+      fnum = FNUM-1
+      sdim = CH_SPACEDIM
+
+      CHF_MULTIDO[box;i;j;k]
+
+      press   = Wextrap(CHF_IX[i;j;k],QPRES)
+      dense   = Wextrap(CHF_IX[i;j;k],QRHO)
+c     these two do not affect the calculation
+      sound = Wextrap(CHF_IX[i;j;k],QC)
+      entropy = Wextrap(CHF_IX[i;j;k],QENTR)
+      internal = Wextrap(CHF_IX[i;j;k],QINTERN)
+      cvtemp = internal/dense
+      do idir = 0, sdim-1
+         veloc(idir) = Wextrap(CHF_IX[i;j;k],QVELX + idir)
+      enddo
+
+      call fillprimitivevector(prim, qnum, dense, press, veloc,  entropy, internal, cvtemp, sound)
+
+      call pointoutflowbc(fluxvec, fnum, prim, qnum, facedir, lohisign)
+
+      F(CHF_IX[i;j;k],CRHO) = fluxvec(CRHO)
+      F(CHF_IX[i;j;k],CENG) = fluxvec(CENG)
+
+      CHF_DTERM[
+      F(CHF_IX[i;j;k],CMOMX) = fluxvec(CMOMX);
+      F(CHF_IX[i;j;k],CMOMY) = fluxvec(CMOMY);
+      F(CHF_IX[i;j;k],CMOMZ) = fluxvec(CMOMZ)]
+
+      CHF_ENDDO
+
+      return
+      end
+
+      subroutine pointoutflowbc(
+     &     chf_vr[flux],
+     &     chf_vr[prim],
+     &     chf_const_int[facedir],
+     $     chf_const_int[lohisign])
+
+      integer ivec, qnum, fnum
+      real_t   fluxvec(0:FNUM-1)
+      real_t   priml(0:QNUM-1)
+      real_t   primr(0:QNUM-1)
+      real_t   primgod(0:QNUM-1)
+      real_t pout,  pin, rho, c, u
+#include "EBPlanarShockCommon.fh"
+#include "EBEOSCommon.fh"
+      
+      qnum = QNUM-1
+      fnum = FNUM-1
+
+      do ivec = 0, QNUM-1
+         priml(ivec) = prim(ivec)
+         primr(ivec) = prim(ivec)
+      enddo
+
+c set  outside pressure to value of back pressure
+      pout = backpressure
+      if(lohisign .eq. 1) then
+         u   = priml(QVELX + facedir)
+         c   = priml(QC)
+         pin = priml(QPRES)
+         rho = priml(QRHO)
+      else
+         u   = primr(QVELX + facedir)
+         c   = primr(QC)
+         pin = primr(QPRES)
+         rho = primr(QRHO)
+      endif
+
+      if(lohisign .eq. 1) then
+         primr(QPRES) = pout
+c         primr(QVELX+facedir) = u   + (pin - pout)/(rho*c)
+c         primr(QRHO)          = rho + (pin - pout)/(c*c)
+         
+      else
+         priml(QPRES) = pout
+c         priml(QVELX+facedir) = u   + (pin - pout)/(rho*c)
+c         priml(QRHO)          = rho + (pin - pout)/(c*c)
+      endif
+
+      call pointriemann(priml,qnum,primr,qnum,primgod,qnum,facedir)
+      call pointgetflux(flux, fnum, primgod, qnum, facedir)
 
       return
       end

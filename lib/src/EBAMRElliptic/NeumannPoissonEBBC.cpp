@@ -13,6 +13,9 @@
 #include "NeumannPoissonEBBC.H"
 #include "EBStencil.H"
 #include "NamespaceHeader.H"
+
+int NeumannPoissonEBBC::s_comp = 0;
+
 void NeumannPoissonEBBC::getEBFlux(Real&                         a_flux,
                                    const VolIndex&               a_vof,
                                    const LevelData<EBCellFAB>&   a_phi,

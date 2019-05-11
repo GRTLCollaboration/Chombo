@@ -16,16 +16,20 @@
 
 void EBDontYouDareCallMe()
 {
+  checkLDCell(NULL);
+  checkLDFlux(NULL);
   printMaxMinEBCF(NULL);
-  printMaxMinEBFF(NULL);
+  printMaxMinEBFlux(NULL);
+  printMaxMinEBFace(NULL);
   dumpVVoF(NULL);
   dumpIFFAB(NULL);
-  dumpIVFAB(NULL);
+  //dumpIVFAB(NULL);
   dumpLDBIVF(NULL);
   dumpFace(NULL);
   dumpVFace(NULL);
   dumpVoFSten(NULL);
   dumpFaceSten(NULL);
+  dumpEBLevelGhost(NULL);
   dumpEBLDDBL(NULL);
   dumpLDEBCF(NULL);
   getMaxEBLevel(NULL);

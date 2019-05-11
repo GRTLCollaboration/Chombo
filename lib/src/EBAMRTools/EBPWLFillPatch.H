@@ -59,6 +59,9 @@ virtual  ~EBPWLFillPatch();
      at each VoF.\\
      radius: the total number of
      ghost cells filled.
+     forceNoEBCF = true promises that the embedded boundary 
+     will not cross the coarse-fine interface.   This will save you  
+     a  lot of compute time if you are certain you are tagging all irregulkar cells.
   */
   EBPWLFillPatch(const DisjointBoxLayout& a_dblFine,
                  const DisjointBoxLayout& a_dblCoar,
@@ -68,6 +71,7 @@ virtual  ~EBPWLFillPatch();
                  const int& a_nref,
                  const int& a_nvar,
                  const int& a_radius,
+                 const bool& a_forceNoEBCF = false,
                  const EBIndexSpace* const a_eb = Chombo_EBIS::instance());
 
   ///
@@ -84,6 +88,9 @@ virtual  ~EBPWLFillPatch();
      at each VoF.
      radius: the total number of
      ghost cells filled.
+     forceNoEBCF = true promises that the embedded boundary 
+     will not cross the coarse-fine interface.   This will save you  
+     a  lot of compute time if you are certain you are tagging all irregulkar cells.
   */
   virtual void define(const DisjointBoxLayout& a_dblFine,
                       const DisjointBoxLayout& a_dblCoar,
@@ -93,6 +100,7 @@ virtual  ~EBPWLFillPatch();
                       const int& a_nref,
                       const int& a_nvar,
                       const int& a_radius,
+                      const bool& a_forceNoEBCF = false,
                       const EBIndexSpace* const a_eb = Chombo_EBIS::instance());
 
   ///
@@ -193,6 +201,7 @@ virtual  ~EBPWLFillPatch();
                               const IntVectSet& loInterpSet,
                               const IntVectSet& hiInterpSet,
                               const IntVectSet& ceInterpSet) const;
+  bool m_forceNoEBCF;
 
   //non-EB fill patch
   PiecewiseLinearFillPatch* m_patcher;

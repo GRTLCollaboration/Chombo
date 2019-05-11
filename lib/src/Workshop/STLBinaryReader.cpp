@@ -173,6 +173,17 @@ void STLBinaryReader::ReadData(istream&   a_file,
     verts[2][1] = (Real) tridat[10];
     verts[2][2] = (Real) tridat[11];
 
+    //Real lv01 = (verts[0]-verts[1]).vectorLength();
+    //Real lv12 = (verts[1]-verts[2]).vectorLength();
+    //Real lv20 = (verts[2]-verts[0]).vectorLength();
+
+    //Real minl = Min(Min(lv01,lv12),lv20);
+    //Real maxl = Max(Max(lv01,lv12),lv20);
+
+    // Real ratio = maxl/minl;
+    //
+    // pout() << ratio << endl;
+
     // check for degenerate triangles
     if ((verts[0]-verts[1]).vectorLength() < m_stlmesh->tol || \
         (verts[1]-verts[2]).vectorLength() < m_stlmesh->tol || \

@@ -66,17 +66,7 @@ public:
   ///
   virtual void setFunction(RefCountedPtr<BaseBCValue> a_flux);
 
-  ///
-  virtual void getEBFlux(Real&                         a_flux,
-                         const VolIndex&               a_vof,
-                         const LevelData<EBCellFAB>&   a_phi,
-                         const LayoutData<IntVectSet>& a_cfivs,
-                         const DataIndex&              a_dit,
-                         const RealVect&               a_probLo,
-                         const RealVect&               a_dx,
-                         const bool&                   a_useHomogeneous,
-                         const Real&                   a_time,
-                         const pair<int,Real>*         a_cacheHint=0 );
+  static int s_comp;
 
 private:
   NeumannPoissonEBBC m_bc;

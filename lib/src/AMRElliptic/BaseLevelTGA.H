@@ -214,6 +214,7 @@ class BaseLevelTGA : public BaseLevelHeatSolver<LevelDataType, FluxDataType, Flu
                         bool                     a_zeroPhi = true,
                         bool                     a_rhsAlreadyKappaWeighted = false)
   {
+    CH_TIME("BaseLevelTGA::computeDiffusion");
     // in this function, we call the updateSoln function, compute
     // the update, then subtract off the extra pieces to return the
     // diffusive part of the update
@@ -229,7 +230,7 @@ class BaseLevelTGA : public BaseLevelHeatSolver<LevelDataType, FluxDataType, Flu
         this->m_ops[a_level]->setToZero(phiNew);
         if (!a_zeroPhi)
           {
-            this->m_ops[a_level]->assign(phiNew, a_phiOld);
+            this->m_ops[a_level]->assignLocal(phiNew, a_phiOld);
           }
 
         updateSoln(phiNew, a_phiOld, a_src, a_flux,
@@ -249,7 +250,7 @@ class BaseLevelTGA : public BaseLevelHeatSolver<LevelDataType, FluxDataType, Flu
         this->m_ops[a_level]->incr(phiNew, a_src, -1.0);
 
         // what's left should be the time-centered diffusive part of the update
-        this->m_ops[a_level]->assign(a_diffusiveTerm, phiNew);
+        this->m_ops[a_level]->assignLocal(a_diffusiveTerm, phiNew);
       }
     else
       {
@@ -290,7 +291,7 @@ class BaseLevelTGA : public BaseLevelHeatSolver<LevelDataType, FluxDataType, Flu
         this->m_ops[a_level]->setToZero(phiNew);
         if (!a_zeroPhi)
           {
-            this->m_ops[a_level]->assign(phiNew, a_phiOld);
+            this->m_ops[a_level]->assignLocal(phiNew, a_phiOld);
           }
         updateSoln(phiNew, a_phiOld, rhs, a_flux,
                    a_fineFluxRegPtr, a_crseFluxRegPtr,
@@ -348,6 +349,7 @@ private:
                                        bool                     a_zeroPhi = true,
                                        int                      a_fluxStartComponent = 0)
   {
+    CH_TIME("BaseLevelTGA::updateWithTimeIndependentOp");
 
     CH_assert(!this->m_ops[a_level]->isTimeDependent());
     int ncomp = a_phiNew.nComp();
@@ -432,7 +434,7 @@ private:
     this->incrementFlux(a_flux, a_phiNew,       a_level, m_mu2, a_dt, -1.0, false);
 
     //this puts the answer into rhst so we can do the final solve
-    this->m_ops[a_level]->assign(rhst, a_phiNew);
+    this->m_ops[a_level]->assignLocal(rhst, a_phiNew);
 
     // now construct CF-BC for final solve
     if (a_level > 0)
@@ -514,6 +516,7 @@ private:
                                      bool                     a_zeroPhi = true,
                                      int                      a_fluxStartComponent = 0)
   {
+    CH_TIME("BaseLevelTGA::updateWithTimeDependentOp");
     int ncomp = a_phiNew.nComp();
     Interval intervBase(0, ncomp-1);
     Interval intervFlux(a_fluxStartComponent, a_fluxStartComponent + ncomp-1);
@@ -652,7 +655,7 @@ private:
     this->incrementFlux(a_flux, a_phiNew, a_level, m_mu2, a_dt, -1.0, false);
 
     // This puts the answer into rhst.
-    this->m_ops[a_level]->assign(rhst, a_phiNew);
+    this->m_ops[a_level]->assignLocal(rhst, a_phiNew);
 
     //--------------------------------------------------
     //           1           1     1                      1

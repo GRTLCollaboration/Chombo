@@ -8,11 +8,11 @@
  */
 #endif
 
-#ifndef _EBPlanarShockSolverBC_H_
-#define _EBPlanarShockSolverBC_H_
+#ifndef _EBPLANARSHOCKSOLVERBC_H_
+#define _EBPLANARSHOCKSOLVERBC_H_
 
 #include "RefCountedPtr.H"
-#include "BaseDomainBC.H"
+#include "ViscousBaseDomainBC.H"
 
 #include "NamespaceHeader.H"
 
@@ -99,15 +99,24 @@ public:
                         const bool& a_shockBackward,   
                         const bool& a_slipWall)
   {
-    m_shockNorm       = a_shockNorm;
-    m_shockBackward = a_shockBackward;
-    m_slipWall      = a_slipWall;
+    //this stuff is hardwired because it is all I ever use or test
+    m_shockNorm       = 0;
+    m_shockBackward   = false;
+    m_slipWall        = false;
   }
+
+  virtual void 
+  fillVelGhost(FArrayBox&     a_state,
+               const Box&     a_valid,
+               const Box&     a_domain,
+               Real           a_dx,
+               bool a_homogeneous);
 
 private:
   void
   whereAMI(bool& a_atInflow, 
            bool& a_atOutflow,
+           bool& a_atMixed,
            const int&            a_idir, 
            const Side::LoHiSide& a_side);
 
@@ -116,6 +125,7 @@ private:
   int  m_shockNorm;
   bool m_shockBackward;
   bool m_slipWall;
+  static bool s_printed_stuff;
 
 };
 

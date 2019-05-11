@@ -57,6 +57,8 @@ public:
   {
   }
 
+  static bool checkForBogusNumbers(const LevelData<EBFluxFAB> & a_data);
+  static bool checkForBogusNumbers(const LevelData<EBCellFAB> & a_data);
 
   ///
   /**
@@ -73,6 +75,14 @@ public:
                                 bool a_interpolateToCentroid);
 
 
+  static void  checkData(const LevelData<EBCellFAB>&a_data, const string& label);
+
+  static void  checkData(const LevelData<EBFluxFAB>&a_data, const string& label);
+
+  ///
+  static void plus(LevelData<EBCellFAB>       & a_dst,
+                   const LevelData<EBCellFAB> & a_src,
+                   int srccomp, int dstcomp, int numcomp);
   ///
   /**
      straightforward average from cells to faces over components faceval = half(hival + loval).
@@ -103,7 +113,8 @@ public:
    */
   static void pruneCoveredBoxes(Vector<Box>&              a_boxes,
                                 const ProblemDomain&      a_domain,
-                                const EBIndexSpace*       a_ebisPtr);
+                                const EBIndexSpace*       a_ebisPtr,
+                                const int&                a_ghosts = 0);
 
   ///
   /**
@@ -218,6 +229,14 @@ public:
                         Real&                       a_minVal,
                         const LevelData<EBCellFAB>& a_data,
                         const int&                  a_comp,
+                        const bool&                 a_doAbs=false);
+
+  ///
+  static void getMaxMin(Real&                       a_maxVal,
+                        Real&                       a_minVal,
+                        const LevelData<EBFluxFAB>& a_data,
+                        const int&                  a_comp,
+                        const int&                  a_idir,
                         const bool&                 a_doAbs=false);
   ///
   /**
@@ -403,7 +422,7 @@ public:
 
   ///
   /**
-   */
+   
   static void axby( LevelData<EBCellFAB>&       a_lhs,
                     const LevelData<EBCellFAB>& a_x,
                     const LevelData<EBCellFAB>& a_y,
@@ -412,7 +431,7 @@ public:
                     const int&  a_lhsComp,
                     const int&  a_xComp,
                     const int&  a_yComp);
-
+  */
 
 
   ///

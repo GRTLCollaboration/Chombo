@@ -356,10 +356,8 @@ defineStencils()
 {
   CH_TIME("slowEBCO::defineStencils");
   // create ebstencil for irregular applyOp
-  m_opEBStencil.define(m_eblg.getDBL());
-  // create vofstencils for applyOp and
-  LayoutData<BaseIVFAB<VoFStencil> >  opStencil;
-  opStencil.define(m_eblg.getDBL());
+
+  m_opStencil.define(m_eblg.getDBL());
 
   Real fakeBeta = 1;
   m_domainBC->setCoef(m_eblg,   fakeBeta ,      m_bcoef   );
@@ -427,7 +425,7 @@ defineStencils()
       IntVectSet irregIVS = ebisBox.getIrregIVS(curBox);
       IntVectSet multiIVS = ebisBox.getMultiCells(curBox);
 
-      opStencil[dit()].define(irregIVS,ebgraph, 1);
+      m_opStencil[dit()].define(irregIVS,ebgraph, 1);
 
       //cache the vofIterators
       m_alphaDiagWeight[dit()].define(irregIVS,ebisBox.getEBGraph(), 1);
@@ -450,7 +448,7 @@ defineStencils()
         {
           const VolIndex& VoF = vofit();
 
-          VoFStencil& curStencil = opStencil[dit()](VoF,0);
+          VoFStencil& curStencil = m_opStencil[dit()](VoF,0);
 
           //bcoef is included here in the flux consistent
           //with the regular
@@ -509,10 +507,6 @@ defineStencils()
           m_betaDiagWeight[dit()](VoF, 0)  = betaWeight;
         }
 
-      //Operator ebstencil
-      m_opEBStencil[dit()] = RefCountedPtr<EBStencil>
-        (new EBStencil(m_vofIterIrreg[dit()].getVector(), opStencil[dit()], m_eblg.getDBL().get(dit()),
-                       m_eblg.getEBISL()[dit()], m_ghostCellsPhi, m_ghostCellsRHS, 0, true));
     }//dit
 
   calculateRelaxationCoefficient();
@@ -693,7 +687,17 @@ applyOpIrregular(EBCellFAB&             a_lhs,
                  const DataIndex&       a_datInd)
 {
   RealVect vectDx = m_dx*RealVect::Unit;
-  m_opEBStencil[a_datInd]->apply(a_lhs, a_phi, m_alphaDiagWeight[a_datInd], m_alpha, m_beta, false);
+  //  m_opEBStencil[a_datInd]->apply(a_lhs, a_phi, m_alphaDiagWeight[a_datInd], m_alpha, m_beta, false);
+  VoFIterator& vofit = m_vofIterIrreg[a_datInd];
+  for(vofit.reset(); vofit.ok(); ++vofit)
+    {
+      const VoFStencil& stenpt = m_opStencil[a_datInd](vofit(), 0);
+      Real  divfval = applyVoFStencil(stenpt, a_phi, 0);
+      Real phival = a_phi(vofit(), 0);
+      Real alphaweight = m_alphaDiagWeight[a_datInd](vofit(), 0);
+      Real lphval = m_alpha*alphaweight*phival + m_beta*divfval;
+      a_lhs(vofit(), 0) = lphval;
+    }
 
   if (!a_homogeneous)
     {

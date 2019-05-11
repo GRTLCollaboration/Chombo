@@ -32,7 +32,7 @@ C    Please refer to Copyright.txt, in Chombo's root directory.
 
         chf_enddo
         chf_enddo
-
+        ch_flops=ch_flops+CHF_POINTS[coarbox]*CHF_POINTS[refbox]
         return
         end
 
@@ -52,7 +52,7 @@ C    Please refer to Copyright.txt, in Chombo's root directory.
         integer chf_ddecl[ioff;joff;koff]
         real_t coarslope, hival, loval, phifold, phifnew
         real_t dxcoar, dxfine, coarloc, fineloc, midval
-        integer iindexc, iindexf
+        integer iindexc, iindexf,cbox
 
         dxcoar = dxc
         dxfine = dxf
@@ -60,6 +60,7 @@ C    Please refer to Copyright.txt, in Chombo's root directory.
         chf_dterm[ioff = chf_id(0,idir);
                   joff = chf_id(1,idir);
                   koff = chf_id(2,idir)]
+        cbox=CHF_POINTS[coarbox]
 
         chf_multido[coarbox;iic;jjc;kkc]
 
@@ -94,6 +95,7 @@ c     add in slope*distance
 
         chf_enddo
         chf_enddo
-
+        
+        ch_flops=ch_flops+cbox*CHF_POINTS[refbox]*3+cbox*5
         return
         end

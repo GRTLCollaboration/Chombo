@@ -22,8 +22,8 @@
 
 #include "MultiIndex.H"
 #include "NormalDerivative.H"
+#include "NormalDerivativeNew.H"
 #include "ParmParse.H"
-
 #include "NamespaceHeader.H"
 
 // empty constructor
@@ -47,6 +47,7 @@ template <int dim> IFData<dim>::IFData(const IFData<dim>& a_IFData)
    m_allVerticesOut    (a_IFData.m_allVerticesOut),
    m_allVerticesOn     (a_IFData.m_allVerticesOn)
 {
+  CH_TIME("ifdata constructor 1");
   if (a_IFData.m_function != NULL)
     {
       // IFData always owns the data pointed to by m_function
@@ -58,6 +59,8 @@ template <int dim> IFData<dim>::IFData(const IFData<dim>& a_IFData)
     }
 }
 
+
+
 // Constructor from the implicit function at the highest dimension
 template <int dim> IFData<dim>::IFData(const BaseIF & a_function,
                                        const RvDim  & a_dx,
@@ -68,6 +71,7 @@ template <int dim> IFData<dim>::IFData(const BaseIF & a_function,
    m_parentCoord    (IndexTM<Real,dim>::Zero,a_dx),
    m_maxOrder       (a_maxOrder)
 {
+  CH_TIME("ifdata constructor 2");
   // Copy the implicit function; m_function is a pointer
   // IFData always owns the data pointed to by m_function
   m_function = new IFSlicer<dim>(a_function);
@@ -97,6 +101,7 @@ template <int dim> IFData<dim>::IFData(IFSlicer<dim> * a_function,
    m_parentCoord    (IndexTM<Real,dim>::Zero,a_dx),
    m_maxOrder       (a_maxOrder)
 {
+  CH_TIME("ifdata constructor 3");
   // IFData always owns the data pointed to by m_function
   m_function = new IFSlicer<dim>(*a_function);
 
@@ -115,16 +120,15 @@ template <int dim> IFData<dim>::IFData(IFSlicer<dim> * a_function,
 }
 
 template <int dim> IFData<dim>::IFData(const IFData<dim+1> & a_hIFData,
-#if RECURSIVE_GEOMETRY_GENERATION != 0
                                        const int           & a_maxOrder,
-#endif
                                        const int           & a_idir,
                                        const int           & a_hilo)
 {
+  CH_TIME("ifdata constructor 4");
   typedef IndexTM<int,dim+1>HDEdgeIndex;
-  typedef map<HDEdgeIndex,Real,LexLT<HDEdgeIndex> > HDEdgeIntersections;
+  typedef map<HDEdgeIndex,Real > HDEdgeIntersections;
   typedef IndexTM<int,dim+1>HDVertex;
-  typedef map<HDVertex,int,LexLT<HDVertex> > HDCornerSigns;
+  typedef map<HDVertex,int > HDCornerSigns;
 
   // pm = -1 for lo and 1 for hi
   int pm = a_hilo;
@@ -245,11 +249,7 @@ template <int dim> IFData<dim>::IFData(const IFData<dim+1> & a_hIFData,
   // or to m_parentCoord.m_origin if there are no interesection points
   defineLocalCoords();
 
-#if RECURSIVE_GEOMETRY_GENERATION == 0
-  m_maxOrder = a_hIFData.m_maxOrder;
-#else
   m_maxOrder = a_maxOrder;
-#endif
 
   if (!m_allVerticesOut && !m_allVerticesIn)
     {
@@ -272,7 +272,13 @@ template <int dim> IFData<dim>::~IFData()
 
 template <int dim> void IFData<dim>::setNormalDerivatives()
 {
-  NormalDerivative<dim> normalDerivative;
+  CH_TIME("ifdata::setNormalDerivatives");
+  NormalDerivativeNew<dim> normalDerivative;
+  typename NormalDerivativeNew<dim>::NormalDerivativeMap ndMap = 
+    normalDerivative.calculateAll(m_maxOrder,
+                                  m_globalCoord.convert(RvDim::Zero,m_localCoord),
+                                  m_function);
+
 
   for (int order = 0; order <= m_maxOrder; order++)
   {
@@ -286,27 +292,18 @@ template <int dim> void IFData<dim>::setNormalDerivatives()
 
       for (int idir = 0; idir < dim; idir++)
       {
-        m_normalDerivatives[derivative][idir] = normalDerivative.evaluate(derivative,
-                                                                          idir,
-                                                                          m_globalCoord.convert(RvDim::Zero,m_localCoord),
-                                                                          m_function);
+        m_normalDerivatives[derivative][idir] = ndMap[derivative][idir];
       }
     }
   }
 
-  // if dim < GLOBALDIM, then m_badNormal == true for dim => m_badNormal == true for GLOBALDIM
-  if (normalDerivative.getMagnitudeOfGradient()== 0.0)
-   {
-     m_badNormal = true;
-   }
-  else
-    {
-      m_badNormal = false;
-    }
+  //took out a bad Normal Check  --- normalDerivativeNew does not have a getMagnitudeOfGradient
+  m_badNormal = false;
 }
 
 template <int dim> void IFData<dim>::makeCornerSigns()
 {
+  CH_TIME("ifdata::makeCornerSigns");
   m_allVerticesIn  = true;
   m_allVerticesOut = true;
   m_allVerticesOn  = true;
@@ -364,6 +361,7 @@ template <int dim> void IFData<dim>::makeCornerSigns()
 
 template <int dim> void IFData<dim>::findIntersectionPts()
 {
+  CH_TIME("ifdata::findIntersectionPoints");
   // double iterate through corner signs map,writing to a edge map if corner1 is connected to corner2
   for (typename CornerSigns::const_iterator it0 = m_cornerSigns.begin();
        it0 != m_cornerSigns.end(); ++it0)
@@ -382,50 +380,59 @@ template <int dim> void IFData<dim>::findIntersectionPts()
 }
 template <int dim> void IFData<dim>::defineLocalCoords()
 {
+  CH_TIME("ifdata::defineLocalCoords");
   // default for full cells
-  if (m_intersections.size() == 0)
+  m_localCoord.m_origin = m_cellCenterCoord.m_origin;
+  /**
+     the stuff below makes convergence tests do weird things
+     but makes for better answers
+  */
+  if(!LocalCoordMoveSwitch::s_turnOffMoveLocalCoords)
     {
-      m_localCoord.m_origin = m_parentCoord.m_origin;
-    }
-  else
-    {
-      m_localCoord.m_origin = RvDim::Zero;
-
-      for (typename EdgeIntersections::const_iterator it = m_intersections.begin();it != m_intersections.end(); ++it)
+      if (m_intersections.size() == 0)
         {
-          const EdgeIndex& edgeIndex = it->first;
-          const Real&      intercept = it->second;
-
-          int varyDir = edgeIndex[0];
-
-          RvDim intersectPt = RvDim::Zero;
-          intersectPt[varyDir] = intercept;
-
-          for (int i = 1; i < dim; i++)
-          {
-            int curDir;
-            int loHi;
-
-            if (i <= varyDir)
-            {
-              curDir = i-1;
-            }
-            else
-            {
-              curDir = i;
-            }
-
-            loHi = edgeIndex[i];
-            intersectPt[curDir]  = loHi - 0.5;
-            intersectPt[curDir] *= m_globalCoord.m_dx[curDir];
-          }
-
-          m_localCoord.m_origin -= intersectPt;
+          m_localCoord.m_origin = m_cellCenterCoord.m_origin;
         }
+      else
+        {
+          m_localCoord.m_origin = RvDim::Zero;
 
-      m_localCoord.m_origin /= m_intersections.size();
+          for (typename EdgeIntersections::const_iterator it = m_intersections.begin();it != m_intersections.end(); ++it)
+            {
+              const EdgeIndex& edgeIndex = it->first;
+              const Real&      intercept = it->second;
+
+              int varyDir = edgeIndex[0];
+
+              RvDim intersectPt = RvDim::Zero;
+              intersectPt[varyDir] = intercept;
+
+              for (int i = 1; i < dim; i++)
+                {
+                  int curDir;
+                  int loHi;
+
+                  if (i <= varyDir)
+                    {
+                      curDir = i-1;
+                    }
+                  else
+                    {
+                      curDir = i;
+                    }
+
+                  loHi = edgeIndex[i];
+                  intersectPt[curDir]  = loHi - 0.5;
+                  intersectPt[curDir] *= m_globalCoord.m_dx[curDir];
+                }
+
+              m_localCoord.m_origin -= intersectPt;
+            }
+
+          m_localCoord.m_origin /= m_intersections.size();
+        }
     }
-
+  /**/
   m_localCoord.m_dx =  m_globalCoord.m_dx;
 }
 
@@ -433,6 +440,7 @@ template <int dim> bool IFData<dim>::isConnected(int          & a_edgeDir,
                                                  const Vertex & a_vertex1,
                                                  const Vertex & a_vertex2)
 {
+  CH_TIME("ifdata::isConnected");
   bool connected = true;
   int numDif = 0;
 
@@ -465,6 +473,7 @@ template <int dim> void IFData<dim>::makeEdgeKey(const int    & a_edgeDir,
                                                  const Vertex & a_vertex0,
                                                  const Vertex & a_vertex1)
 {
+  CH_TIME("ifdata::makeedgekey");
   EdgeIndex thisEdge;
 
   thisEdge[0] = a_edgeDir;
@@ -552,6 +561,7 @@ template <int dim> void IFData<dim>::makeEdgeKey(const int    & a_edgeDir,
 
 template <int dim> Real IFData<dim>::rootFinder(const EdgeIndex& a_thisEdge)
 {
+  CH_TIME("ifdata::rootfinder");
   Real pt = LARGEREALVAL;
 
   // the first component of an EdgeIndex gives the direction of the edge
@@ -609,6 +619,7 @@ template <int dim> Real IFData<dim>::BrentRootFinder(const RvDim & a_loPt,
 //                                                     const Real  & a_smallestRoot,
 //                                                     const Real  & a_biggestRoot) const
 {
+  CH_TIME("ifdata::brentrootfinder");
   // Max allowed iterations and floating point precision
   const unsigned int MAXITER = 100;
   const Real         EPS   = 3.0e-15;
@@ -787,6 +798,8 @@ template <int dim> void IFData<dim>::remakeCornerSigns()
 
 template <int dim> void IFData<dim>::print(ostream& a_out) const
 {
+
+  // EdgeIndex first component is direction that edge varies. Subsequent components indicate hi-lo position of edge
   string padding = "  ";
   for (int i = 0; i < GLOBALDIM - dim; i++)
   {

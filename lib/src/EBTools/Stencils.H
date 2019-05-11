@@ -17,6 +17,7 @@
 #include "FaceIndex.H"
 #include "REAL.H"
 #include "NamespaceHeader.H"
+using std::string;
 ///
 /**
    class for vofstencil and basestencil to inherit from
@@ -93,6 +94,7 @@ public:
   */
   const VolIndex&  vof(int i) const;
 
+ 
 
   ///
   virtual BaseIndex& index(int i) const
@@ -112,6 +114,11 @@ public:
   */
   virtual Real& weight(int i);
 
+  ///
+  /**
+     shift all entries by a_shift
+   */
+  void shift(const IntVect& a_shift);
 
   ///
   virtual const int& variable(int i) const;
@@ -150,6 +157,13 @@ public:
         variables = Vector<int>(vofs.size(), a_var);
       }
   }
+
+  void getExponentAndMantissa(Real& a_mantissa, int& a_exp, Real a_input) const;
+
+  /// prints the stencil to 16 digits---all weights are divided by weight scaling (typically h or h^2)
+  void poutFortranRelative(const IntVect& a_startIV, const string& a_prefix, const Real& wgtScaling) const;
+
+  void outputToPout() const;
 protected:
 
   /// the VoFs
@@ -183,6 +197,12 @@ public:
      stencil, add the weights.
   */
   void  add(const FaceIndex& face,const Real& weight, int variable=0);
+
+  ///
+  /**
+     shift all entries by a_shift
+   */
+  void shift(const IntVect& a_shift);
 
   ///
   /**
@@ -244,7 +264,9 @@ public:
    */
   void operator*=(const Real& scaling);
 
+  void outputToPout() const;
 private:
+
   /// the Faces
   Vector<FaceIndex> faces;
   /// the weights

@@ -250,7 +250,8 @@ template<typename DBL_T> void
 sliceDisjointBoxLayout(
   typename ObjTraits< DimTraits<DBL_T>::dim - 1 >::DisjointBoxLayout& a_to,
   const DBL_T& a_from,
-  const typename ObjTraits< DimTraits<DBL_T>::dim >::SliceSpec& a_slicespec )
+  const typename ObjTraits< DimTraits<DBL_T>::dim >::SliceSpec& a_slicespec,
+  bool a_maintain_proc_assignments )
 {
     enum {DIM=DimTraits<DBL_T>::dim};
     typedef typename ObjTraits<DIM-1>::DisjointBoxLayout toDBL_T;
@@ -259,6 +260,8 @@ sliceDisjointBoxLayout(
     typedef typename ObjTraits<DIM-1>::VectorOfBox VectorOfBoxT;
 
     VectorOfBoxT boxes;
+    // store the corresponding original processor assignments
+    Vector<int> procAssign;
     for( LayoutIt_T it(a_from.layoutIterator()); it.ok(); ++it )
     {
         toBoxT tobox;
@@ -267,16 +270,25 @@ sliceDisjointBoxLayout(
         if(!isOutOfBounds)
         {
           boxes.push_back( tobox );
+          procAssign.push_back(a_from.procID(it()));
         }
     }
 
     // What happens now if boxes.size()==0?
     typename ObjTraits<DIM>::ProblemDomain fromDomain(
         ((const DBLChild<DBL_T>*)&a_from)->getDomain());
-    a_to.defineAndLoadBalance( boxes,
-                               (typename ObjTraits<DIM-1>::VectorOfInt*)0,
-                               sliceDomain( fromDomain,  a_slicespec) );
-    a_to.close(); // Do we really need this?
+    if (a_maintain_proc_assignments)
+      {   
+        a_to.define(boxes, procAssign, 
+                    sliceDomain( fromDomain,  a_slicespec) );
+      }   
+    else
+      {
+        a_to.defineAndLoadBalance( boxes,
+                                   (typename ObjTraits<DIM-1>::VectorOfInt*)0,
+                                   sliceDomain( fromDomain,  a_slicespec) );
+        a_to.close(); // Do we really need this?
+      }
 }
 
 
@@ -290,6 +302,57 @@ sliceLevelData( typename ObjTraits< DimTraits<LD_T>::dim - 1 >::LevelData& a_to,
 
     typename ObjTraits<DIM>::LevelData degenerateLD;
     a_from.degenerate( degenerateLD, a_slicespec ); // does a copyTo()
+
+    if (!a_to.isDefined())
+    {
+        typename ObjTraits<DIM-1>::VectorOfInt procIDs;
+        typename ObjTraits<DIM-1>::VectorOfBox toBoxes;
+        typename ObjTraits<DIM>::LayoutIterator it
+            = degenerateLD.disjointBoxLayout().layoutIterator();
+        for( ; it.ok(); ++it )
+        {
+            procIDs.push_back( degenerateLD.disjointBoxLayout().procID( it() ) );
+            typename ObjTraits<DIM-1>::Box toBox;
+            sliceBox( toBox, degenerateLD.disjointBoxLayout()[it()], a_slicespec );
+            toBoxes.push_back( toBox );
+        }
+
+        // Make toDBL, with procIDs the same as degenerateLD's:
+        typename ObjTraits<DIM>::ProblemDomain fromDomain;
+
+        fromDomain =  static_cast<const DBLChild< typename ObjTraits<DIM>::DisjointBoxLayout>* >(&(a_from.getBoxes()))->getDomain();
+        
+        toDBL.define( toBoxes, procIDs,
+                      sliceDomain(fromDomain, a_slicespec) );
+
+        typename ObjTraits<DIM-1>::IntVect toGhost;
+        sliceIntVect( toGhost, a_from.ghostVect(), a_slicespec );
+
+        a_to.define( toDBL, a_from.nComp(), toGhost );
+    }
+
+    // Copy the FAB data.
+    typename ObjTraits<DIM>::DataIterator degenIt = degenerateLD.dataIterator();
+    typename ObjTraits<DIM-1>::DataIterator toIt = a_to.dataIterator();
+    for( ; degenIt.ok(); ++degenIt, ++toIt )
+    {
+        CH_assert( toIt.ok() );
+        memcpy( a_to[toIt].dataPtr(), degenerateLD[degenIt].dataPtr(),
+                a_to[toIt].box().numPts() * a_from.nComp() * sizeof(Real) );
+    }
+}
+
+
+template<typename LD_T> void
+sliceLevelDataLocalOnly( typename ObjTraits< DimTraits<LD_T>::dim - 1 >::LevelData& a_to,       
+                         const LD_T& a_from,
+                         const typename ObjTraits< DimTraits<LD_T>::dim >::SliceSpec& a_slicespec )
+{
+    enum {DIM=DimTraits<LD_T>::dim};
+    typename ObjTraits<DIM-1>::DisjointBoxLayout toDBL;
+
+    typename ObjTraits<DIM>::LevelData degenerateLD;
+    a_from.degenerateLocalOnly( degenerateLD, a_slicespec ); // does a copyTo()
 
     if (!a_to.isDefined())
     {
@@ -389,6 +452,68 @@ sliceLevelFlux( typename ObjTraits< DimTraits<LD_T>::dim - 1 >::LevelFlux& a_to,
           }
     }
 }
+
+template<typename LD_T> void
+sliceLevelFluxLocalOnly( typename ObjTraits< DimTraits<LD_T>::dim - 1 >::LevelFlux& a_to,
+                         const LD_T& a_from,
+                         const typename ObjTraits< DimTraits<LD_T>::dim >::SliceSpec& a_slicespec )
+{
+    enum {DIM=DimTraits<LD_T>::dim};
+    typename ObjTraits<DIM-1>::DisjointBoxLayout toDBL;
+
+    typename ObjTraits<DIM>::LevelFlux degenerateLD;
+    a_from.degenerateLocalOnly( degenerateLD, a_slicespec ); // does a copyTo()
+
+    if (!a_to.isDefined())
+    {
+        typename ObjTraits<DIM-1>::VectorOfInt procIDs;
+        typename ObjTraits<DIM-1>::VectorOfBox toBoxes;
+        typename ObjTraits<DIM>::LayoutIterator it
+            = degenerateLD.disjointBoxLayout().layoutIterator();
+        for( ; it.ok(); ++it )
+        {
+            procIDs.push_back( degenerateLD.disjointBoxLayout().procID( it() ) );
+            typename ObjTraits<DIM-1>::Box toBox;
+            sliceBox( toBox, degenerateLD.disjointBoxLayout()[it()], a_slicespec );
+            toBoxes.push_back( toBox );
+        }
+
+        // Make toDBL, with procIDs the same as degenerateLD's:
+        typename ObjTraits<DIM>::ProblemDomain fromDomain;
+
+        fromDomain =  static_cast<const DBLChild< typename ObjTraits<DIM>::DisjointBoxLayout>* >(&(a_from.getBoxes()))->getDomain();
+        
+        toDBL.define( toBoxes, procIDs,
+                      sliceDomain(fromDomain, a_slicespec) );
+
+        typename ObjTraits<DIM-1>::IntVect toGhost;
+        sliceIntVect( toGhost, a_from.ghostVect(), a_slicespec );
+
+        a_to.define( toDBL, a_from.nComp(), toGhost );
+    }
+
+    // Copy the FAB data.
+    typename ObjTraits<DIM>::DataIterator degenIt = degenerateLD.dataIterator();
+    typename ObjTraits<DIM-1>::DataIterator toIt = a_to.dataIterator();
+    for( ; degenIt.ok(); ++degenIt, ++toIt )
+    {
+        CH_assert( toIt.ok() );
+        int destDir = 0;
+        for (int dir=0; dir<DIM; dir++)
+          {
+            if (dir != a_slicespec.direction)
+              {
+                memcpy(a_to[toIt][destDir].dataPtr(), 
+                       degenerateLD[degenIt][dir].dataPtr(),
+                       a_to[toIt][destDir].box().numPts() * a_from.nComp() * sizeof(Real) );
+                destDir++;
+              } 
+          }
+    }
+}
+
+
+
 
 } // namespace CH_MultiDim
 

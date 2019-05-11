@@ -480,13 +480,13 @@ oneStep(Vector<T* >&       a_phiNew,
   //this makes phinew = phiold if using phiold as init guess
   for (int ilev = a_lbase; ilev <= a_lmax; ilev++)
     {
-      m_ops[ilev]->assign(*a_phiNew[ilev], *a_phiOld[ilev]);
+      m_ops[ilev]->assignLocal(*a_phiNew[ilev], *a_phiOld[ilev]);
     }
   solveHelm(a_phiNew, m_rhst, a_lbase, a_lmax, m_mu2, a_dt);
   for (int ilev = a_lbase; ilev <= a_lmax; ilev++)
     {
       //this puts the answer into rhst so we can do the final solve
-      m_ops[ilev]->assign(*m_rhst[ilev], *a_phiNew[ilev]);
+      m_ops[ilev]->assignLocal(*m_rhst[ilev], *a_phiNew[ilev]);
     }
 
   //this makes rhst hold k*a[(k*a I - mu2 L)^-1 (rhs)]
@@ -504,7 +504,7 @@ oneStep(Vector<T* >&       a_phiNew,
   //this makes phinew = phiold if using phiold as init guess
   for (int ilev = a_lbase; ilev <= a_lmax; ilev++)
     {
-      m_ops[ilev]->assign(*a_phiNew[ilev], *a_phiOld[ilev]);
+      m_ops[ilev]->assignLocal(*a_phiNew[ilev], *a_phiOld[ilev]);
     }
   solveHelm(a_phiNew, m_rhst, a_lbase, a_lmax, m_mu1, a_dt);
 }

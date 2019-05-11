@@ -19,6 +19,7 @@
 #include "EBArith.H"
 #include "CH_Timer.H"
 #include "EBLevelGrid.H"
+#include "CH_OpenMP.H"
 #include "NamespaceHeader.H"
 
 /************************************/
@@ -123,6 +124,11 @@ EBMGInterp::define(const DisjointBoxLayout&    a_dblFine,
             }
         }
       CH_STOP(t1);
+    }
+  if (m_layoutChanged)
+    {
+      EBCellFactory ebcellfact(m_buffEBISL);
+      m_buffer.define(m_buffGrids, m_nComp, m_ghost, ebcellfact);
     }
   defineStencils();
 }
@@ -312,7 +318,15 @@ defineConstantStencil(const DataIndex       & a_dit,
       //weight is one because there is only one vof to the stencil
       //and we are doing piecewise constant interpolation
       //for the copy stencil the weight is one because it is a copy
-      interpStencil.add(coarVoF, 1.0);
+      Real fineKappa = ebisBoxFine.volFrac(a_allFineVoFs[ifine]);
+      Real coarKappa = ebisBoxCoar.volFrac(coarVoF);
+      
+      if(coarKappa > 1.0e-10)
+      {
+        Real weight = fineKappa/coarKappa;
+//        weight = 1;
+        interpStencil.add(coarVoF, weight);
+      }
     }
 
   m_interpEBStencil[a_dit] = RefCountedPtr<EBStencil>(new EBStencil(a_allFineVoFs, interpStencils,
@@ -367,35 +381,37 @@ EBMGInterp::pwcInterp(LevelData<EBCellFAB>&       a_fineData,
       if (m_coarsenable)
         {
           CH_TIME("EBMGInterp::pwcInterp::coarsenable");
-          EBCellFactory ebcellfact(m_buffEBISL);
-
-          LevelData<EBCellFAB> coarsenedFineData(m_buffGrids, m_nComp, m_ghost, ebcellfact);
+          LevelData<EBCellFAB>& coarsenedFineData = m_buffer;
           a_coarData.copyTo(a_variables, coarsenedFineData, a_variables);
-          for (DataIterator dit = m_fineGrids.dataIterator(); dit.ok(); ++dit)
+          DataIterator dit = m_fineGrids.dataIterator(); 
+          int nbox=dit.size();
+#pragma omp parallel for
+          for (int mybox=0;mybox<nbox; mybox++)
             {
               //does incrementonly = true
-              pwcInterpFAB(a_fineData[dit()],
-                           m_buffGrids[dit()],
-                           coarsenedFineData[dit()],
-                           dit(),
+              pwcInterpFAB(a_fineData[dit[mybox]],
+                           m_buffGrids[dit[mybox]],
+                           coarsenedFineData[dit[mybox]],
+                           dit[mybox],
                            a_variables);
-            }
+            }//dit
         }
       else
         {
           CH_TIME("EBMGInterp::pwcInterp::uncoarsenable");
-          EBCellFactory ebcellfact(m_buffEBISL);
-          LevelData<EBCellFAB> refinedCoarseData(m_buffGrids, m_nComp, m_ghost, ebcellfact);
-          for (DataIterator dit = m_coarGrids.dataIterator(); dit.ok(); ++dit)
+          LevelData<EBCellFAB>& refinedCoarseData = m_buffer;
+          DataIterator dit = m_coarGrids.dataIterator(); 
+          int nbox=dit.size();
+#pragma omp parallel for
+          for (int mybox=0;mybox<nbox; mybox++)
             {
-              refinedCoarseData[dit()].setVal(0.);
-              pwcInterpFAB(refinedCoarseData[dit()],
-                           m_coarGrids[dit()],
-                           a_coarData[dit()],
-                           dit(),
+              refinedCoarseData[dit[mybox]].setVal(0.);
+              pwcInterpFAB(refinedCoarseData[dit[mybox]],
+                           m_coarGrids[dit[mybox]],
+                           a_coarData[dit[mybox]],
+                           dit[mybox],
                            a_variables);
-            }
-
+            }//dit
           EBAddOp op;
           refinedCoarseData.copyTo(a_variables, a_fineData, a_variables, m_copierRCtoF, op);
         }
@@ -421,8 +437,7 @@ EBMGInterp::pwlInterp(LevelData<EBCellFAB>&       a_fineData,
       if (m_coarsenable)
         {
           CH_TIME("EBMGInterp::pwlInterp::coarsenable");
-          EBCellFactory ebcellfact(m_buffEBISL);
-          LevelData<EBCellFAB> coarsenedFineData(m_buffGrids, m_nComp, m_ghost, ebcellfact);
+          LevelData<EBCellFAB>& coarsenedFineData = m_buffer;
           a_coarData.copyTo(a_variables, coarsenedFineData, a_variables);
           fillGhostCellsPWC(coarsenedFineData, m_buffEBISL, m_coarDomain);
           for (DataIterator dit = m_fineGrids.dataIterator(); dit.ok(); ++dit)
@@ -440,7 +455,7 @@ EBMGInterp::pwlInterp(LevelData<EBCellFAB>&       a_fineData,
           CH_TIME("EBMGInterp::pwlInterp::uncoarsenable");
           EBCellFactory ebcellfact(m_buffEBISL);
           fillGhostCellsPWC((LevelData<EBCellFAB>&)a_coarData, m_coarEBISL, m_coarDomain);
-          LevelData<EBCellFAB> refinedCoarseData(m_buffGrids, m_nComp, m_ghost, ebcellfact);
+          LevelData<EBCellFAB>& refinedCoarseData = m_buffer;
           for (DataIterator dit = m_coarGrids.dataIterator(); dit.ok(); ++dit)
             {
               refinedCoarseData[dit()].setVal(0.);
@@ -558,12 +573,15 @@ EBMGInterp::pwcInterpMG(LevelData<EBCellFAB>&       a_fineData,
   CH_assert(a_fineData.ghostVect() == m_ghost);
   CH_assert(a_coarData.ghostVect() == m_ghost);
 
-  for (DataIterator dit = m_coarGrids.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = m_coarGrids.dataIterator(); 
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      pwcInterpFAB(a_fineData[dit()],
-                   m_coarGrids[dit()],
-                   a_coarData[dit()],
-                   dit(),
+      pwcInterpFAB(a_fineData[dit[mybox]],
+                   m_coarGrids[dit[mybox]],
+                   a_coarData[dit[mybox]],
+                   dit[mybox],
                    a_variables);
     }
 }

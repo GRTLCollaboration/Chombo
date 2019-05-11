@@ -19,6 +19,7 @@
 #include "AMRMultiGrid.H"
 #include "EBBackwardEuler.H"
 #include "EBLevelDataOps.H"
+#include "CH_OpenMP.H"
 #include "NamespaceHeader.H"
 
 void EBBackwardEuler::
@@ -187,6 +188,7 @@ oneStep(Vector<LevelData<EBCellFAB>* >&       a_phiNew,
   //have to set one level below lbase in case we are using
   //a coarser level for boundary conditions
   int minLev = Max(a_lbase-1, 0);
+  if(&a_phiNew != &a_phiOld)
   for (int ilev = minLev; ilev <= a_lmax; ilev++)
     {
       m_ops[ilev]->assign( *a_phiNew[ilev], *a_phiOld[ilev]);
@@ -210,21 +212,25 @@ createEulerRHS(Vector<LevelData<EBCellFAB>* >&   a_ans,
   for (int ilev = a_lbase; ilev <= a_lmax; ilev++)
     {
       DisjointBoxLayout grids = a_phiOld[ilev]->disjointBoxLayout();
-      for (DataIterator dit = grids.dataIterator(); dit.ok(); ++dit)
+      DataIterator dit = grids.dataIterator();
+      int nbox=dit.size();
+#pragma omp parallel for
+      for (int mybox=0;mybox<nbox; mybox++)
         {
           //this makes rhs  = 0
-          (*a_ans[ilev])[dit()].setVal(0.);
+          (*a_ans[ilev])[dit[mybox]].setVal(0.);
           //this makes rhs = phiOld
-          (*a_ans[ilev])[dit()] +=  ((*a_phiOld[ilev])[dit()]);
-        }
+          (*a_ans[ilev])[dit[mybox]] +=  ((*a_phiOld[ilev])[dit[mybox]]);
+        }//dit
 
       // //this makes rhs = kappa*acoef*(phi^n)
       // //do not kappa weight if already coming in kappa weighted
       m_ops[ilev]->diagonalScale(*a_ans[ilev], !a_kappaWeighted);
 
-      for (DataIterator dit = grids.dataIterator(); dit.ok(); ++dit)
+#pragma omp parallel for
+      for (int mybox=0;mybox<nbox; mybox++)
         {
-          const EBCellFAB& rho  = (*a_rho[ilev])[dit()];
+          const EBCellFAB& rho  = (*a_rho[ilev])[dit[mybox]];
           EBCellFAB scaleRho(rho.getEBISBox(), rho.box(), rho.nComp());
           scaleRho.setVal(0.);
 
@@ -236,8 +242,8 @@ createEulerRHS(Vector<LevelData<EBCellFAB>* >&   a_ans,
           scaleRho *= a_dt;
 
           //this makes rhs = kappa*acoef*(phi^n) + dt*kappa*a_rho
-          (*a_ans[ilev])[dit()] += scaleRho;
-        }
+          (*a_ans[ilev])[dit[mybox]] += scaleRho;
+        }//dit
     }
 }
 /*******/

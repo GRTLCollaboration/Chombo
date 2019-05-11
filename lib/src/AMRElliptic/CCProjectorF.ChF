@@ -26,6 +26,7 @@ C    Please refer to Copyright.txt, in Chombo's root directory.
      &     -    facevel(chf_ix[i+2*ioff;j+2*joff;k+2*koff]))
 
       chf_enddo
+      ch_flops=ch_flops+CHF_POINTS[facebox] 
 
       return
       end
@@ -52,6 +53,7 @@ C    Please refer to Copyright.txt, in Chombo's root directory.
      &     )*half
 
       chf_enddo
+      ch_flops=ch_flops+CHF_POINTS[facebox]*2  
 
       return
       end
@@ -77,6 +79,7 @@ C    Please refer to Copyright.txt, in Chombo's root directory.
      &     +facegrad(chf_ix[i     ;j     ;k     ]))*half
 
       chf_enddo
+      ch_flops=ch_flops+CHF_POINTS[cellbox]*2  
 
       return
       end
@@ -103,6 +106,7 @@ C    Please refer to Copyright.txt, in Chombo's root directory.
      &     -facedata(chf_ix[i     ;j     ;k     ]))/dx
 
       chf_enddo
+      ch_flops=ch_flops+CHF_POINTS[cellbox]*2  
 
       return
       end

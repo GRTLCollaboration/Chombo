@@ -20,11 +20,12 @@
 #include "EBCompositeMACProjector.H"
 #include "EBCompositeCCProjector.H"
 #include "EBAMRPoissonOp.H"
-#include "EBLevelAdvect.H"
+#include "EBAdvectLevelIntegrator.H"
 #include "EBCoarseAverage.H"
 #include "EBSimpleSolver.H"
 #include "EBFastFR.H"
-
+#include "EBLevelRedist.H"
+#include "EBNormalizeByVolumeFraction.H"
 #include "NamespaceHeader.H"
 
 ///
@@ -221,7 +222,7 @@ public:
                              Vector<LayoutData< Vector< BaseIVFAB<Real> * > >* >&  a_coveredScalarHi,
                              bool                                                  a_nonConsOnly     = false,
                              bool                                                  a_consOnly        = false,
-                             Vector<RefCountedPtr<EBLevelAdvect> >              *  a_ebLevAd = NULL);
+                             Vector<RefCountedPtr<EBAdvectLevelIntegrator> >    *  a_ebLevAd = NULL);
 
   //fixes timestep to input
   void useFixedDt(Real a_dt);
@@ -230,7 +231,7 @@ public:
   virtual ~EBAMRNoSubcycle();
 
   /// set up grids, etc for fixed-hiearchy run
-  void setupForFixedHierarchyRun(const Vector<Vector<Box> >& a_vectBoxes);
+  void setupForFixedHierarchyRun(Vector<Vector<Box> >& a_vectBoxes);
 
   /// set up grids, etc for AMR run
   void setupForAMRRun();
@@ -338,35 +339,11 @@ protected:
   /// accumulate number of points updated
   void pointsUpdated();
 
-  virtual void cacheExtraTerms(const int a_endLevel = 9999999)
-  {
-  }
-
-  virtual void uncacheExtraTerms(const int a_endLevel = 9999999)
-  {
-  }
-
-  virtual void interpolateExtraTerms(const int a_startLevel = -1, const int a_endLevel = 9999999)
-  {
-  }
-
-  virtual void interpolateExtraTermsForRestart(const int a_startLevel = -1, const int a_endLevel = 9999999)
-  {
-  }
 
 #ifdef CH_USE_HDF5
   ///
   void writeCheckpointFile();
 
-  ///
-  virtual void writeExtraDataToCheckpoint(HDF5Handle& a_handleOut, const int ilev)
-  {
-  }
-
-  ///
-  virtual void readExtraDataFromCheckpoint(HDF5Handle& a_handleIn, const int ilev)
-  {
-  }
 
   ///
   virtual void readCheckpointFile(const string& a_restartFile);
@@ -374,27 +351,9 @@ protected:
   ///
   virtual void writePlotFile();
 
-  ///
-  virtual void addExtraOutputData(LevelData<EBCellFAB>& a_outputData, const int a_startDstInterv, const int a_ilev)
-  {
-  }
+  virtual void writePlotFileOld();
+  virtual void writePlotFileNew();
 
-  ///
-  virtual void addExtraDatatoPlotFile(const string& a_filename)
-  {
-  }
-
-  ///
-  virtual int getNumExtraVars()
-  {
-    return 0;
-  }
-
-  ///
-  virtual Vector<string> extraNames()
-  {
-    return 0;
-  }
 
 #endif
 
@@ -405,29 +364,6 @@ protected:
   virtual void predictVelocity();
   virtual void correctVelocity();
 
-  virtual void predictExtraFieldsPreVelocity()
-  {
-  }
-
-  virtual void predictExtraFieldsPostVelocity()
-  {
-  }
-
-  virtual void correctExtraFieldsPreVelocity()
-  {
-  }
-
-  virtual void correctExtraFieldsPostVelocity()
-  {
-  }
-
-  virtual void computeExtraSourceForPredictor(Vector<LevelData<EBCellFAB>*> & a_source, const int& a_dir)
-  {
-  }
-
-  virtual void computeExtraSourceForCorrector(Vector<LevelData<EBCellFAB>*> & a_source)
-  {
-  }
 
   virtual void storePredictedVelocity(const Vector<LevelData<EBFluxFAB>* > &                      a_macVelocity,
                                       const Vector<LayoutData< Vector< BaseIVFAB<Real> * > >* > & a_coveredVelocityLo,
@@ -472,33 +408,20 @@ protected:
   /// initialize data
   void initialData();
 
-  /// initialize extra data
-  virtual void initialExtraData()
-  {
-  }
 
   /// things do do after initialization
   void postInitialize();
 
-  virtual void defineGrids(const Vector<Vector<Box> >& a_vectBoxes);
+  virtual void defineGrids(Vector<Vector<Box> >& a_vectBoxes);
   // virtual void defineEBISLs(const int a_endLevel = 9999999);
   // virtual void defineExtraEBISLs(const int a_endLevel = 9999999){}
   virtual void defineEBISLs();
-  virtual void defineExtraEBISLs()
-  {
-  }
+
   void defineNewVel(const int a_startLevel = -1);
   void defineOldVel();
   void definePressure(const int a_startLevel = -1);
   void defineProjections();
-  virtual void defineExtraSolvers()
-  {
-  }
 
-  ///
-  virtual void defineExtraTerms(const int a_startLevel = -1)
-  {
-  }
 
   virtual void allocateDataHolders();
   /// compute dt
@@ -514,9 +437,9 @@ protected:
   void setup();
 
   /// regrid  once new boxes have been generated
-  void regrid(const Vector<Vector<Box> >& a_new_grids);
+  void regrid(Vector<Vector<Box> >& a_new_grids);
 
-  void initialGrid(const Vector<Vector<Box> >& a_vectBoxes);
+  void initialGrid(Vector<Vector<Box> >& a_vectBoxes);
 
 public:
   void
@@ -528,34 +451,28 @@ public:
                        const Vector<LevelData<EBCellFAB>*>*                  a_sourceTerm,
                        const Vector<LevelData<EBCellFAB>* >               &  a_cellScalar,
                        const Vector<LevelData<EBCellFAB>* >               &  a_cellVelocity,
-                       Vector<RefCountedPtr<EBLevelAdvect> >              *  a_ebLevAd = NULL);
+                       Vector<RefCountedPtr<EBAdvectLevelIntegrator> >    *  a_ebLevAd = NULL);
 
   //fills temporary stuff.  need to do this for some convergence tests.  do not do this unless you are sure
   //you know the context
   void allocateTemporaries();
-  virtual void allocateExtraTemporaries()
-  {
-  }
+
   //delete temporary stuff.  need to do this for some convergence tests.  do not do this unless you are sure
   //you know the context
   void deleteTemporaries();
-  virtual void deleteExtraTemporaries()
-  {
-  }
+
 protected:
   void copyNewToOld(int a_ilev);
   void copyOldToNew(int a_ilev);
 
   void applyEBAMROp(Vector<LevelData<EBCellFAB>* >&       a_lap,
                     Vector<LevelData<EBCellFAB>* >&       a_phi,
-                    Vector<LevelData<EBCellFAB>* >&       a_zero,
                     int                                   a_velComp,
                     Real                                  a_time);
 
   void
   viscousSourceForAdvect(Vector<LevelData<EBCellFAB>* >&       a_source,
                          Vector<LevelData<EBCellFAB>* >&       a_vel,
-                         Vector<LevelData<EBCellFAB>* >&       a_zero,
                          int                                   a_velComp,
                          Real                                  a_time);
   void
@@ -564,20 +481,22 @@ protected:
                             Vector<LevelData<EBFluxFAB>* >&                       a_macOpen,
                             Vector<LevelData<EBCellFAB>* >&                       a_cellOpen,
                             int                                                   a_idir,
-                            Vector<RefCountedPtr<EBLevelAdvect> >              *  a_ebLevAd = NULL);
+                            Vector<RefCountedPtr<EBAdvectLevelIntegrator> >    *  a_ebLevAd = NULL);
 
   void averageDown(Vector<LevelData<EBCellFAB>* >&  a_data);
   void averageDown(Vector<LevelData<EBFluxFAB>* >&  a_data);
-  void setCoveredStuffToZero(LevelData<EBCellFAB>& a_vort);
-  virtual void averageDownExtraTerms()
-  {
-  }
+  void setCoveredStuffToZero(LevelData<EBCellFAB>&  a_vort);
+
 
   //parmaters
   AMRParameters          m_params;
   EBIBC*                 m_ibc;
   const EBIndexSpace*    m_ebisPtr;
 
+  void exchange(Vector<LevelData<EBCellFAB>* >&  a_data);
+  void exchange(Vector<LevelData<EBFluxFAB>* >&  a_data);
+
+  int  m_nGhost;
   //grid description
   Vector<ProblemDomain>     m_domain;
   Vector<Real>              m_dx;
@@ -595,7 +514,9 @@ protected:
   Vector<RefCountedPtr<EBQuadCFInterp> >    m_quadCFI;
   Vector<RefCountedPtr<EBCoarseAverage> >   m_aveOper;
   Vector<RefCountedPtr<EBCoarseAverage> >   m_aveSpac;
-
+  Vector<RefCountedPtr<EBNormalizeByVolumeFraction> > m_normalizor;
+  Vector<RefCountedPtr<EBConstantCFInterp> > m_constCFI;
+  Vector<RefCountedPtr<EBLevelRedist> > m_redist;
   //  finest extant level
   int m_finestLevel;
   int m_curStep;
@@ -620,6 +541,9 @@ protected:
   bool m_advanceGphiOnly;
   bool m_steadyState;
   bool m_stopAdvance;
+  
+  std::string m_plotFile;
+  std::string m_checkFile;
 
   //data held in memory
   Vector<LevelData<EBCellFAB>* > m_velo;
@@ -650,6 +574,8 @@ protected:
   Vector<LevelData<EBCellFAB>* >                       m_cellScratc1;
   Vector<LevelData<EBCellFAB>* >                       m_cellScratc2;
 
+  Vector<LevelData<EBCellFAB>* >                       m_vectorScrat;
+
   Vector<LevelData<EBFluxFAB>* >                       m_macGradient;
   Vector<LevelData<EBFluxFAB>* >                       m_macScratch1;
   Vector<LevelData<EBFluxFAB>* >                       m_macScratch2;
@@ -657,8 +583,8 @@ protected:
   Vector<LayoutData< Vector< BaseIVFAB<Real> * > >* >  m_coveredScratchLo;
   Vector<LayoutData< Vector< BaseIVFAB<Real> * > >* >  m_coveredScratchHi;
 
-  Vector<RefCountedPtr<EBLevelAdvect>  > m_ebLevAd;
-  Vector<RefCountedPtr<EBFastFR     >  > m_fluxReg;
+  Vector<RefCountedPtr<EBAdvectLevelIntegrator   >  >  m_ebLevAd;
+  Vector<RefCountedPtr<EBFastFR                  >  >  m_fluxReg;
 
   void refluxUDotDelU(Vector<LevelData<EBCellFAB>* >  &  a_uDotDelU,
                       Vector<LevelData<EBFluxFAB>* >  &  a_macAdvVel,

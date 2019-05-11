@@ -1,4 +1,4 @@
-max_step  	      = 100
+max_step  	      = 1
 max_time              = 100.0
 
 mg_relax_type  = 2
@@ -30,12 +30,12 @@ use_limiting          = 1
 domain_length         = 2.0
 do_regrid_smoothing = true
 
-max_level	      = 0
-n_cell                =  128 64 64
+max_level	      = 2
+n_cell                = 32 32 32
 ref_ratio	      = 2 2 2 2
 num_filter_iterations  = 4
-num_gphi_iterations    = 4
-num_init_iterations    = 4
+num_gphi_iterations    = 0
+num_init_iterations    = 0
 
 checkpoint_interval   = 100
 plot_interval	      = 100
@@ -48,7 +48,7 @@ regrid_interval	      = 1000000
 max_dt_grow	      = 1000
 cfl		      = 0.75
 init_cfl	      = 0.75
-verbosity	      = 1
+verbosity	      = 3
 nesting_radius	      = 2
 tag_buffer	      = 8
 
@@ -69,8 +69,8 @@ which_geom = 0
 ## 5 is a sphere
 which_geom = 5
 
-sphere_radius = 0.25
-sphere_center = 1.0 0.5 0.5
+sphere_radius = 0.15
+sphere_center = 1.0 -0.1 0.5
 cutplane_normal = 1.0 0.0 0.0
 
 

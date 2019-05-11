@@ -128,10 +128,9 @@ C     petermc, 26 april 2001
 
       REAL_T lambda, dxinv, sum_b, lphi, lap
       integer CHF_DDECL[i;j;k]
-      integer n,ncomp,idir,indtot,imin,imax
+      integer n,ncomp,idir,indtot,imin,imax,counter
 
       dxinv = one/(dx*dx)
-
       sum_b = 0.0
       do idir = 0, CH_SPACEDIM-1
          sum_b = sum_b + two*dxinv
@@ -193,7 +192,8 @@ C     petermc, 26 april 2001
         enddo
 #endif
       enddo
-
+      i=CHF_POINTS[region]
+      ch_flops=ch_flops+ ncomp*i/2*(2*CH_SPACEDIM+3)
       return
       end
 
@@ -318,7 +318,8 @@ C         print*, 'OPERATORLAP:phi and lofphi incompatible'
           lofphi(CHF_IX[i;j;k],n) = alpha*phi(CHF_IX[i;j;k],n)+beta*lap
         CHF_ENDDO
       enddo
-
+      i=CHF_POINTS[region]
+      ch_flops=ch_flops+ ncomp*i*(2*CH_SPACEDIM+5)
       return
       end
 C     -----------------------------------------------------------------
@@ -371,7 +372,7 @@ C     ------------------------------------------------------------------
          CHF_ENDDO
      
       enddo
-
+      ch_flops=ch_flops+CHF_POINTS[region]*ncomp*(2*CH_SPACEDIM+6)
       return
       end
 
@@ -432,7 +433,7 @@ C     ------------------------------------------------------------------
      &                            + (rhs(CHF_IX[i;j;k],n) - lofphi) / denom
         CHF_ENDDO
       enddo
-
+      ch_flops=ch_flops+CHF_POINTS[region]*ncomp*(2*CH_SPACEDIM+6)
       return
       end
 
@@ -471,7 +472,7 @@ C     ------------------------------------------------------------------
      &        coarse(CHF_IX[ii;jj;kk],n)
          CHF_ENDDO
       enddo
-
+      ch_flops=ch_flops+CHF_POINTS[region]
       return
 
       end

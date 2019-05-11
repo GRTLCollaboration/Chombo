@@ -544,7 +544,20 @@ godunovGeometry(Box& a_coarsestDomain,
   int ebMaxSize;
   ppgodunov.get("max_grid_size", ebMaxSize);
   EBIndexSpace* ebisPtr = Chombo_EBIS::instance();
-  int verbosity = 0;
+  bool memory_balance_geometry = false;
+
+  pp.query("memory_balance_geometry", memory_balance_geometry);
+  if(memory_balance_geometry)
+    {
+      pout() << "load balancing EBIndexSpace based upon memory"<< endl;
+      EBIndexSpace::s_useMemoryLoadBalance = true;
+    }
+  else
+    {
+      pout() << "EBIndexSpace does standard load balancing" << endl;
+      EBIndexSpace::s_useMemoryLoadBalance = false;
+    }
+    int verbosity = 0;
   if (!pp.contains("ebis_file"))
     {
       if (whichgeom == 0)

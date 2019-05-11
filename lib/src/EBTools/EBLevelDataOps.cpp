@@ -24,66 +24,183 @@
 #include "EBIndexSpace.H"
 #include "EBLoadBalance.H"
 #include "CornerCopier.H"
+#include "CH_Timer.H"
 #include "NamespaceHeader.H"
 
+void 
+EBLevelDataOps::
+plus(LevelData<EBCellFAB>       & a_dst,
+     const LevelData<EBCellFAB> & a_src,
+     int srccomp, int dstcomp, int numcomp)
+{
+  const DisjointBoxLayout & dbl = a_dst.disjointBoxLayout();
+  for (DataIterator dit = dbl.dataIterator(); dit.ok(); ++dit)
+    {
+      a_dst[dit()].plus(a_src[dit()], srccomp, dstcomp, numcomp);
+    }
+}
+void
+EBLevelDataOps::checkData(const LevelData<EBFluxFAB>&a_data, const string& label)
+{
+  barrier();
+  pout() << "==== checking " << label << " for nans and infs =====" << std::endl;
+  checkForBogusNumbers(a_data);
+  pout() << "===================================================== " << std::endl;
+  barrier();
+  for(int idir = 0; idir < SpaceDim; idir++)
+    {
+      pout() << "Getting maxs and mins for " << label << "in direction " << idir <<std::endl;
+      for(int icomp = 0; icomp < a_data.nComp(); icomp++)
+        {
+          Real maxVal, minVal;
+          getMaxMin(maxVal,minVal,a_data,icomp,idir);
+          pout() << "max value = " << maxVal << " for comp = " << icomp << std::endl;
+          pout() << "min value = " << minVal << " for comp = " << icomp << std::endl;
+        }
+    }
+  pout() << "==================================================================== " << std::endl;
+  barrier();
+}
+
+void
+EBLevelDataOps::checkData(const LevelData<EBCellFAB>&a_data, const string& label)
+{
+  barrier();
+  pout() << "==== checking " << label << " for nans and infs =====" << std::endl;
+  checkForBogusNumbers(a_data);
+  barrier();
+  pout() << "Getting maxs and mins for " << label << std::endl;
+  for(int icomp = 0; icomp < a_data.nComp(); icomp++)
+    {
+      Real maxVal, minVal;
+      getMaxMin(maxVal,minVal,a_data,icomp);
+      pout() << "max value = " << maxVal << " for comp = " << icomp << std::endl;
+      pout() << "min value = " << minVal << " for comp = " << icomp << std::endl;
+    }
+  pout() << "==================================================================== " << std::endl;
+  barrier();
+}
+
 /*****/
+// void
+// EBLevelDataOps::pruneCoveredBoxes(Vector<Box>&              a_boxes,
+//                                   const ProblemDomain&      a_domain,
+//                                   const EBIndexSpace*       a_ebisPtr,
+//                                   const int&                a_ghosts)
+// {
+//   Vector<int> procs;
+//   LoadBalance(procs,  a_boxes);
+//   DisjointBoxLayout dbl(a_boxes, procs);
+//   EBISLayout ebisl;
+//   a_ebisPtr->fillEBISLayout(ebisl, dbl, a_domain, a_ghosts+1);
+
+//   /**
+//      Algorithm:
+//      loop through boxes and figure out which are covered
+//      gather them all together and popd them out of the a_boxes
+//      We COULD have done this by just gathering all the uncovered boxes
+//      and doing gather-broadcast on that list but that would not preserve
+//      the box order even in the case of there being no covered boxes.
+//    */
+//   Vector<Box> coveredBoxesLocal;
+//   for (DataIterator dit = dbl.dataIterator(); dit.ok(); ++dit)
+//     {
+//       Box grid = dbl.get(dit());
+//       Box grownBox = grid;
+//       grownBox.grow(a_ghosts);
+//       grownBox &= ebisl[dit()].getDomain();
+//       if (ebisl[dit()].isCovered(grownBox))
+//         {
+//           coveredBoxesLocal.push_back(grid);
+//         }
+//     }
+
+//   Vector<Vector<Box> > allCoveredBoxes;
+//   int baseproc = 0;
+//   gather(allCoveredBoxes, coveredBoxesLocal,  baseproc);
+//   Vector<Box> newBoxes;
+//   if (procID() == baseproc)
+//     {
+//       for (int ibox = 0; ibox < a_boxes.size(); ibox++)
+//         {
+//           const Box& oldBox = a_boxes[ibox];
+//           bool isCovered = false;
+//           for (int iproc = 0; iproc < allCoveredBoxes.size();  iproc++)
+//             {
+//               for (int icov = 0; icov < allCoveredBoxes[iproc].size();  icov++)
+//                 {
+//                   if (oldBox == allCoveredBoxes[iproc][icov])
+//                     {
+//                       isCovered = true;
+//                     }
+//                 }
+//             }
+//           if (!isCovered)
+//             {
+//               newBoxes.push_back(oldBox);
+//             }
+//         }
+//     }
+//   broadcast(newBoxes, baseproc);
+//   int numTotalBoxes = a_boxes.size();
+//   a_boxes = newBoxes;
+//   pout() << "Pruned " << numTotalBoxes - a_boxes.size() << " out of " << numTotalBoxes << " boxes" << endl;
+// }
+
 void
 EBLevelDataOps::pruneCoveredBoxes(Vector<Box>&              a_boxes,
                                   const ProblemDomain&      a_domain,
-                                  const EBIndexSpace*       a_ebisPtr)
+                                  const EBIndexSpace*       a_ebisPtr,
+                                  const int&                a_ghosts)
 {
   Vector<int> procs;
-  EBLoadBalance(procs,  a_boxes, a_domain);
+  LoadBalance(procs,  a_boxes);
   DisjointBoxLayout dbl(a_boxes, procs);
   EBISLayout ebisl;
-  a_ebisPtr->fillEBISLayout(ebisl, dbl, a_domain, 0);
+  a_ebisPtr->fillEBISLayout(ebisl, dbl, a_domain, a_ghosts+1);
 
-  /**
-     Algorithm:
-     loop through boxes and figure out which are covered
-     gather them all together and popd them out of the a_boxes
-     We COULD have done this by just gathering all the uncovered boxes
-     and doing gather-broadcast on that list but that would not preserve
-     the box order even in the case of there being no covered boxes.
-   */
-  Vector<Box> coveredBoxesLocal;
+  Vector<Box> noncoveredBoxesLocal;
   for (DataIterator dit = dbl.dataIterator(); dit.ok(); ++dit)
     {
-      const Box& grid = dbl.get(dit());
-      if (ebisl[dit()].isCovered(grid))
+      Box grid = dbl.get(dit());
+      Box grownBox = grid;
+      grownBox.grow(a_ghosts);
+      grownBox &= ebisl[dit()].getDomain();
+      if (!(ebisl[dit()].isCovered(grownBox)))
         {
-          coveredBoxesLocal.push_back(grid);
+          noncoveredBoxesLocal.push_back(grid);
         }
     }
 
-  Vector<Vector<Box> > allCoveredBoxes;
+  Vector<Vector<Box> > allBoxes;
   int baseproc = 0;
-  gather(allCoveredBoxes, coveredBoxesLocal,  baseproc);
+  gather(allBoxes, noncoveredBoxesLocal,  baseproc);
+
   Vector<Box> newBoxes;
+  
   if (procID() == baseproc)
     {
-      for (int ibox = 0; ibox < a_boxes.size(); ibox++)
+      int count=0;
+      for(int i=0; i<allBoxes.size(); ++i)
         {
-          const Box& oldBox = a_boxes[ibox];
-          bool isCovered = false;
-          for (int iproc = 0; iproc < allCoveredBoxes.size();  iproc++)
+          count+=allBoxes[i].size();
+        }
+      newBoxes.resize(count);
+      Box* b = &(newBoxes[0]);
+      for(int i=0; i<allBoxes.size(); ++i)
+        {
+          Vector<Box>& boxes=allBoxes[i];
+          for(int j=0; j<boxes.size(); j++)
             {
-              for (int icov = 0; icov < allCoveredBoxes[iproc].size();  icov++)
-                {
-                  if (oldBox == allCoveredBoxes[iproc][icov])
-                    {
-                      isCovered = true;
-                    }
-                }
-            }
-          if (!isCovered)
-            {
-              newBoxes.push_back(oldBox);
+              *b=boxes[j];
+              ++b;
             }
         }
     }
   broadcast(newBoxes, baseproc);
+  int numTotalBoxes = a_boxes.size();
   a_boxes = newBoxes;
+  pout() << "Pruned " << numTotalBoxes - a_boxes.size() << " out of " << numTotalBoxes << " boxes" << endl;
 }
 /*****/
 Real EBLevelDataOps::parallelSum(const Real& a_value)
@@ -427,14 +544,17 @@ void EBLevelDataOps::averageCellToFace(LevelData<EBFluxFAB>&         a_fluxData,
                                        bool a_interpolateToCentroid)
 {
 
-  for (DataIterator dit = a_grids.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_grids.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
       for (int idir = 0; idir < SpaceDim; idir++)
         {
-          averageCellToFace(a_fluxData[dit()][idir],
-                            a_cellData[dit()],
-                            a_grids[dit()],
-                            a_ebisl[dit()],
+          averageCellToFace(a_fluxData[dit[mybox]][idir],
+                            a_cellData[dit[mybox]],
+                            a_grids[dit[mybox]],
+                            a_ebisl[dit[mybox]],
                             a_domain, isrc, idst, inco,
                             a_interpolateToCentroid);
         }
@@ -459,12 +579,16 @@ void EBLevelDataOps::averageCellToFaces(LevelData<EBFluxFAB>&         a_fluxData
   ghostFluxTan = std::min(ghostFluxIn[0],ghostFluxTan);
   CH_assert(ghostFluxIn[0] >= ghostFluxTan);
 
-  for (DataIterator dit = a_grids.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_grids.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      const EBCellFAB& cellData = a_cellData[dit()];
-      const EBGraph&    ebgraph = a_ebisl[dit()].getEBGraph();
-      const Box&         dblBox = a_grids.get(dit());
-      EBFluxFAB&       fluxData = a_fluxData[dit()];
+
+      const EBCellFAB& cellData = a_cellData[dit[mybox]];
+      const EBGraph&    ebgraph = a_ebisl[dit[mybox]].getEBGraph();
+      const Box&         dblBox = a_grids.get(dit[mybox]);
+      EBFluxFAB&       fluxData = a_fluxData[dit[mybox]];
       for (int idir = 0; idir < SpaceDim; idir++)
         {
           EBFaceFAB&       faceData = fluxData[idir];
@@ -492,14 +616,18 @@ void EBLevelDataOps::averageCellToFacesMAC(LevelData<EBFluxFAB>&         a_fluxD
   CH_assert(ghostFluxIn >= ghostFlux);
 
   int faceComp = 0;
-  for (DataIterator dit = a_grids.dataIterator(); dit.ok(); ++dit)
+
+  DataIterator dit = a_grids.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      const EBCellFAB& cellData = a_cellData[dit()];
-      const EBGraph& ebgraph = a_ebisl[dit()].getEBGraph();
-      const Box&      dblBox = a_grids.get(dit());
+      const EBCellFAB& cellData = a_cellData[dit[mybox]];
+      const EBGraph& ebgraph = a_ebisl[dit[mybox]].getEBGraph();
+      const Box&      dblBox = a_grids.get(dit[mybox]);
       for (int idir = 0; idir < SpaceDim; idir++)
         {
-          EBFaceFAB&       faceData = a_fluxData[dit()][idir];
+          EBFaceFAB&       faceData = a_fluxData[dit[mybox]][idir];
           averageCellToFace(faceData, cellData, ebgraph, dblBox, ghostFlux[0], idir, a_domain, idir, faceComp);
         }
     }
@@ -558,12 +686,16 @@ void EBLevelDataOps::setCoveredVal(LevelData<EBCellFAB>&a_data,
                                    const Real&          a_value)
 {
   CH_TIME("EBLevelDataOps::setCoveredVal(cell)");
+ 
   int ncomp = a_data.nComp();
-  for (DataIterator dit = a_data.dataIterator();dit.ok();++dit)
+  DataIterator dit = a_data.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
       for (int icomp = 0; icomp < ncomp;++icomp)
         {
-          a_data[dit()].setCoveredCellVal(a_value,icomp);
+          a_data[dit[mybox]].setCoveredCellVal(a_value,icomp);
         }
     }
 }
@@ -572,13 +704,17 @@ void EBLevelDataOps::setCoveredVal(LevelData<EBFluxFAB>&a_data,
 {
   CH_TIME("EBLevelDataOps::setCoveredVal(face)");
   int ncomp = a_data.nComp();
-  for (DataIterator dit = a_data.dataIterator();dit.ok();++dit)
+
+  DataIterator dit = a_data.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
       for (int icomp = 0; icomp < ncomp;++icomp)
         {
           for (int idir = 0; idir < SpaceDim; idir++)
             {
-              EBFaceFAB& faceFAB = a_data[dit()][idir];
+              EBFaceFAB& faceFAB = a_data[dit[mybox]][idir];
               faceFAB.setCoveredFaceVal(a_value,icomp);
             }
         }
@@ -590,11 +726,14 @@ void EBLevelDataOps::setCoveredVal(LevelData<EBFluxFAB>&a_data,
                                    const Real&          a_value)
 {
   CH_TIME("EBLevelDataOps::setCoveredVal(face,comp)");
-  for (DataIterator dit = a_data.dataIterator();dit.ok();++dit)
+  DataIterator dit = a_data.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
       for (int idir = 0; idir < SpaceDim; idir++)
         {
-          a_data[dit()][idir].setCoveredFaceVal(a_value,a_comp);
+          a_data[dit[mybox]][idir].setCoveredFaceVal(a_value,a_comp);
         }
     }
 }
@@ -604,17 +743,20 @@ void EBLevelDataOps::setIrregVal(LevelData<EBCellFAB>&    a_data,
                                  const Real&              a_value)
 {
   int ncomp = a_data.nComp();
-  for (DataIterator dit = a_data.dataIterator();dit.ok();++dit)
+  DataIterator dit = a_data.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
       for (int icomp = 0; icomp < ncomp;++icomp)
         {
-          const Box& grid = a_dbl.get(dit());
-          const EBISBox& ebisBox = a_ebisl[dit()];
+          const Box& grid = a_dbl.get(dit[mybox]);
+          const EBISBox& ebisBox = a_ebisl[dit[mybox]];
           const IntVectSet& ivsIrreg = ebisBox.getIrregIVS(grid);
           for (VoFIterator vofit(ivsIrreg, ebisBox.getEBGraph()); vofit.ok(); ++vofit)
             {
               const VolIndex vof = vofit();
-              a_data[dit()](vof,icomp) = a_value;
+              a_data[dit[mybox]](vof,icomp) = a_value;
             }
         }
     }
@@ -625,9 +767,12 @@ void EBLevelDataOps::setCoveredVal(LevelData<EBCellFAB>&a_data,
                                    const Real&          a_value)
 {
   CH_TIME("EBLevelDataOps::setCoveredVal(cell,comp)");
-  for (DataIterator dit = a_data.dataIterator();dit.ok();++dit)
+  DataIterator dit = a_data.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      a_data[dit()].setCoveredCellVal(a_value,a_comp);
+      a_data[dit[mybox]].setCoveredCellVal(a_value,a_comp);
     }
 }
 bool EBLevelDataOps::checkNANINF(const LevelData<EBCellFAB>&a_data,
@@ -698,6 +843,97 @@ bool EBLevelDataOps::checkNANINF(const LevelData<EBCellFAB>&a_data,
     }
   return dataIsNANINF;
 }
+
+
+bool 
+EBLevelDataOps::checkForBogusNumbers(const LevelData<EBFluxFAB>&a_data)
+{
+  //this function checks for nans and infs
+  bool dataIsNANINF = false;
+  int ncomp = a_data.nComp();
+  DisjointBoxLayout dbl = a_data.disjointBoxLayout();
+  FaceIndex badface;
+  Real badval;
+  int badcomp;
+  for (DataIterator dit=dbl.dataIterator();dit.ok();++dit)
+    {
+      const Box& region = dbl[dit()];
+      IntVectSet ivsBox(region);
+      for(int idir = 0; idir < SpaceDim; idir ++)
+        {
+          const EBFaceFAB& dataEBFAB = a_data[dit()][idir];
+          const EBISBox& ebisBox = dataEBFAB.getEBISBox();
+          for (FaceIterator faceit(ivsBox, ebisBox.getEBGraph(), idir, FaceStop::SurroundingWithBoundary);faceit.ok(); ++faceit)
+            {
+              const FaceIndex& face = faceit();
+              for (int icomp = 0; icomp < ncomp;++icomp)
+                {
+                  Real val = dataEBFAB(face,icomp);
+                  if (std::isnan(val) || std::isinf(val) || Abs(val)>1.e20)
+                    {
+                      badface = face;
+                      badval = val;
+                      badcomp = icomp;
+                      //                      pout() << "      icomp = " << icomp << " face = " << face << " val = " << val << std::endl;
+                      dataIsNANINF = true;
+                      //                      MayDay::Error();
+                    }
+                }
+            }
+        }
+    }
+  if (dataIsNANINF)
+    {
+      pout() << "first bad face = " << badface << endl;
+      pout() << "bad val = "  << badval << " at comp " << badcomp << endl;
+      MayDay::Warning("Found a NaN or Infinity.");
+    }
+  return dataIsNANINF;
+}
+
+
+bool 
+EBLevelDataOps::checkForBogusNumbers(const LevelData<EBCellFAB>&a_data)
+{
+  //this function checks for nans and infs
+  bool dataIsNANINF = false;
+  int ncomp = a_data.nComp();
+  DisjointBoxLayout dbl = a_data.disjointBoxLayout();
+  VolIndex badvof;
+  Real badval;
+  int badcomp;
+  for (DataIterator dit=dbl.dataIterator();dit.ok();++dit)
+    {
+      const EBCellFAB& dataEBFAB = a_data[dit()];
+      const Box& region = dbl[dit()];
+      IntVectSet ivsBox(region);
+      const EBISBox& ebisBox = dataEBFAB.getEBISBox();
+      for (VoFIterator vofit(ivsBox, ebisBox.getEBGraph());vofit.ok(); ++vofit)
+        {
+          const VolIndex& vof = vofit();
+          for (int icomp = 0; icomp < ncomp;++icomp)
+            {
+              Real val = dataEBFAB(vof,icomp);
+              if (std::isnan(val) || std::isinf(val) || Abs(val)>1.e16)
+                {
+                  badvof = vof;
+                  badval = val;
+                  badcomp = icomp;
+                  //                  pout() << "      icomp = " << icomp << " vof = " << vof << " val = " << val << std::endl;
+                  dataIsNANINF = true;
+                  //                  MayDay::Error();
+                }
+            }
+        }
+    }
+  if (dataIsNANINF)
+    {
+      pout() << "first bad vof = "  << badvof << endl;
+      pout() << "bad val = "  << badval << " at comp " << badcomp << endl;
+      MayDay::Warning("Found a NaN or Infinity.");
+    }
+  return dataIsNANINF;
+}
 void EBLevelDataOps::getMaxMin(Real&                       a_maxVal,
                                Real&                       a_minVal,
                                const LevelData<EBCellFAB>& a_data,
@@ -716,9 +952,50 @@ void EBLevelDataOps::getMaxMin(Real&                       a_maxVal,
       const Box&        dblBox   = dbl.get(dit());
       const IntVectSet ivsBox(dblBox);
       const EBISBox& ebisBox = dataEBFAB.getEBISBox();
-      for (VoFIterator vofit(ivsBox, ebisBox.getEBGraph());vofit.ok(); ++vofit)
+      VoFIterator vofit(ivsBox, ebisBox.getEBGraph());
+      for (vofit.reset();vofit.ok(); ++vofit)
         {
           const VolIndex& vof = vofit();
+          const Real& val = dataEBFAB(vof,a_comp);
+          if (a_doAbs)
+            {
+              a_maxVal = Max(a_maxVal,Abs(val));
+              a_minVal = Min(a_minVal,Abs(val));
+            }
+          else
+            {
+              a_maxVal = Max(a_maxVal,val);
+              a_minVal = Min(a_minVal,val);
+            }
+        }
+    }
+  a_minVal = EBLevelDataOps::parallelMin(a_minVal);
+  a_maxVal = EBLevelDataOps::parallelMax(a_maxVal);
+}
+
+void EBLevelDataOps::getMaxMin(Real&                       a_maxVal,
+                               Real&                       a_minVal,
+                               const LevelData<EBFluxFAB>& a_data,
+                               const int&                  a_comp,
+                               const int&                  a_idir,
+                               const bool&                 a_doAbs)
+{
+  CH_TIME("EBLevelDataOps::getMaxMin");
+  //this function gets the max and min (valid) values
+  a_maxVal = -1.e99;
+  a_minVal =  1.e99;
+
+  const DisjointBoxLayout& dbl = a_data.disjointBoxLayout();
+  for (DataIterator dit=a_data.dataIterator();dit.ok();++dit)
+    {
+      const EBFaceFAB& dataEBFAB = a_data[dit()][a_idir];
+      const Box&        dblBox   = dbl.get(dit());
+      const IntVectSet ivsBox(dblBox);
+      const EBISBox& ebisBox = dataEBFAB.getEBISBox();
+      FaceIterator vofit(ivsBox, ebisBox.getEBGraph(), a_idir, FaceStop::SurroundingWithBoundary);
+      for (vofit.reset();vofit.ok(); ++vofit)
+        {
+          const FaceIndex& vof = vofit();
           const Real& val = dataEBFAB(vof,a_comp);
           if (a_doAbs)
             {
@@ -832,17 +1109,23 @@ void EBLevelDataOps::defineLevelData(LevelData<EBFluxFAB>&    a_levelData,
 
 void EBLevelDataOps::setToZero(LevelData<EBCellFAB>& a_result)
 {
-  for (DataIterator dit = a_result.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_result.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      a_result[dit()].setVal(0.0);
+      a_result[dit[mybox]].setVal(0.0);
     }
 }
 
 void EBLevelDataOps::setToZero(LevelData<EBFluxFAB>& a_result)
 {
-  for (DataIterator dit = a_result.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_result.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      EBFluxFAB& result = a_result[dit()];
+      EBFluxFAB& result = a_result[dit[mybox]];
       for (int idir = 0; idir < SpaceDim; idir++)
         {
           result[idir].setVal(0.0);
@@ -854,9 +1137,13 @@ void EBLevelDataOps::setToZero(LevelData<EBFluxFAB>& a_result)
 void EBLevelDataOps::setVal(LevelData<EBCellFAB>& a_result,
                             const Real&           a_value)
 {
-  for (DataIterator dit = a_result.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_result.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      DataIndex d = dit();
+
+      DataIndex d = dit[mybox];
       EBCellFAB& result = a_result[d];
 
       result.setVal(a_value);
@@ -866,9 +1153,12 @@ void EBLevelDataOps::setVal(LevelData<EBCellFAB>& a_result,
 void EBLevelDataOps::setVal(LevelData<BaseIVFAB<Real> >& a_result,
                             const Real&           a_value)
 {
-  for (DataIterator dit = a_result.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_result.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      DataIndex d = dit();
+      DataIndex d = dit[mybox];
       BaseIVFAB<Real>& result = a_result[d];
 
       result.setVal(a_value);
@@ -878,9 +1168,12 @@ void EBLevelDataOps::setVal(LevelData<EBCellFAB>& a_result,
                             const Real&           a_value,
                             const int&            a_comp)
 {
-  for (DataIterator dit = a_result.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_result.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      DataIndex d = dit();
+      DataIndex d = dit[mybox];
       EBCellFAB& result = a_result[d];
 
       result.setVal(a_comp,a_value);
@@ -890,9 +1183,12 @@ void EBLevelDataOps::setVal(LevelData<EBCellFAB>& a_result,
 void EBLevelDataOps::setVal(LevelData<EBFluxFAB>& a_result,
                             const Real&           a_value)
 {
-  for (DataIterator dit = a_result.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_result.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      DataIndex d = dit();
+      DataIndex d = dit[mybox];
       EBFluxFAB& result = a_result[d];
       for (int idir = 0; idir < SpaceDim; idir++)
         {
@@ -909,9 +1205,13 @@ void EBLevelDataOps::axby( LevelData<EBCellFAB>&       a_lhs,
 {
   //  CH_assert(a_lhs.disjointBoxLayout() == a_x.disjointBoxLayout());
 
-  for (DataIterator dit = a_lhs.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_lhs.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      DataIndex d = dit();
+      DataIndex d = dit[mybox];
+
       EBCellFAB& data = a_lhs[d];
       data.axby(a_x[d], a_y[d], a, b);
       //data.copy(a_x[d]);
@@ -919,6 +1219,7 @@ void EBLevelDataOps::axby( LevelData<EBCellFAB>&       a_lhs,
       //data.plus(a_y[d], b);
     }
 }
+/*
 void EBLevelDataOps::axby( LevelData<EBCellFAB>&       a_lhs,
                            const LevelData<EBCellFAB>& a_x,
                            const LevelData<EBCellFAB>& a_y,
@@ -929,14 +1230,18 @@ void EBLevelDataOps::axby( LevelData<EBCellFAB>&       a_lhs,
                            const int&  a_yComp)
 
 {
-  for (DataIterator dit = a_lhs.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_lhs.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      DataIndex d = dit();
+      DataIndex d = dit[mybox];
+
       EBCellFAB& data = a_lhs[d];
       data.axby(a_x[d], a_y[d], a, b,a_lhsComp,a_xComp,a_yComp);
     }
 }
-
+*/
 void EBLevelDataOps::assign(LevelData<EBCellFAB>&       a_to,
                             const LevelData<EBCellFAB>& a_from,
                             const Interval&             a_toInterval,
@@ -958,9 +1263,13 @@ void EBLevelDataOps::clone(LevelData<EBCellFAB>& a_lhs,
 {
   CH_TIME("EBLevelDataOps::clone");
 
-  for (DataIterator dit = a_lhs.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_lhs.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      DataIndex d = dit();
+      DataIndex d = dit[mybox];
+
       EBCellFAB&       lhs = a_lhs[d];
       const EBCellFAB& rhs = a_rhs[d];
       lhs.copy(rhs);
@@ -978,9 +1287,13 @@ void EBLevelDataOps::incr( LevelData<EBCellFAB>& a_lhs,
                            const Real& a_scale)
 {
   //  CH_assert(a_lhs.disjointBoxLayout() == a_rhs.disjointBoxLayout());
-  for (DataIterator dit = a_lhs.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_lhs.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      DataIndex d = dit();
+      DataIndex d = dit[mybox];
+
       a_lhs[d].plus(a_rhs[d], a_scale);
     }
 }
@@ -989,9 +1302,12 @@ void EBLevelDataOps::incr( LevelData<EBCellFAB>& a_lhs,
                            const Real& a_scale)
 {
   //  CH_assert(a_lhs.disjointBoxLayout() == a_rhs.disjointBoxLayout());
-  for (DataIterator dit = a_lhs.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_lhs.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      DataIndex d = dit();
+      DataIndex d = dit[mybox];
       a_lhs[d] += a_scale;
     }
 }
@@ -999,9 +1315,13 @@ void EBLevelDataOps::incr( LevelData<EBCellFAB>& a_lhs,
 void EBLevelDataOps::scale(LevelData<EBFluxFAB>& a_result,
                            const Real&           a_value)
 {
-  for (DataIterator dit = a_result.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_result.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      DataIndex d = dit();
+      DataIndex d = dit[mybox];
+
       EBFluxFAB& result = a_result[d];
       for (int idir = 0;idir<SpaceDim;idir++)
         {
@@ -1014,24 +1334,29 @@ void EBLevelDataOps::scale(LevelData<EBCellFAB>& a_result,
                            const LevelData<EBCellFAB>&           a_value)
 {
   CH_assert(a_value.nComp() == 1);
-  for (DataIterator dit = a_result.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_result.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      DataIndex d = dit();
+      DataIndex d = dit[mybox];
+
       EBCellFAB& result = a_result[d];
-      for (int icomp = 0; icomp < a_result.nComp(); icomp++)
-        {
-          int isrc = 0; int idst = icomp; int nco = 1;
-          result.mult(a_value[dit()], isrc, idst, nco);
-        }
+      for(int i=0; i<a_result.nComp(); i++)
+        result.mult(a_value[d], 0, i, 1);
     }
 }
 
 void EBLevelDataOps::scale(LevelData<EBCellFAB>& a_result,
                            const Real&           a_value)
 {
-  for (DataIterator dit = a_result.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_result.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      DataIndex d = dit();
+      DataIndex d = dit[mybox];
+
       EBCellFAB& result = a_result[d];
 
       result.mult(a_value);
@@ -1042,12 +1367,16 @@ void EBLevelDataOps::scale(LevelData<EBCellFAB>& a_result,
                            const Real&           a_value,
                            const int&            a_comp)
 {
-  for (DataIterator dit = a_result.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_result.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      DataIndex d = dit();
-      EBCellFAB& result = a_result[d];
+      DataIndex d = dit[mybox];
 
-      result.axby(result,result,0.0,a_value,a_comp,a_comp,a_comp);
+      EBCellFAB& result = a_result[d];
+  
+      result.mult(a_value,a_comp, 1);
     }
 }
 
@@ -1055,9 +1384,13 @@ void EBLevelDataOps::sum(LevelData<EBCellFAB>&       a_result,
                          const LevelData<EBCellFAB>& a_in1,
                          const LevelData<EBCellFAB>& a_in2)
 {
-  for (DataIterator dit = a_result.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_result.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      DataIndex d = dit();
+      DataIndex d = dit[mybox];
+
       EBCellFAB& result = a_result[d];
 
       const EBCellFAB& in1 = a_in1[d];
@@ -1087,9 +1420,14 @@ void EBLevelDataOps::power(LevelData<EBCellFAB>& a_data,
   CH_TIME("EBLevelDataOps::power");
   CH_assert(a_comp<a_data.nComp());
 
-  for (DataIterator dit = a_data.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_data.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      EBCellFAB& data = a_data[dit()];
+      DataIndex d = dit[mybox];
+
+      EBCellFAB& data = a_data[d];
       const Box& region = data.getRegion();
       const EBISBox& dataEBISBox = data.getEBISBox();
       const EBGraph& dataEBGraph = dataEBISBox.getEBGraph();
@@ -1109,9 +1447,12 @@ void EBLevelDataOps::product(LevelData<EBCellFAB>&       a_result,
                              const LevelData<EBCellFAB>& a_in2)
 {
 
-  for (DataIterator dit = a_result.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_result.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      DataIndex d = dit();
+      DataIndex d = dit[mybox];
 
       EBCellFAB& result = a_result[d];
 
@@ -1130,11 +1471,15 @@ void EBLevelDataOps::product(LevelData<EBCellFAB>&       a_result,
                              const int&                  a_2Comp)
 {
   const DisjointBoxLayout& dbl = a_result.disjointBoxLayout();
-  for (DataIterator dit = a_result.dataIterator(); dit.ok(); ++dit)
-    {
-      DataIndex d = dit();
 
-      const Box& dblBox = dbl.get(dit());
+  DataIterator dit = a_result.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
+    {
+      DataIndex d = dit[mybox];
+
+      const Box& dblBox = dbl.get(d);
 
       EBCellFAB& result = a_result[d];
 
@@ -1175,9 +1520,13 @@ void EBLevelDataOps::divide(LevelData<EBCellFAB>&       a_result,
                             const LevelData<EBCellFAB>& a_in2)
 {
 
-  for (DataIterator dit = a_result.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_result.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      DataIndex d = dit();
+      DataIndex d = dit[mybox];
+
 
       EBCellFAB& result = a_result[d];
 
@@ -1196,10 +1545,14 @@ void EBLevelDataOps::divide(LevelData<EBCellFAB>&       a_result,
                             const int&                  a_2Comp)
 {
   const DisjointBoxLayout& dbl = a_result.disjointBoxLayout();
-  for (DataIterator dit = a_result.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_result.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      DataIndex d = dit();
-      const Box& dblBox = dbl.get(dit());
+      DataIndex d = dit[mybox];
+
+      const Box& dblBox = dbl.get(d);
 
       EBCellFAB& result = a_result[d];
       const EBCellFAB& in1 = a_in1[d];
@@ -1219,9 +1572,12 @@ void EBLevelDataOps::divide(LevelData<EBCellFAB>&       a_result,
 void EBLevelDataOps::invert(LevelData<EBCellFAB>&       a_result,
                             const LevelData<EBCellFAB>& a_in1)
 {
-  for (DataIterator dit = a_result.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_result.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      DataIndex d = dit();
+      DataIndex d = dit[mybox];
 
       EBCellFAB& result = a_result[d];
 
@@ -1240,9 +1596,12 @@ void EBLevelDataOps::product(LevelData<EBFluxFAB>&       a_result,
                              const LevelData<EBFluxFAB>& a_in2)
 {
 
-  for (DataIterator dit = a_result.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_result.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      DataIndex d = dit();
+      DataIndex d = dit[mybox];
 
       for (int idir = 0; idir < SpaceDim; idir++)
         {
@@ -1259,9 +1618,13 @@ void EBLevelDataOps::product(LevelData<EBFluxFAB>&       a_result,
 //-----------------------------------------------------------------------
 void EBLevelDataOps::kappaWeight(LevelData<EBCellFAB>& a_data)
 {
-  for (DataIterator dit = a_data.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_data.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      DataIndex d = dit();
+      DataIndex d = dit[mybox];
+
       EBCellFAB& data = a_data[d];
 
       kappaWeight(data);
@@ -1295,9 +1658,12 @@ void EBLevelDataOps::kappaWeight(EBCellFAB& a_data)
 //-----------------------------------------------------------------------
 void EBLevelDataOps::areaFracScalingWeight(LevelData<EBCellFAB>& a_data)
 {
-  for (DataIterator dit = a_data.dataIterator(); dit.ok(); ++dit)
+  DataIterator dit = a_data.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      DataIndex d = dit();
+      DataIndex d = dit[mybox];
       EBCellFAB& data = a_data[d];
 
       areaFracScalingWeight(data);
@@ -2408,6 +2774,7 @@ Real EBLevelDataOps::sumKappaDotProductAllCells(Real&        a_volume,
             sum += val1*val2;
             // sum1+= val1*val2;
           }
+          ch_flops()+=ncomp*2+1;
         }
       // else
       //   {
@@ -2430,10 +2797,9 @@ Real EBLevelDataOps::sumKappaDotProductAllCells(Real&        a_volume,
   // we take advantage of the fact that (tested)
   // curEBISBox1.getVoFs(iv) is pretty fast, while a_data1(vof,comp) is agonizingly slow
   CH_START(part2a);
-  const BaseIVFAB<Real>& irrBFAB1 = a_data1.getMultiValuedFAB();
-  const BaseIVFAB<Real>& irrBFAB2 = a_data2.getMultiValuedFAB();
-  const MiniIVFAB<Real>& irrFAB1 = static_cast<const MiniIVFAB<Real>& >(irrBFAB1);
-  const MiniIVFAB<Real>& irrFAB2 = static_cast<const MiniIVFAB<Real>& >(irrBFAB2);
+
+  const MiniIVFAB<Real>& irrFAB1 = a_data1. getMultiValuedFAB();
+  const MiniIVFAB<Real>& irrFAB2 = a_data2. getMultiValuedFAB();
 
   int nvof1 = irrFAB1.numVoFs();
   int nvof  = irrFAB2.numVoFs();
@@ -2466,7 +2832,7 @@ Real EBLevelDataOps::sumKappaDotProductAllCells(Real&        a_volume,
             }
         }
     }
-
+  ch_flops()+=nvof*(ncomp*2+1);
   CH_STOP(part2b);
   return sum;
 }

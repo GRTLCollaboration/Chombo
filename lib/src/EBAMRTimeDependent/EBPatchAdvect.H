@@ -314,7 +314,9 @@ public:
 
   ///
   /**
-     sets eb flux to zero
+     This used to set the flux to zero.  Now, in most (non-multifluid) cases,
+     it is not called at all.    This now extrapolates to the eb which is the wrong
+     thing to do for advection with a fixed boundary (where the flux should just be zero)
    */
   virtual void
   computeEBIrregFlux(BaseIVFAB<Real>&  a_ebIrregFlux,

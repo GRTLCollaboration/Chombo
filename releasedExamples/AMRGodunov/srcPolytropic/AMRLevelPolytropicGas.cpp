@@ -410,6 +410,7 @@ void AMRLevelPolytropicGas::postTimeStep()
 // Create tags for regridding
 void AMRLevelPolytropicGas::tagCells(IntVectSet& a_tags)
 {
+  CH_TIME("AMRLevelPolytropicGas::tagCells");
   CH_assert(allDefined());
 
   if (s_verbosity >= 3)
@@ -493,9 +494,10 @@ void AMRLevelPolytropicGas::tagCells(IntVectSet& a_tags)
 
   // Need to do this in two steps unless a IntVectSet::operator &=
   // (ProblemDomain) operator is defined
-  Box localTagsBox = localTags.minBox();
-  localTagsBox &= m_problem_domain;
-  localTags &= localTagsBox;
+  //   as far as I can tell, this chop is not needed.  MeshRefine handles that.
+ // Box localTagsBox = localTags.minBox();
+ // localTagsBox &= m_problem_domain;
+ // localTags &= localTagsBox;
 
   a_tags = localTags;
 }
@@ -647,6 +649,7 @@ void AMRLevelPolytropicGas::postInitialize()
 // Write checkpoint header
 void AMRLevelPolytropicGas::writeCheckpointHeader(HDF5Handle& a_handle) const
 {
+  CH_TIME("AMRLevelPolytropicGas::writeCheckpointHeader");
   CH_assert(allDefined());
 
   if (s_verbosity >= 3)
@@ -678,6 +681,7 @@ void AMRLevelPolytropicGas::writeCheckpointHeader(HDF5Handle& a_handle) const
 // Write checkpoint data for this level
 void AMRLevelPolytropicGas::writeCheckpointLevel(HDF5Handle& a_handle) const
 {
+  CH_TIME("AMRLevelPolytropicGas::writeCheckpointLevel");
   CH_assert(allDefined());
 
   if (s_verbosity >= 3)
@@ -1047,10 +1051,10 @@ void AMRLevelPolytropicGas::writePlotHeader(HDF5Handle& a_handle) const
 
   // Write the header
   header.writeToFile(a_handle);
-  //  a_handle.setGroup("/Expressions");
-//  HDF5HeaderData expressions;
-//  m_levelGodunov.getGodunovPhysicsPtrConst()->expressions(expressions);
-//  expressions.writeToFile(a_handle);
+  a_handle.setGroup("/Expressions");
+  HDF5HeaderData expressions;
+  m_levelGodunov.getGodunovPhysicsPtrConst()->expressions(expressions);
+  expressions.writeToFile(a_handle);
 
   if (s_verbosity >= 3)
     {
