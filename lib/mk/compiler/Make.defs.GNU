@@ -76,7 +76,7 @@ else
   _cxxbaseflags += -fopenmp-simd -Wno-unknown-pragmas
 endif
 
-defcxxcomflags := -march=native $(_cxxbaseflags)
+defcxxcomflags := $(_cxxbaseflags)
 defcxxoptflags := $(defcxxcomflags) -O3
 defcxxdbgflags := $(defcxxcomflags) -g -pedantic -Wall
 
