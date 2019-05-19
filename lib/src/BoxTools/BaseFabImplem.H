@@ -706,6 +706,81 @@ template <class T> inline std::string BaseFab<T>::name()
   return rtn;
 }
 
+template <>
+inline void BaseFab<double>::performCopy(const BaseFab<double>& a_src,
+                                    const Box&        a_srcbox,
+                                    int               a_srccomp,
+                                    const Box&        a_destbox,
+                                    int               a_destcomp,
+                                    int               a_numcomp)
+{
+  CH_assert(a_src.box().contains(a_srcbox));
+  CH_assert(box().contains(a_destbox));
+  CH_assert(a_destbox.sameSize(a_srcbox));
+  CH_assert(a_srccomp  >= 0 && a_srccomp  + a_numcomp <= a_src.nComp());
+  CH_assert(a_destcomp >= 0 && a_destcomp + a_numcomp <= nComp());
+  // CH_TIME("BaseFab::performCopy")
+
+#ifdef _OPENMP
+  if (a_srcbox == a_src.box() && a_destbox == box() && a_destbox.sameSize(a_srcbox))
+    {
+      //MK: Was just for debugging so I have taken this out again.
+      //pout() << "Using OMP-optimised version of BaseFab::performCopy" << endl;
+
+      #pragma omp parallel default(shared)
+      {
+        int worker = omp_get_thread_num();
+        int workers = omp_get_num_threads();
+
+        int boxSize = size().product();
+        int workload = boxSize * a_numcomp;
+        int quo = workload / workers;
+        int rem = workload % workers;
+
+        int work_start, work_end;
+        if (worker < rem)
+          {
+            work_start = (quo + 1) * worker;
+            work_end = work_start + quo + 1;
+          }
+        else
+          {
+            work_start = (quo + 1) * rem + quo * (worker - rem);
+            work_end = work_start + quo;
+          }
+
+        int comp_start = work_start / boxSize;
+        int i_comp_start = work_start - comp_start * boxSize;
+
+        int comp_end = ((work_end - 1) / boxSize) + 1;
+        int i_comp_end = work_end - (comp_end - 1) * boxSize;
+
+        for (int comp = comp_start; comp < comp_end; ++comp)
+          {
+            const int i_start = (comp == comp_start) ? i_comp_start : 0;
+            const int i_end = (comp == comp_end - 1) ? i_comp_end : boxSize;
+
+            double *const dest = dataPtr(a_destcomp + comp);
+            const double *const src = a_src.dataPtr(a_srccomp + comp);
+
+            #pragma omp simd
+            for (int i = i_start; i < i_end; ++i)
+              {
+                dest[i] = src[i];
+              }
+          }
+      }
+
+      return;
+    }
+#endif
+
+  ForAllThisBNNXCBN(double, a_destbox, a_destcomp, a_numcomp, a_src, a_srcbox, a_srccomp)
+  {
+    thisR = a_srcR;
+  } EndForTX
+}
+
 template <class T>
 inline void BaseFab<T>::performCopy(const BaseFab<T>& a_src,
                                     const Box&        a_srcbox,
