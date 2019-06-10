@@ -140,161 +140,16 @@ fi
 case $action in
   HDFINCFLAGS)
     $debug "checking \$(HDFINCFLAGS) = [$*]"
-    if [ "x${MPI}" = "xTRUE" ] ; then
-      CHKCOMPILER=${MPICXX}
-    else
-      CHKCOMPILER=${CXX}
-    fi
-    if [ x"$*" != x"" ] ; then
-      ok=0
-      for f in $* ; do 
-        case $f in
-        -I*)
-          dir=`echo $f | sed 's/^-I//'`
-          if [ -e $dir/hdf5.h ] ; then
-            ok=1
-          fi
-          ;;
-        esac
-      done
-      if [ $ok -eq 0 ] ; then
-        try_compile_header ${CHKCOMPILER} hdf5.h
-      fi
-      if [ $ok -eq 0 ] ; then
-        echo
-        echo "error: cannot find the HDF header file [hdf5.h] using the HDFINCFLAGS make variable [$*]"
-        echo "info: it should be defined in lib/mk/Make.defs.local or lib/mk/local/Make.defs.$hostnm"
-        errexit
-      fi
-    else
-      ok=0
-      try_compile_header ${CHKCOMPILER} hdf5.h
-      if [ $ok -eq 0 ] ; then
-        echo
-        echo "warning: the HDFINCFLAGS make variable is empty."
-        echo "info: Chombo will not compile if the HDF header files cannot be found."
-        echo "info: if this is not intentional, define HDFINCFLAGS in Chombo/lib/mk/Make.defs.local"
-        rtfm
-        exit
-      fi
-    fi
     ;;
 
   HDFLIBFLAGS)
     $debug "checking \$(HDFLIBFLAGS) = [$*]"
-    if [ "x${MPI}" = "xTRUE" ] ; then
-      CHKCOMPILER=${MPICXX}
-    else
-      CHKCOMPILER=${CXX}
-    fi
-    if [ x"$*" != x"" ] ; then
-      ok=0
-      dir=/usr/lib
-      for f in $* ; do 
-        case $f in
-        -L*)
-          dir="$dir `echo $f | sed 's/^-L//'`"
-          ;;
-        -l*)
-          lib=lib`echo $f | sed 's/^-l//'`
-          for d in $dir ; do
-            if [ -e $d/$lib.a -o -e $d/$lib.so ] ; then
-              ok=1
-            fi
-          done
-          if [ $ok -eq 0 ] ; then
-            try_link_lib ${CHKCOMPILER} hdf5
-          fi
-          if [ $ok -eq 0 ] ; then
-            echo
-            echo "error: cannot find the HDF library [$lib.{a,so}] using the HDFLIBFLAGS make variable [$*]"
-            echo "info: it should be defined in lib/mk/Make.defs.local or lib/mk/local/Make.defs.$hostnm"
-            errexit
-          fi
-        esac
-      done
-    else
-      echo
-      echo "warning: the HDFLIBFLAGS make variable is empty."
-      echo "info: Chombo will not compile if the HDF library files cannot be found."
-      echo "info: if this is not intentional, define it in Chombo/lib/mk/Make.defs.local"
-      rtfm
-      exit
-    fi
     ;;
 
   HDFMPIINCFLAGS)
-    $debug "checking \$(HDFMPIINCFLAGS) = [$*]"
-    if [ x"$*" != x"" ] ; then
-      ok=0
-      for f in $* ; do 
-        case $f in
-        -I*)
-          dir=`echo $f | sed 's/^-I//'`
-          if [ -e $dir/hdf5.h ] ; then
-            ok=1
-          fi
-          ;;
-        esac
-      done
-      if [ $ok -eq 0 ] ; then
-        try_compile_header ${MPICXX} hdf5.h "parallel "
-      fi
-      if [ $ok -eq 0 ] ; then
-        echo
-        echo "error: cannot find the HDF header file [hdf5.h] using the HDFMPIINCFLAGS make variable[$*]"
-        echo "info: it should be defined in lib/mk/Make.defs.local or lib/mk/local/Make.defs.$hostnm"
-        errexit
-      fi
-    else
-      ok=0
-      try_compile_header ${MPICXX} hdf5.h "parallel "
-      if [ $ok -eq 0 ] ; then
-        echo
-        echo "warning: the HDFMPIINCFLAGS make variable is empty."
-        echo "info: Chombo will not compile in parallel if the HDF header files cannot be found."
-        echo "info: if this is not intentional, define HDFMPIINCFLAGS in lib/mk/Make.defs.local or lib/mk/local/Make.defs.$hostnm"
-        rtfm
-        exit
-      fi
-    fi
     ;;
 
   HDFMPILIBFLAGS)
-    $debug "checking \$(HDFMPILIBFLAGS) = [$*]"
-    if [ x"$*" != x"" ] ; then
-      ok=0
-      dir=/usr/lib
-      for f in $* ; do 
-        case $f in
-        -L*)
-          dir="$dir `echo $f | sed 's/^-L//'`"
-          ;;
-        -l*)
-          lib=lib`echo $f | sed 's/^-l//'`
-          for d in $dir ; do
-            if [ -e $d/$lib.a -o -e $d/$lib.so ] ; then
-              ok=1
-            fi
-          done
-          if [ $ok -eq 0 ] ; then
-            try_link_lib ${MPICXX} hdf5 "parallel "
-          fi
-          if [ $ok -eq 0 ] ; then
-            echo
-            echo "error: cannot find the parallel HDF library [$lib.{a,so}] using the HDFMPILIBFLAGS make variable [$*]"
-            echo "info: it should be defined in lib/mk/Make.defs.local or lib/mk/local/Make.defs.$hostnm"
-            errexit
-          fi
-        esac
-      done
-    else
-      echo
-      echo "warning: the HDFMPILIBFLAGS make variable is empty."
-      echo "info: Chombo will not compile with MPI if the parallel HDF library file(s) cannot be found."
-      rtfm
-      exit
-    fi
     ;;
 
   PERL)
