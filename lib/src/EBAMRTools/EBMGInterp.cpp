@@ -318,15 +318,8 @@ defineConstantStencil(const DataIndex       & a_dit,
       //weight is one because there is only one vof to the stencil
       //and we are doing piecewise constant interpolation
       //for the copy stencil the weight is one because it is a copy
-      Real fineKappa = ebisBoxFine.volFrac(a_allFineVoFs[ifine]);
-      Real coarKappa = ebisBoxCoar.volFrac(coarVoF);
-      
-      if(coarKappa > 1.0e-10)
-      {
-        Real weight = fineKappa/coarKappa;
-//        weight = 1;
-        interpStencil.add(coarVoF, weight);
-      }
+
+      interpStencil.add(coarVoF, 1.0);
     }
 
   m_interpEBStencil[a_dit] = RefCountedPtr<EBStencil>(new EBStencil(a_allFineVoFs, interpStencils,

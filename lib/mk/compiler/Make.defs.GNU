@@ -43,7 +43,15 @@ makefiles+=compiler/Make.defs.GNU
 
 ################################################################
 
-_gppversion := $(subst ., ,$(shell $(CXX) -dumpfullversion -dumpversion))
+# From GCC v7 and greater the command g++ -dumpversion only returns the major 
+# version number (e.g. 7) rather than the full version number including minor
+# number and patch level (e.g. 7.1.0) as in older versions. This causes some
+# undefined environment variables in the Chombo makefiles which then result in
+# errors when checking the compiler version is new enough. The new command is
+# g++ -dumpfullversion but the old flag is kept for backward compatibility.
+# (Thanks to the GRChombo folks at Cambridge for contributing this fix)
+
+_gppversion := $(subst ., ,$(shell $(CXX) -dumpfullversion  -dumpversion))
 _gppmajorver:= $(word 1,$(_gppversion))
 _gppminorver:= $(word 2,$(_gppversion))
 

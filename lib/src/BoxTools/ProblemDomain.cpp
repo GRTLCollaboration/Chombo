@@ -236,7 +236,6 @@ ProblemDomain::intersects(const Box& a_box) const
   IntVect hi(m_domainBox.bigEnd());
   low.max(a_box.smallEnd());
   hi.min(a_box.bigEnd());
-  return low <= hi;
 
   return (D_TERM6((m_isPeriodic[0]
                    || (low[0] <= hi[0])), &&
@@ -262,7 +261,6 @@ ProblemDomain::intersectsNotEmpty(const Box& a_box) const
   IntVect hi(m_domainBox.bigEnd());
   low.max(a_box.smallEnd());
   hi.min(a_box.bigEnd());
-  return low <= hi;
 
   return (D_TERM6((m_isPeriodic[0]
                    || (low[0] <= hi[0])), &&

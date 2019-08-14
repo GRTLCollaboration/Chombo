@@ -471,6 +471,8 @@ EBISLevel::EBISLevel(const ProblemDomain   & a_domain,
 {
   // this is the method called by EBIndexSpace::buildFirstLevel
   CH_TIME("EBISLevel::EBISLevel_geoserver_domain");
+  pout() << "Entering EBISLevel::EBISLevel called by EBIndexSpace::buildFirstLevel..." << endl;
+
   m_cacheMisses = 0;
   m_cacheHits   = 0;
   m_cacheStale  = 0;
@@ -483,7 +485,6 @@ EBISLevel::EBISLevel(const ProblemDomain   & a_domain,
   m_hasMoments = a_geoserver.generatesHigherOrderMoments();
   m_level = 0;
 
-  pout() << "before make boxes" << endl;
   Vector<Box> vbox;
   Vector<unsigned long long> irregCount;
 
@@ -509,6 +510,7 @@ EBISLevel::EBISLevel(const ProblemDomain   & a_domain,
   //   pout()<<procAssign<<std::endl;
   pout() << "before defining grids" << endl;
   m_grids.define(vbox, procAssign,a_domain);//this should use a_domain for periodic
+  pout() << "after defining grids" << endl;
 
   {
     CH_TIME("EBISLevel::EBISLevel_makegrids");
@@ -541,13 +543,14 @@ EBISLevel::EBISLevel(const ProblemDomain   & a_domain,
       m_data[dit()].define(m_graph[dit()], allNodes[dit()], m_grids.get(dit()), m_dx, m_hasMoments);
     }
 
-  if(a_geoserver.canGenerateMultiCells())
+  if (a_geoserver.canGenerateMultiCells())
     {
       if (a_fixRegularNextToMultiValued)
         {
           fixRegularNextToMultiValued();
         }
     }
+  pout() << "Exiting EBISLevel::EBISLevel called by EBIndexSpace::buildFirstLevel..." << endl;
 }
 
 //now fix the multivalued next to regular thing for the graph and the data
