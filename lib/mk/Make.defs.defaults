@@ -20,7 +20,7 @@
 ##  ROSE            preprocessed with a Rose-based translator
 ##  GPU             compile using a GPU (TRUE or FALSE)
 ##  XTRACONFIG      user-defined addition to config string in all filenames
-##  PIC             build Position Independent Objects.  necessary if you want to build 
+##  PIC             build Position Independent Objects.  necessary if you want to build
 ##                    shared libraries.
 ##
 ## Optional variables that don't affect the filenames:
@@ -41,11 +41,11 @@
 ##  USE_FFTW        if TRUE, use the FFTW library to build InfiniteDomain
 ##   FFTWDIR         path to parent directory of FFTW "include" and "lib" subdirs
 ##  USE_PAPI        if TRUE, compile and link with the PAPI hardware counter system for CH_Timer
-##   PAPIINCFLAG     if USE_PAPI is TRUE then -DCH_PAPI is defined and this variable is added 
+##   PAPIINCFLAG     if USE_PAPI is TRUE then -DCH_PAPI is defined and this variable is added
 ##                     the compile command
-##   PAPILIBDIR      if USE_PAPI is TRUE then -lpapi is added to link command and this variable is 
+##   PAPILIBDIR      if USE_PAPI is TRUE then -lpapi is added to link command and this variable is
 ##                     expanded on the link line.  ie.  PAPILIBDIR=-L/Home/mydir/papi.5.4.3-install/lib
-##                   if PAPI is installed in system directories like /usr/local then you can ignore 
+##                   if PAPI is installed in system directories like /usr/local then you can ignore
 ##                   these two optional flags.
 ##  USE_MF          if TRUE, build Chombo MultiFluid code (implies USE_EB=TRUE)
 ##  USE_MT          if TRUE, enable Chombo memory tracking
@@ -102,7 +102,7 @@ LDFLAGS?=
 
 # Chombo optional features
 USE_64?=TRUE#        #64bit pointers
-USE_MT?=TRUE#         #memory tracking
+USE_MT?=FALSE#         #memory tracking
 # USE_SETVAL?=TRUE#     #initialize FAB data
 USE_COMPLEX?=TRUE#    #type for complex numbers
 USE_TIMER?=TRUE#      #Chombo::Timer
@@ -115,8 +115,8 @@ endif
 HDFMPIINCFLAGS?=
 HDFMPILIBFLAGS?=
 
-USE_PETSC?=FALSE 
-USE_PROTO?=FALSE 
+USE_PETSC?=FALSE
+USE_PROTO?=FALSE
 
 USE_LAPACK?=TRUE
 
