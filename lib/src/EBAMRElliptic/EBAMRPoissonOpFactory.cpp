@@ -69,6 +69,7 @@ EBAMRPoissonOpFactory(const Vector<EBLevelGrid>&                    a_eblgVec,
 {
   CH_assert(a_eblgVec.size() <= a_refRatio.size());
   m_dataBased = false;
+  m_typeBased = false;
   if (a_numLevels > 0)
     {
       m_numLevels = a_numLevels;
@@ -350,6 +351,12 @@ EBAMRPoissonOpFactory::createOperator(const EBLevelGrid&             a_eblgMGLev
     {
       ebbcMGLevel->setData(m_data[a_whichLevel]);
     }
+
+  if(m_typeBased && m_dataBased)
+    {
+      ebbcMGLevel->setType(m_type[a_whichLevel]);
+    }
+
   EBAMRPoissonOp* op = new EBAMRPoissonOp(eblgFine, a_eblgMGLevel, eblgCoar, a_eblgCoarMG,
                                           a_quadCFIMGLevel, dombcMGLevel, ebbcMGLevel,
                                           a_dxMGLevel, a_dxCoar, m_origin,  refToFine, refToCoar,

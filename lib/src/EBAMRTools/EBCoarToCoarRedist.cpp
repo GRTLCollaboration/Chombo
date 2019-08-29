@@ -87,7 +87,6 @@ void
 EBCoarToCoarRedist::
 define(const DisjointBoxLayout& a_dblFine,
        const DisjointBoxLayout& a_dblCoar,
-       const EBISLayout& a_ebislFine,
        const EBISLayout& a_ebislCoar,
        const Box& a_domainCoar,
        const int& a_nref,
@@ -99,9 +98,9 @@ define(const DisjointBoxLayout& a_dblFine,
   m_nComp = a_nvar;
   m_refRat = a_nref;
   m_domainCoar = a_domainCoar;
-  m_gridsFine = a_dblFine;
+
   m_gridsCoar = a_dblCoar;
-  m_ebislFine = a_ebislFine;
+
   m_ebislCoar = a_ebislCoar;
   m_redistRad = a_redistRad;
   //define the intvectsets over which the objects live
@@ -119,9 +118,9 @@ define(const DisjointBoxLayout& a_dblFine,
       //find the complement of what we really want
       IntVectSet ivsComplement(gridBox);
       for (LayoutIterator litFine =
-            m_gridsFine.layoutIterator(); litFine.ok(); ++litFine)
+            a_dblFine.layoutIterator(); litFine.ok(); ++litFine)
         {
-          Box projBox = coarsen(m_gridsFine.get(litFine()), m_refRat);
+          Box projBox = coarsen(a_dblFine.get(litFine()), m_refRat);
           ivsComplement -= projBox;
         }
       //now the set we want is the gridbox - complement
@@ -150,9 +149,9 @@ define(const EBLevelGrid& a_eblgFine,
   m_refRat    =  a_nref;
   m_redistRad =  a_redistRad;
   m_domainCoar=  a_eblgCoar.getDomain().domainBox();
-  m_gridsFine =  a_eblgFine.getDBL();
+
   m_gridsCoar =  a_eblgCoar.getDBL();
-  m_ebislFine =  a_eblgFine.getEBISL();
+
   m_ebislCoar =  a_eblgCoar.getEBISL();
   //define the intvectsets over which the objects live
 

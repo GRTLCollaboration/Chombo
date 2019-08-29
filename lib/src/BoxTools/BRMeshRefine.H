@@ -176,7 +176,7 @@ public:
             const int         a_totalBufferSize) const;
 
 
-protected:
+
   /**
      Function which actually implement Berger-Rigoutsos chopping.
   */
@@ -195,6 +195,9 @@ protected:
             const int         a_depth,
             const int         a_totalBufferSize
             ) const;
+
+protected:
+
   /**
    */
   void
@@ -267,6 +270,10 @@ protected:
                             const Interval& a_to,
                             std::list<Box>& a_mesh,
                             int tag) const;
+
+  int longsideRefineDirs(const Box& a_bx, int& a_dir) const;
+
+  mutable Vector<int> m_messageBuffer; // used for messaging in parallel
 };
 
 /// Splits domain into vector of disjoint boxes with max size maxsize
@@ -277,9 +284,11 @@ protected:
    (refine(coarsen(domain,blockfactor), minsize) == domain)
    or an error is thrown.  This would be defined in
    MeshRefine.H, except that it needs to use a BRMeshRefine object.
+   Here a_refineDirs[d] is 1 if refining in dimension d, and 0 if not.
 */
 extern void domainSplit(const ProblemDomain& a_domain, Vector<Box>& a_vbox,
-                        int a_maxSize, int a_blockfactor=1);
+                        int a_maxSize, int a_blockfactor=1,
+                        IntVect a_refineDirs=IntVect::Unit);
 
 ///
 /**
@@ -291,9 +300,11 @@ extern void domainSplit(const ProblemDomain& a_domain, Vector<Box>& a_vbox,
    (refine(coarsen(domain,blockfactor), minsize) == domain)
    or an error is thrown. This would be defined in
    MeshRefine.H, except that it needs to use a BRMeshRefine object.
+   Here a_refineDirs[d] is 1 if refining in dimension d, and 0 if not.
 */
 extern void domainSplit(const Box& a_domain, Vector<Box>& a_vbox,
-                        int a_maxSize, int a_blockfactor=1);
+                        int a_maxSize, int a_blockfactor=1,
+                        IntVect a_refineDirs=IntVect::Unit);
 
 ///
 /**

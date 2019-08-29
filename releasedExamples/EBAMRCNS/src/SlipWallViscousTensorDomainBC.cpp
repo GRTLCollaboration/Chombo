@@ -1,11 +1,11 @@
 #ifdef CH_LANG_CC
 /*
-*      _______              __
-*     / ___/ /  ___  __ _  / /  ___
-*    / /__/ _ \/ _ \/  V \/ _ \/ _ \
-*    \___/_//_/\___/_/_/_/_.__/\___/
-*    Please refer to Copyright.txt, in Chombo's root directory.
-*/
+ *      _______              __
+ *     / ___/ /  ___  __ _  / /  ___
+ *    / /__/ _ \/ _ \/  V \/ _ \/ _ \
+ *    \___/_//_/\___/_/_/_/_.__/\___/
+ *    Please refer to Copyright.txt, in Chombo's root directory.
+ */
 #endif
 
 #include "BoxIterator.H"
@@ -149,8 +149,8 @@ getDivergenceAndGradient(Real&                 a_divergence,
 {
   //get divergence and gradient
   const EBISBox& ebisBox = a_phi.getEBISBox();
-  const RealVect  point = EBArith::getFaceLocation(a_bndryFace,a_dx,a_probLo);
-  const RealVect normal = EBArith::getDomainNormal(a_idir,a_side);
+  //const RealVect  point = EBArith::getFaceLocation(a_bndryFace,a_dx,a_probLo);
+  //const RealVect normal = EBArith::getDomainNormal(a_idir,a_side);
   //get gradient stencil and replace normal derivatives
   //with something that takes into account the boundary condition
   for(int icomp = 0; icomp < SpaceDim; icomp++)

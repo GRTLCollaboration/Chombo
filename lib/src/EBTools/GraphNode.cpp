@@ -77,6 +77,7 @@ void* GraphNode::alloc()
 {
   void* rtn = s_Arena.alloc(sizeof(Vector<GraphNodeImplem>));
 #ifdef CH_USE_MEMORY_TRACKING
+  ch_memcount+=sizeof(Vector<GraphNodeImplem>);
   s_Arena.bytes += sizeof(Vector<GraphNodeImplem>);
   CH_assert(s_Arena.bytes > 0);
   if (s_Arena.bytes > s_Arena.peak)
@@ -142,8 +143,8 @@ Vector<FaceIndex> GraphNode::getFaces(const IntVect&        a_this,
                                       const Side::LoHiSide& a_sd,
                                       const ProblemDomain&  a_domain) const
 {
-  static Vector<FaceIndex> emptyVec;
-  static Vector<FaceIndex> regularVec(1);
+  Vector<FaceIndex> emptyVec;
+  Vector<FaceIndex> regularVec(1);
 
   IntVect otherIV = a_this +sign(a_sd)*BASISV(a_idir);
   if (isRegular())
@@ -215,8 +216,8 @@ Vector<FaceIndex> GraphNode::getFaces(const VolIndex&       a_vof,
                                       const Side::LoHiSide& a_sd,
                                       const ProblemDomain&  a_domain) const
 {
-  static Vector<FaceIndex> emptyVec;
-  static Vector<FaceIndex> regularVec(1);
+  Vector<FaceIndex> emptyVec;
+  Vector<FaceIndex> regularVec(1);
 
   IntVect otherIV = a_vof.gridIndex() +sign(a_sd)*BASISV(a_idir);
 

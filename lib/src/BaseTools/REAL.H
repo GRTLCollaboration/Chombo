@@ -22,6 +22,7 @@
 #endif  /* precision */
 
 #if !defined(CH_LANG_FORT) /* language */
+#  define BYTE_T char
 #  ifdef CH_USE_FLOAT /* precision */
      typedef float Real;
 #    define MPI_CH_REAL         MPI_FLOAT
@@ -37,7 +38,7 @@
 #  endif  /* precision */
 
 #else /* language */
-
+#  define BYTE_T integer*1
 #  ifdef CH_USE_FLOAT /* precision */
 #    define REAL_T REAL
 #    define COMPLEX_T COMPLEX

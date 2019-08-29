@@ -34,6 +34,7 @@ typedef std::map<std::string, lst*> incr; // not currently used, bvs
 
 extern VectorList* vectorList_;
 extern incr*       vectorIncr_;
+extern unsigned long long int ch_memcount;
 #endif
 
 using std::vector;
@@ -87,6 +88,13 @@ public:
 #endif
   }
 
+  inline
+  Vector(Vector<T>&& a_invec) noexcept
+    : v(std::move(a_invec.v))
+  {
+    
+    //do not alter counting, this is a move operation
+  } 
   ///
   /**  conversion constructor
   */
@@ -97,6 +105,7 @@ public:
     increment(invec.size());
 #endif
   }
+
 
   ///
   /**
@@ -114,6 +123,12 @@ public:
     return *this;
   }
 
+  inline
+  Vector<T>& operator=(Vector<T>&& a_invec)
+  {
+    v=std::move(a_invec.v);
+    return *this;
+  }
   ///
   /**
   */
@@ -286,6 +301,17 @@ public:
     v.push_back(in);
   }
 
+  inline
+  void push_back(T&& in)
+  {
+#ifdef CH_USE_MEMORY_TRACKING
+    increment(1);
+#endif
+    //  (static_cast<vector<T>* >(this))->push_back(in);
+    v.push_back(std::move(in));
+  }
+
+  
   ///
   /**
      Modifies this Vector by appending the elements of the argument
@@ -395,6 +421,7 @@ private:
     static unsigned int sizzle = initFunc();
     i*=sizzle;
     bytes += i;
+    ch_memcount+=i*sizeof(T);
     //  incrementList->insert(incrementList->begin(), i);
     if (bytes > peak) peak = bytes;
   }
@@ -406,6 +433,7 @@ private:
     // CH_assert(bytes>=0);
     i*=sizeof(T);
     bytes-=i;
+    ch_memcount-=i*sizeof(T);
     //  incrementList->insert(incrementList->begin(), -i);
     //  CH_assert(bytes>=0);
   }

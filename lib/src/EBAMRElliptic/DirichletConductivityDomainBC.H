@@ -12,7 +12,7 @@
 #define _DIRICHLETCONDUCTIVITYDOMAINBC_H_
 
 #include "RefCountedPtr.H"
-
+#include "ConductivityBaseDomainBC.H"
 #include "DirichletPoissonDomainBC.H"
 #include "BaseBCValue.H"
 #include "NamespaceHeader.H"
@@ -24,12 +24,8 @@ public:
 
   virtual ~DirichletConductivityDomainBC();
 
-  virtual void setValue(Real a_value);
-
   virtual int whichBC(int                  a_idir,
                       Side::LoHiSide       a_side);
-
-  virtual void setFunction(RefCountedPtr<BaseBCValue> a_flux);
 
   virtual void getFaceFlux(BaseFab<Real>&        a_faceFlux,
                            const BaseFab<Real>&  a_phi,
@@ -40,6 +36,17 @@ public:
                            const DataIndex&      a_dit,
                            const Real&           a_time,
                            const bool&           a_useHomogeneous);
+
+
+  virtual void getHigherOrderFaceFlux(BaseFab<Real>&        a_faceFlux,
+                                      const BaseFab<Real>&  a_phi,
+                                      const RealVect&       a_probLo,
+                                      const RealVect&       a_dx,
+                                      const int&            a_idir,
+                                      const Side::LoHiSide& a_side,
+                                      const DataIndex&      a_dit,
+                                      const Real&           a_time,
+                                      const bool&           a_useHomogeneous);
 
 
   virtual bool isDirichletDom(const VolIndex&   a_ivof,
@@ -83,15 +90,48 @@ public:
                           const int&            a_idir,
                           const int&            a_icomp,
                           const Real&           a_time,
-                          const Side::LoHiSide& a_side,
-                          const bool&           a_doDivFreeOutflow);
+                          const Side::LoHiSide& a_side);
 
+  virtual void 
+  fillPhiGhost(FArrayBox&     a_phi,
+               const Box&     a_valid,
+               const Box&     a_domain,
+               Real           a_dx,
+               bool           a_homogeneous)
+  {
+    Box grownBox = a_valid;
+    grownBox.grow(1);
+
+    for (int idir=0; idir<CH_SPACEDIM; ++idir)
+      {
+        for(SideIterator sit; sit.ok(); ++sit)
+          {
+            Box choppedBox = grownBox;
+            choppedBox.grow(idir,-1);
+            Box toRegion = adjCellBox(choppedBox, idir, sit(), 1);
+
+            if(!a_domain.contains(toRegion))
+              {
+                for (BoxIterator bit(toRegion); bit.ok(); ++bit)
+                  {
+                    const IntVect& iv = bit();
+                    //fake vof just to get the location
+                    VolIndex vof(iv, 0);
+                    RealVect loc = EBArith::getVoFLocation(vof, a_dx, RealVect::Zero);
+                    int isign = sign(sit());
+                    IntVect ivneigh = iv - isign*BASISV(idir);
+                    Real value = bcvaluefunc(loc, idir, sit());
+                    if(a_homogeneous) value = 0.;
+
+                    a_phi(iv, 0) = -a_phi(ivneigh, 0)  + 2.*value;
+
+                  }
+              }
+          } 
+
+      }//end loop over directions
+  }
 private:
-  bool m_onlyHomogeneous;
-  bool m_isFunctional;
-
-  Real m_value;
-  RefCountedPtr<BaseBCValue> m_func;
 };
 
 class DirichletConductivityDomainBCFactory: public BaseDomainBCFactory
@@ -103,7 +143,7 @@ public:
 
   virtual void setValue(Real a_value);
 
-  virtual void setFunction(RefCountedPtr<BaseBCValue> a_flux);
+  virtual void setFunction(RefCountedPtr<BaseBCFuncEval> a_flux);
 
   virtual DirichletConductivityDomainBC* create(const ProblemDomain& a_domain,
                                                 const EBISLayout&    a_layout,
@@ -114,7 +154,7 @@ private:
   bool m_isFunction;
 
   Real m_value;
-  RefCountedPtr<BaseBCValue> m_flux;
+  RefCountedPtr<BaseBCFuncEval> m_flux;
 };
 
 #include "NamespaceFooter.H"

@@ -35,6 +35,17 @@
    of the domain.    It should be generated through
    the Chombo_EBIS class.  This follows the singleton
    pattern.
+
+   Construction of the EBIndexSpace can follow one of methods
+   1. From a previously written out HDF5 file.  This is a representation of
+     the EBIndexSpace at the finest level.  When this is read back into a running  
+     application the EBIndexSpace at the coarser levels is regenerated on
+     construction
+   2. As a GeometryService.  The base class for Geometry objects.  
+   3. As a Workshop object that reads the finest level EB boxes from the 
+      EBIndexSpace itself and fills in the data structure as it accepts it.
+   4. As a Worshop object that has an already defined data decomposition 
+ 
 */
 class EBIndexSpace
 {
@@ -47,6 +58,8 @@ public:
       If a_ncellMax is set, that is the max width of
       an internal grid.  Otherwise use defaults
       of (16 in 3D, 64 in 2d)
+
+      This 
    */
   void
   define(const ProblemDomain   & a_domain,
@@ -89,6 +102,7 @@ public:
                              bool a_fixRegularNextToMultiValued = true);
 
   EBISLevel* buildNextLevel(const GeometryService & a_geoserver,
+                            int                     a_nCellMax,
                             bool                    a_fixRegularNextToMultiValued = true);
 
   ///
@@ -117,6 +131,13 @@ public:
      This is blocking as a broadcast and gather are required.
    */
   long long numVoFs(const ProblemDomain& a_domain) const;
+
+  ///
+  /**
+     Get the total of the volume fractions over the entire domain.
+     This is blocking as a broadcast and gather are required.
+   */
+  Real totalVolFrac(const ProblemDomain& a_domain) const;
 
   ///
   /**
@@ -208,6 +229,12 @@ public:
     return m_ebisLevel[level]->getFlowGrids(m_domainLevel[level]);
   }
 
+  ///
+  DisjointBoxLayout getGrids(const ProblemDomain& a_domain) const
+  {
+    return m_ebisLevel[getLevel(a_domain)]->getGrids();
+  }
+
   DisjointBoxLayout getFlowGrids(const ProblemDomain& a_domain) const
   {
     return m_ebisLevel[getLevel(a_domain)]->getFlowGrids(a_domain);
@@ -246,13 +273,19 @@ public:
   void resetLevels(int nLevel);
 
   Vector<RefCountedPtr<EBIndexSpace> > connectedComponents();
+  Vector<RefCountedPtr<EBIndexSpace> > connectedComponentsNew();
 
   RefCountedPtr<EBIndexSpace> biggestConnectedComponent(int & a_numComponents);
+  RefCountedPtr<EBIndexSpace> biggestConnectedComponentNew(int & a_numComponents);
 
   static bool s_MFSingleBox;
 
+  static bool s_useMemoryLoadBalance;
+
 private:
   Vector<RefCountedPtr<EBIndexSpace> > findConnectedComponents(int        & a_numComponents,
+                                                               const bool & a_onlyBiggest);
+  Vector<RefCountedPtr<EBIndexSpace> > findConnectedComponentsNew(int        & a_numComponents,
                                                                const bool & a_onlyBiggest);
 
   bool setAllConnectedVoFs(Real&               a_totalVolFrac,
@@ -262,8 +295,22 @@ private:
                            const VolIndex&     a_curVoF,
                            const VolIndex&     a_lastVoF,
                            const unsigned int& a_curNum);
+  bool setAllConnectedVoFsNew(Real&               a_totalVolFrac,
+                           EBCellFAB&          a_curEBCellFAB,
+                           const Box&          a_curBox,
+                           const EBGraph&      a_curEBGraph,
+                           const EBISBox&      a_curEBISBox,
+                           const VolIndex&     a_curVoF,
+                           const VolIndex&     a_lastVoF,
+                           const unsigned int& a_curNum);
 
   void resetAllConnectedVoFs(EBCellFAB&          a_curEBCellFAB,
+                             const EBGraph&      a_curEBGraph,
+                             const EBISBox&      a_curEBISBox,
+                             const VolIndex&     a_curVoF,
+                             const VolIndex&     a_lastVoF);
+  void resetAllConnectedVoFsNew(EBCellFAB&          a_curEBCellFAB,
+                             const Box&          a_curBox,
                              const EBGraph&      a_curEBGraph,
                              const EBISBox&      a_curEBISBox,
                              const VolIndex&     a_curVoF,

@@ -21,6 +21,7 @@ setSourceGhostCells(LevelData<EBCellFAB>&    a_src,
                     const DisjointBoxLayout& a_grids,
                     int a_lev)
 {
+  CH_TIME("EBLevelTGA::setSourceGhost");
   int ncomp = a_src.nComp();
   for (DataIterator dit = a_grids.dataIterator(); dit.ok(); ++dit)
     {
@@ -106,6 +107,7 @@ EBLevelTGA::computeDiffusion(LevelData<EBCellFAB>&       a_diffusiveTerm,
                              bool a_rhsAlreadyKappaWeighted
                              )
 {
+  CH_TIME("EBLevelTGA::computeDiffusion");
   CH_assert(m_isEBLGSet);
   // first compute updated solution
   int ncomp = a_phiOld.nComp();
@@ -140,6 +142,7 @@ EBLevelTGA::updateSoln(LevelData<EBCellFAB>&       a_phiNew,
                        bool a_rhsAlreadyKappaWeighted,
                        int  a_fluxStartComponent)
 {
+  CH_TIME("EBLevelTGA::updateSolution");
   CH_assert(m_isEBLGSet);
   // first compute updated solution
   int ncomp = a_phiOld.nComp();
@@ -174,6 +177,7 @@ EBLevelBackwardEuler::computeDiffusion(LevelData<EBCellFAB>&       a_diffusiveTe
                                        bool a_zeroPhi,
                                        bool a_rhsAlreadyKappaWeighted)
 {
+  CH_TIME("EBLevelBackwardEuler::computeDiffusion");
   CH_assert(m_isEBLGSet);
   // first compute updated solution
   int ncomp = a_phiOld.nComp();
@@ -208,6 +212,7 @@ EBLevelBackwardEuler::updateSoln(LevelData<EBCellFAB>&       a_phiNew,
                                  bool a_rhsAlreadyKappaWeighted,
                                  int  a_fluxStartComponent)
 {
+  CH_TIME("EBLevelBackwardEuler::updateSolution");
   CH_assert(m_isEBLGSet);
   // first compute updated solution
   int ncomp = a_phiOld.nComp();

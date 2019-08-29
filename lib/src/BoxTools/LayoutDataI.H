@@ -122,9 +122,6 @@ inline LayoutData<T>::~LayoutData()
     {
       delete m_vector[it().datInd()];
     }
-#if CH_USE_MEMORY_TRACKING
-    m_vector.bytes -= sizeof(T)*it.size();
-#endif
   }
 }
 
@@ -138,14 +135,8 @@ inline void LayoutData<T>::allocate()
     delete m_vector[i];
     m_vector[i] = NULL;
   }
-#if CH_USE_MEMORY_TRACKING
-  this->m_vector.bytes -= sizeof(T)*m_vector.size();
-#endif
 
   DataIterator it(dataIterator());
-#if CH_USE_MEMORY_TRACKING
-  m_vector.bytes += sizeof(T)*it.size();
-#endif
   m_vector.resize(it.size(), NULL);
 
   for (; it.ok(); ++it)

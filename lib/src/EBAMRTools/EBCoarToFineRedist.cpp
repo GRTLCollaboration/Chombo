@@ -102,7 +102,7 @@ define(const EBLevelGrid&  a_eblgFine,
   m_domainCoar = a_eblgCoar.getDomain().domainBox();
   m_gridsFine  = a_eblgFine.getDBL();
   m_gridsCoar  = a_eblgCoar.getDBL();
-  m_ebislFine  = a_eblgFine.getEBISL();
+
   m_ebislCoar  = a_eblgCoar.getEBISL();
   m_redistRad  = a_redistRad;
 
@@ -226,7 +226,6 @@ void
 EBCoarToFineRedist::
 define(const DisjointBoxLayout& a_dblFine,
        const DisjointBoxLayout& a_dblCoar,
-       const EBISLayout& a_ebislFine,
        const EBISLayout& a_ebislCoar,
        const Box& a_domainCoar,
        const int& a_nref,
@@ -241,7 +240,6 @@ define(const DisjointBoxLayout& a_dblFine,
   m_domainCoar = a_domainCoar;
   m_gridsFine = a_dblFine;
   m_gridsCoar = a_dblCoar;
-  m_ebislFine = a_ebislFine;
   m_ebislCoar = a_ebislCoar;
   m_redistRad = a_redistRad;
 

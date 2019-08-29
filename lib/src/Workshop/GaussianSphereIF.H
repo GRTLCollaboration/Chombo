@@ -65,10 +65,31 @@ public:
   virtual Real value(const RealVect& a_point) const;
 
   ///
-  /**
-      Return the value of the function at a_point (of type INdexTM).
-   */
-  virtual Real value(const IndexTM<Real,GLOBALDIM>& a_point) const;
+  virtual Real derivative(const  IntVect& a_deriv,
+                          const RealVect& a_point) const;
+
+  ///
+  virtual Real firstDeriv(const  IntVect& a_deriv,
+                          const RealVect& a_point) const;
+
+  ///
+  virtual Real secondDeriv(const  IntVect& a_deriv,
+                           const RealVect& a_point) const;
+
+  ///
+  virtual Real thirdDeriv(const  IntVect& a_deriv,
+                           const RealVect& a_point) const;
+
+  ///
+  virtual Real fourthDeriv(const  IntVect& a_deriv,
+                           const RealVect& a_point) const;
+
+  ///
+  virtual Real fifthDeriv(const  IntVect& a_deriv,
+                          const RealVect& a_point) const;
+  ///
+  virtual Real sixthDeriv(const  IntVect& a_deriv,
+                          const RealVect& a_point) const;
 
   virtual BaseIF* newImplicitFunction() const;
 
@@ -80,6 +101,10 @@ protected:
   Real     m_sigma2;    // precomputed sigma squared
   Real     m_normal;    // precomputed normalizing factor
 
+  //precomputed stuff for derivs
+  /// m_b = 1/(2*sigma*sigma)
+  /// m_C = m_normal
+  Real m_b, m_C;
 private:
   GaussianSphereIF()
   {

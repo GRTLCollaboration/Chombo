@@ -24,8 +24,9 @@ BaseEBCellFAB<T>::setCoveredCellVal(const T&    a_val,
                                     const int&  a_comp,
                                     const bool& a_doMulti)
 {
+  CH_TIME("BaseEBCellFAB::setCoveredCellVal");
   CH_assert(a_comp >= 0);
-  CH_assert(a_comp < m_nComp);
+  CH_assert(a_comp < m_regFAB.nComp());
 
   if (m_ebisBox.isAllRegular())
     {
@@ -37,7 +38,7 @@ BaseEBCellFAB<T>::setCoveredCellVal(const T&    a_val,
     }
   else
     {
-      for (BoxIterator bit(m_region); bit.ok(); ++bit)
+      for (BoxIterator bit(getRegion()); bit.ok(); ++bit)
         {
           const IntVect& iv = bit();
           if (m_ebisBox.isCovered(iv))
@@ -45,18 +46,31 @@ BaseEBCellFAB<T>::setCoveredCellVal(const T&    a_val,
               m_regFAB(iv, a_comp) = a_val;
             }
         }
-      if (a_doMulti)
+      if (a_doMulti && m_irrFAB.numVoFs()>0)
         {
-          //also set the multivalued cells
-          for (IVSIterator ivsit(getMultiCells());ivsit.ok(); ++ivsit)
+          const Vector<VolIndex>& vofs = m_irrFAB.getVoFs(); 
+          for (int i=0;  i< vofs.size(); i++)
             {
-              const IntVect& iv = ivsit();
+              const IntVect& iv = vofs[i].gridIndex();
               m_regFAB(iv, a_comp) = a_val;
             }
         }
     }
 }
 /*************/
+// alias constructor
+template <class T>
+BaseEBCellFAB<T>::BaseEBCellFAB(const Interval& a_interval, BaseEBCellFAB<T>& a_original)
+:m_irrFAB(a_interval,a_original.m_irrFAB),
+ m_regFAB(a_interval,a_original.m_regFAB),
+ m_ebisBox(a_original.m_ebisBox),
+ m_region(a_original.m_region),
+ m_hasMultiCells(a_original.m_hasMultiCells),
+ m_isDefined(a_original.m_isDefined)
+{
+  if(!m_isDefined) MayDay::Error("Calling alias constructor on undefined BaseEBCellFAB.  Probably an earlier error");
+
+}
 /*************/
 template <class T>
 BaseEBCellFAB<T>&
@@ -67,13 +81,12 @@ BaseEBCellFAB<T>::copy(const BaseEBCellFAB<T>& a_src)
   CH_TIMER("overlap_copy", t2);
   CH_assert(isDefined());
   CH_assert(a_src.isDefined());
-  // CH_assert(m_ebisBox == a_src.m_ebisBox);
-  CH_assert(m_nComp <= a_src.m_nComp);
-  CH_assert(m_region.sameType(a_src.m_region));
+  // CH_assert(m_ebisBox == a_src.m_ebisBox);));
 
-  Interval comps(0,m_nComp-1);
+  int ncomp=m_regFAB.nComp();
+  Interval comps(0,ncomp-1);
 
-  if (m_region == a_src.m_region)
+  if (getRegion() == a_src.getRegion())
     {
       CH_START(t1);
       m_regFAB.copy(a_src.m_regFAB);
@@ -82,7 +95,7 @@ BaseEBCellFAB<T>::copy(const BaseEBCellFAB<T>& a_src)
         {
           const T* src  = a_src.m_irrFAB.dataPtr(0);
           T* dest = m_irrFAB.dataPtr(0);
-          T* end = dest + m_irrFAB.numVoFs()*m_nComp;
+          T* end = dest + m_irrFAB.numVoFs()*ncomp;
           for (; dest<end ; src++, dest++)
             {
               *dest = *src;
@@ -93,8 +106,8 @@ BaseEBCellFAB<T>::copy(const BaseEBCellFAB<T>& a_src)
   else
     {
       CH_START(t2);
-      Box overlap(m_region);
-      overlap &= a_src.m_region;
+      Box overlap(getRegion());
+      overlap &= a_src.getRegion();
 
       this->copy(overlap,comps,overlap,a_src,comps);
       CH_STOP(t2);
@@ -118,8 +131,7 @@ BaseEBCellFAB<T>::copy(const Box& a_RegionFrom,
   CH_assert(a_dstInt.size()==a_srcInt.size());
   CH_assert(a_dstInt.begin()>=0);
   CH_assert(a_srcInt.begin()>=0);
-  CH_assert(a_srcInt.end()< a_src.m_nComp);
-  CH_assert(a_dstInt.end()< m_nComp);
+
   ProblemDomain domain = m_ebisBox.getDomain();
   bool isPeriodic = domain.isPeriodic();
   Box intersect = a_RegionFrom & domain.domainBox();
@@ -149,6 +161,7 @@ template <class T>
 int
 BaseEBCellFAB<T>::size(const Box& R, const Interval& comps) const
 {
+  CH_TIME("BaseEBCellFAB::size");
   int retval =  m_regFAB.size(R, comps);
   retval += m_irrFAB.size(R, comps);
   return retval;
@@ -160,6 +173,7 @@ void
 BaseEBCellFAB<T>::linearOut(void* buf, const Box& R, const Interval& comps)
   const
 {
+  CH_TIME("BaseEBCellFAB::linearOut");
   unsigned char* buffer = (unsigned char*)buf;
   m_regFAB.linearOut(buffer, R, comps);
   buffer+= m_regFAB.size(R, comps);
@@ -171,6 +185,7 @@ template <class T>
 void
 BaseEBCellFAB<T>::linearIn(void* buf, const Box& R, const Interval& comps)
 {
+  CH_TIME("BaseEBCellFAB::linearIn");
   unsigned char* buffer = (unsigned char*)buf;
   m_regFAB.linearIn(buffer, R, comps);
   buffer+= m_regFAB.size(R, comps);
@@ -180,11 +195,16 @@ BaseEBCellFAB<T>::linearIn(void* buf, const Box& R, const Interval& comps)
 /*************/
 /*************/
 template <class T>
-const IntVectSet&
+Vector<VolIndex>
 BaseEBCellFAB<T>::getMultiCells() const
 {
+  Vector<VolIndex> retval;
   CH_assert(isDefined());
-  return m_irrFAB.getIVS();
+  if(m_irrFAB.hasVoFs())
+    {
+      retval =  m_irrFAB.getVoFs();
+    }
+  return retval;
 }
 
 /*************/
@@ -212,28 +232,27 @@ void
 BaseEBCellFAB<T>::define(const EBISBox& a_ebisBox,
                          const Box& a_region, int a_nVar)
 {
+  CH_TIME("BaseEBCellFAB::define");
   clear();
   m_isDefined = true;
   CH_assert(a_region.cellCentered());
   CH_assert(a_nVar > 0);
   CH_assert(!a_region.isEmpty());
+
   m_region = a_region & a_ebisBox.getRegion();
-  //CH_assert(!m_region.isEmpty());
-  m_nComp = a_nVar;
   m_ebisBox = a_ebisBox;
 
   //make reg fab the full size of the box.
   //this makes ebalias possible
-  m_regFAB.resize(a_region, m_nComp);
+  m_regFAB.resize(a_region, a_nVar);
   //add all the multi-valued
   //cells to m_multiValued
-  m_multiCells =
-    m_ebisBox.getMultiCells(m_region);
+  IntVectSet multiCells = m_ebisBox.getMultiCells(getRegion());
 
-  m_hasMultiCells = !m_multiCells.isEmpty();
+  m_hasMultiCells = !multiCells.isEmpty();
 
   //define irregular fab to be over multi-valued cells.
-  m_irrFAB.define(m_multiCells, m_ebisBox.getEBGraph(), m_nComp);
+  m_irrFAB.define(multiCells, m_ebisBox.getEBGraph(), a_nVar);
 }
 
 /*************/
@@ -251,10 +270,10 @@ template <class T>
 void
 BaseEBCellFAB<T>::clear()
 {
-  m_irrFAB.clear();
+  //m_irrFAB.clear();
   m_regFAB.clear();
-  m_multiCells.makeEmpty();
-  m_nComp = 0;
+  // m_multiCells.makeEmpty();
+
   m_isDefined = false;
 }
 /*************/
@@ -306,7 +325,7 @@ int
 BaseEBCellFAB<T>::nComp() const
 {
   CH_assert(isDefined());
-  return m_nComp;
+  return m_regFAB.nComp();
 }
 /*************/
 /*************/
@@ -383,8 +402,8 @@ BaseEBCellFAB<T>::operator()(const VolIndex& a_ndin,int  a_nVarLoc,
 {
   CH_assert(isDefined());
   CH_assert(!m_ebisBox.isCovered(a_ndin.gridIndex()));
-  //CH_assert(m_region.contains(a_ndin.gridIndex())); caught in m_regFAB
-  CH_assert((a_nVarLoc >= 0)&&(a_nVarLoc < m_nComp));
+  //CH_assert(getRegion().contains(a_ndin.gridIndex())); caught in m_regFAB
+  CH_assert((a_nVarLoc >= 0)&&(a_nVarLoc < nComp()));
   CH_assert( (a_isKnownMultiValued == -1)
     ||    (a_isKnownMultiValued ==  0)
     ||    (a_isKnownMultiValued == +1) );
@@ -401,7 +420,7 @@ BaseEBCellFAB<T>::operator()(const VolIndex& a_ndin,int  a_nVarLoc,
         break;        // m_irrFAB is a BaseIVFAB
       case 0:
         {
-          if ( m_multiCells.contains(a_ndin.gridIndex()) )
+          if ( m_ebisBox.isMultiValued(a_ndin.gridIndex()))
             {
               returnval = &(m_irrFAB(a_ndin,a_nVarLoc));
             } else
@@ -424,8 +443,8 @@ BaseEBCellFAB<T>::operator()(const VolIndex& a_ndin,int  a_nVarLoc,
                              int a_isKnownMultiValued )
 {
   CH_assert(isDefined());
-  CH_assert(m_region.contains(a_ndin.gridIndex()));
-  CH_assert((a_nVarLoc >= 0)&&(a_nVarLoc < m_nComp));
+  CH_assert(getRegion().contains(a_ndin.gridIndex()));
+  CH_assert((a_nVarLoc >= 0)&&(a_nVarLoc < nComp()));
   CH_assert(!m_ebisBox.isCovered(a_ndin.gridIndex()));
   CH_assert( (a_isKnownMultiValued == -1)
     ||    (a_isKnownMultiValued ==  0)
@@ -433,7 +452,7 @@ BaseEBCellFAB<T>::operator()(const VolIndex& a_ndin,int  a_nVarLoc,
 
   T* returnval = NULL;
 
-  if ( (a_isKnownMultiValued  == -1) || m_multiCells.isEmpty())
+  if ( (a_isKnownMultiValued  == -1) || !m_hasMultiCells)
     {
         returnval = &(m_regFAB(a_ndin.gridIndex(), a_nVarLoc));
     }
@@ -443,7 +462,7 @@ BaseEBCellFAB<T>::operator()(const VolIndex& a_ndin,int  a_nVarLoc,
     }
   else if (a_isKnownMultiValued  == 0)
     {
-      if ( m_multiCells.contains(a_ndin.gridIndex()) )
+      if ( m_ebisBox.isMultiValued(a_ndin.gridIndex()) )
         {
           returnval = &(m_irrFAB(a_ndin,a_nVarLoc));
         }
@@ -465,11 +484,12 @@ template <class T>
 void
 BaseEBCellFAB<T>::fill(T* array, const VolIndex& a_ndin, const Interval& a_comps) const
 {
+  CH_TIME("BaseEBCellFAB::fill");
   CH_assert(isDefined());
-  CH_assert(m_region.contains(a_ndin.gridIndex()));
+  CH_assert(getRegion().contains(a_ndin.gridIndex()));
   CH_assert(!m_ebisBox.isCovered(a_ndin.gridIndex()));
 
-  if (m_multiCells.contains(a_ndin.gridIndex()))
+  if (m_ebisBox.isMultiValued(a_ndin.gridIndex()))
     {
       const T* val = &(m_irrFAB(a_ndin,a_comps.begin()));
       for (int i=0; i<a_comps.size(); i++)
@@ -497,11 +517,12 @@ BaseEBCellFAB<T>::assign(const T* array,
                          const VolIndex& a_ndin,
                          const Interval& a_comps)
 {
+  CH_TIME("BaseEBCellFAB::assign");
   CH_assert(isDefined());
-  CH_assert(m_region.contains(a_ndin.gridIndex()));
+  CH_assert(getRegion().contains(a_ndin.gridIndex()));
   CH_assert(!m_ebisBox.isCovered(a_ndin.gridIndex()));
 
-  if (m_multiCells.contains(a_ndin.gridIndex()))
+  if (m_ebisBox.isMultiValued(a_ndin.gridIndex()))
     {
       T* val = &(m_irrFAB(a_ndin,a_comps.begin()));
       for (int i=0; i<a_comps.size(); i++)
@@ -530,7 +551,7 @@ void
 BaseEBCellFAB<T>:: setDefaultValues()
 {
   m_isDefined = false;
-  m_nComp = 0;
+ 
 }
 /*************/
 /*************/

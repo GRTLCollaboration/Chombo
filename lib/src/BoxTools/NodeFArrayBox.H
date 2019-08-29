@@ -36,25 +36,29 @@
     the right, the nodes marked "2" are shared by two grids, and
     those marked "3" are shared by three grids.
     <pre>
-    +-----+                     YYYY--+
-    |     |                     |     |
-    |     |                     |     |
-    |     |                     |     |
-    +---+--+--+---+             +---2223222---+
-    |      |      |             |      2      |
-    |      |      |             |      2      |
-    |      |      |             |      2      |
-    +---+------+------+         X---22222223------X
-    |          |                |          |
-    |          |                |          |
-    |          |                |          |
-    +----------+                +-------YYYY
+:                                   :                                   :
+:                +-----+            :                YYYY--+            :
+:                |     |            :                |     |            :
+:                |  A  |            :                |  A  |            :
+:                |     |            :                |     |            :
+:            +---+--+--+---+        :            +---2223222---+        :
+:            |      |      |        :            |      2      |        :
+:            |  B   |  C   |        :            |  B   2  C   |        :
+:            |      |      |        :            |      2      |        :
+:        +---+------+------+        :        X---22222223------X        :
+:        |          |               :        |          |               :
+:        |    D     |               :        |    D     |               :
+:        |          |               :        |          |               :
+:        +----------+               :        +-------YYYY               :
+:                                   :                                   :
     </pre>
     Additional nodes may be shared if the boxes extend to the faces
     of a domain that is periodic in one or more directions.
     In the example above, these nodes are marked "X" and "Y".<br>
-    Horizontally periodic domain:  node "X" shared by two grids.<br>
-    Vertically periodic domain:  nodes "Y" shared by two grids.
+    Horizontally periodic domain:  node "X" shared by two grids, C and D.<br>
+    Vertically periodic domain:  nodes "Y" shared by two grids, A and D.
+
+    <b>Using copyTo:</b>
 
     One of the most useful features of LevelData<NodeFArrayBox> is the
     copyTo() function.  THE copyTo() FUNCTION MUST BE USED WITH CAUTION
@@ -77,12 +81,43 @@
     (marked "=") are NOT copied, because the underlying CELL-centered
     DisjointBoxLayouts of the LevelDatas do not intersect.
 
-    So whenever we want to use src.copyTo(dest), unless we are sure
-    that src and dest have the same layout, we do the following:
-    - define BoxLayoutData<NodeFArrayBox> destExpanded on the BoxLayout of
-    dest with each box expanded by one in each dimension;
-    - do src.copyTo(destExpanded);
-    - box by box, copy destExpanded to dest.
+    In general, doing <tt>src.copyTo(dest)</tt>:
+    if LevelData<NodeFArrayBox> <tt>src</tt> and
+    LevelData<NodeFArrayBox> <tt>dest</tt>
+    do NOT have identical underlying boxes in their layouts,
+    then <tt>src.copyTo(dest)</tt> will NOT copy the interface nodes.
+
+    Here are two different ways to make sure the interface nodes are copied:
+
+    1. Do copyTo to a BoxLayoutData<NodeFArrayBox> defined on
+    the BoxLayout of <tt>dest</tt> with each box expanded
+    by 1 in each dimension.
+    That is:
+<pre>
+    BoxLayout destExpandedLayout;
+    destExpandedLayout.deepCopy(dest.disjointBoxLayout());
+    destExpandedLayout.grow(1);
+    destExpandedLayout.closeNoSort();
+    src.copyTo(destExpanded);
+    for (DataIterator dit = dest.dataIterator(); dit.ok(); ++dit)
+      {
+        dest[dit].copy(destExpanded[dit]);
+      }
+</pre>
+
+    2. Define <tt>src</tt> with ghost vector IntVect::Unit, and in copyTo,
+    use a Copier with ghost vector IntVect::Unit.
+    That is:
+<pre>
+    Copier myCopier;
+    myCopier.ghostDefine(src.disjointBoxLayout(),
+                         dest.disjointBoxLayout(),
+                         src.disjointBoxLayout().physDomain(),
+                         IntVect::Unit);
+    src.copyTo(dest, myCopier);
+</pre>
+    For this to work, <tt>src</tt> must have been defined with ghost vector
+    IntVect::Unit (at least).
 */
 class NodeFArrayBox
 {
@@ -101,15 +136,21 @@ public:
 
   ///
   /** Constructs NodeFArrayBox on CELL-centered box <i>a_bx</i>
-      with <i>a_nComp</i> components using the aliased data space.
+      with <i>a_nComp</i>.  If a_alias is not null this oject does not delete it in the destructor.
   */
   NodeFArrayBox(const Box& a_bx, int a_nComp, Real* a_alias = NULL);
 
+  ///
+  /**Constructs NodeFArrayBox on CELL-centered box <i>a_bx</i> for just a scalar.
+  */ 
+  NodeFArrayBox(const Box& a_bx) {define(a_bx,1);}
   ///
   /** Constructs an aliased NodeFArrayBox.
    */
   NodeFArrayBox(const Interval& a_comps, NodeFArrayBox& a_original);
 
+  NodeFArrayBox(NodeFArrayBox&& a_in)=default;
+  NodeFArrayBox& operator=(NodeFArrayBox&& a_in)=default;
   ///
   /** Destructor.
    */
@@ -122,13 +163,21 @@ public:
   */
   void define(const Box& a_bx, int a_nComp=1);
 
+  ///
+  /** alias Defines NodeFArrayBox on CELL-centered box <i>a_bx</i>
+      with <i>a_nComp</i> components.  If called more than once
+      on the same instance, the box and FAB will be resize()d.
+      Class is not responsible for data pointed to by a_dataPtr
+  */
+  void define(const Box& a_bx, int a_nComp, Real* a_dataPtr);
   /**
      Change this NodeFArrayBox so it covers the Box a_bx with a_nComps
      components.  If a_alias is not NULL, it is used as the data memory
      (and is assumed to be large enough).
   */
+  /*
   void resize(const Box& a_bx, int a_nComp=1, Real* a_alias=NULL);
-
+  */
   /*@}*/
 
   /**
@@ -229,7 +278,7 @@ public:
 
       This function is required in order to have BoxLayoutData<NodeFArrayBox>.
   */
-  int size(const Box& a_R, const Interval& a_comps) const;
+  size_t size(const Box& a_R, const Interval& a_comps) const;
 
   ///
   /** Writes into <i>a_buf</i> a linear representation of the internal data for
@@ -243,7 +292,7 @@ public:
   */
   void linearOut(void* a_buf, const Box& a_R, const Interval& a_comps) const;
 
-  ///
+ ///
   void linearIn(void* a_buf, const Box& a_R, const Interval& a_comps);
 
   /// These functions are required for broadcast & gather.
@@ -1144,6 +1193,73 @@ public:
     m_fab.divide(a_src.m_fab, a_srcbox, a_destbox, a_srccomp, a_destcomp, a_numcomp);
     return *this;
   }
+ /**
+     Returns the lower corner of the domain.  Instead of returning them in
+     the form of IntVects, as in smallEnd and bigEnd, it returns the values
+     as a pointer to an array of constant integers.  This is useful when
+     interfacing to Fortran subroutines.  It should not be used in any other
+     context!!!
+  */
+  inline const int* loVect() const
+  {
+    return m_fab.loVect();
+  }
+
+  /**
+     Returns the upper corner of the domain.  Instead of returning them in
+     the form of IntVects, as in smallEnd and bigEnd, it returns the values
+     as a pointer to an array of constant integers.  This is useful when
+     interfacing to Fortran subroutines.  It should not be used in any other
+     context!!!
+  */
+  inline const int* hiVect() const
+  {
+    return m_fab.hiVect();
+  }
+
+  /**
+     Returns a pointer to an integer that contains the number of components
+     in the BaseFab. This is useful when interfacing to Fortran subroutines.
+     It should not be used in any other context!!!
+  */
+  const int* nCompPtr() const
+  {
+    return m_fab.nCompPtr();
+  }
+ /**
+     Returns a pointer to an object of type T that is the value of the a_nth
+     component associated with the cell at the low end of the domain.  This
+     is commonly used to get a pointer to data in the array which is then
+     handed off to a Fortran subroutine. It should not be used in any other
+     context!!!  Remember that data is stored in Fortran array order, with
+     the component index coming last.  In other words, `dataPtr' returns a
+     pointer to all the a_nth components.
+  */
+  Real* dataPtr(int a_n = 0)
+  {
+    return m_fab.dataPtr(a_n);
+  }
+
+  /**
+     Returns a constant pointer to an object of type T that is the value of
+     the a_nth component associated with the cell at the low end of the domain.
+     This is commonly used to get a pointer to data in the array which is
+     then handed off to a Fortran subroutine.  It should not be used in any
+     other context!!! Remember that data is stored in Fortran array order,
+     with the component index coming last.  In other words, `dataPtr' returns
+     a pointer to all the a_nth components.
+  */
+  const Real* dataPtr(int a_n = 0) const
+  {
+    return m_fab.dataPtr(a_n);
+  }
+
+
+  void shift(const IntVect& iv)
+  {
+    m_box.shift(iv);
+    m_fab.shift(iv);
+  }
 
 protected:
   // CELL-centered box. data are defined on the surrounding nodes.
@@ -1155,8 +1271,8 @@ protected:
 private:
   /// These are disallowed for performance reasons
 
-  NodeFArrayBox (const NodeFArrayBox&);
-  NodeFArrayBox& operator = (const NodeFArrayBox&);
+  //NodeFArrayBox (const NodeFArrayBox&);
+  //NodeFArrayBox& operator = (const NodeFArrayBox&);
 
 };
 

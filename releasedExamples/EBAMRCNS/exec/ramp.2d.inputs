@@ -1,5 +1,6 @@
 #restart_file = chk.ramp.nx.256.001000.2d.hdf5
 artificial_viscosity = 0.3
+turn_off_mg = false
 cfl = 0.2
 use_mass_redist = 1
 initial_cfl = 0.001
@@ -21,7 +22,7 @@ fixed_dt   = -1
 #air or h2
 #gamma = 1.4
 #helium 
-gamma = 1.659
+gamma = 1.666667
 backward_euler = false
 tag_on_energy = false
 

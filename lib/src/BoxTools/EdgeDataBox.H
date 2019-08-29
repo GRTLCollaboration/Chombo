@@ -34,7 +34,7 @@ public:
   ~EdgeDataBox();
 
   /// resize EdgeDataBox similar to BaseFab::resize()
-  void resize(const Box& bx, int n=1);
+  //void resize(const Box& bx, int n=1);
 
   ///
   void define(const Box& bx, int n=1);
@@ -107,7 +107,7 @@ public:
   /*@ManMemo: returns size, in number of bytes, of a flat linear
     representation of data in components comps in edges around
     cell-centered box R */
-  int size(const Box& bx, const Interval& comps) const;
+  size_t size(const Box& bx, const Interval& comps) const;
 
   /*@ManMemo:Write a linear representaion of the internal data for
     the edges surrounding cell-centered box R.  Assumes that sufficient

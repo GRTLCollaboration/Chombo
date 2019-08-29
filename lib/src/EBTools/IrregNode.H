@@ -22,6 +22,8 @@
 #include "IntVectSet.H"
 #include "RealVect.H"
 #include "BaseFab.H"
+#include "IndexedMoments.H"
+#include "EB_TYPEDEFS.H"
 #include "SPMD.H"
 #include "NamespaceHeader.H"
 ///
@@ -86,8 +88,72 @@ public:
       a person can modify as the irregular cell requires.  saves
       some coding in some cases
   */
-  void makeRegular(const IntVect& iv);
+  void makeRegular(const IntVect& iv, const Real& a_dx, const ProblemDomain& a_domain);
   void faceReserve(int location, int size);
+
+
+
+  ///for covered cells
+  void setMomentsToZero();
+
+  //for regular cells
+  void setMomentsToRegular(const Real& a_dx);
+
+  ///data for irregular nodes
+
+  //volume centered data
+
+  /// the moment at  the VoF associated with the  monomial with the input exponents
+  /**
+     Given VoF variables x, y, z,   p = mono(0), q = mono(1), r = mono(2),
+     returns integral_over_VoF(x^p y^q z^r dV)
+  **/
+  IndMomSpaceDim m_volumeMoments;
+
+  /// the normal*moment at  the irregular face associated with the  monomial with the input exponents 
+  /**
+     Given VoF variables x, y, z,   p = mono(0), q = mono(1), r = mono(2),
+     returns integral_over_irregular_area((x^p y^q z^r)*n_i dA)
+  **/
+  //NOT FILLED YET
+#if 0
+  IndMomSpaceDim m_EBNormalMoments[SpaceDim];
+#endif
+
+  /// the moment at  the irregular face associated with the  monomial with the input exponents 
+  /**
+     Given VoF variables x, y, z,   p = mono(0), q = mono(1), r = mono(2),
+     returns integral_over_irregular_area((x^p y^q z^r) dA)
+  **/
+  IndMomSpaceDim m_EBMoments;
+  
+  IndMomSpaceDim m_normalPartialDeriv[SpaceDim];
+  ///face centered moments
+  /// the moment at  the face associated with the  monomial with the input exponents 
+  /**
+     Given face variables x, y,    p = mono(0), q = mono(1)
+     returns integral_over_face_area((x^p y^q ) dA)
+  **/
+  IndMomSDMinOne m_faceMoments[2*SpaceDim];
+
+  void spout()
+  {
+    pout() << "irreg node" << endl;
+    pout() << "volume moments " << endl;
+    m_volumeMoments.spout();
+  
+    pout() << "EB moments " << endl;
+    m_EBMoments.spout();
+  
+    for(int iindex = 0; iindex <2*SpaceDim; iindex++)
+      {
+        pout() << "face moments index " << iindex << endl;
+        m_faceMoments[iindex].spout();
+      }
+  }
+
+  ///once the moments are set, this sets volfrac, areafrac, centroid...
+  void setNormalizedStuff(const Real& a_dx);
 };
 
 

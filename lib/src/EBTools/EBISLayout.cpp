@@ -30,6 +30,12 @@ setEBIS(const EBIndexSpace* const a_ebisPtr)
 {
   m_implem->setEBIS(a_ebisPtr);
 }
+const ProblemDomain &
+EBISLayout::
+getDomain() const
+  {
+    return m_implem->getDomain();
+  }
 /****************/
 bool EBISLayoutImplem::s_verbose = false;
 /****************/
@@ -43,10 +49,12 @@ EBISLayout::define(const ProblemDomain& a_domain,
                    const DisjointBoxLayout& a_grids,
                    const int& a_nghost,
                    const LevelData<EBGraph>& a_graph,
-                   const LevelData<EBData> & a_data)
+                   const LevelData<EBData> & a_data,
+                   const Real& a_dx,
+                   bool a_hasMoments)
 {
   m_nghost = a_nghost;
-  m_implem->define(a_domain, a_grids, a_nghost, a_graph, a_data);
+  m_implem->define(a_domain, a_grids, a_nghost, a_graph, a_data, a_dx, a_hasMoments);
 }
 /****************/
 void
@@ -54,11 +62,13 @@ EBISLayoutImplem::define(const ProblemDomain& a_domain,
                          const DisjointBoxLayout& a_grids,
                          const int& a_nghost,
                          const LevelData<EBGraph>& a_graph,
-                         const LevelData<EBData> & a_data)
+                         const LevelData<EBData> & a_data,
+                         const Real& a_dx,
+                         bool a_hasMoments)
 {
   CH_TIME("EBISLayoutImplem::define");
 #ifdef CH_MPI
-    MPI_Barrier(Chombo_MPI::comm);
+  MPI_Barrier(Chombo_MPI::comm);
 #endif
   m_domain = a_domain;
   m_nghost = a_nghost;
@@ -66,7 +76,7 @@ EBISLayoutImplem::define(const ProblemDomain& a_domain,
   m_fineLevels.resize(0);
   m_coarLevels.resize(0);
   m_maxCoarseningRatio = 2;
-  m_maxRefinementRatio = 2;
+  m_maxRefinementRatio = 1;//ug--face refinement means you have to have to do this once.
 
   //generate the layout using the input layout and the ghost cells and domain;
   m_blGhostDom.deepCopy(a_grids);
@@ -75,10 +85,10 @@ EBISLayoutImplem::define(const ProblemDomain& a_domain,
   m_blGhostDom &= m_domain.domainBox();
   m_blGhostDom.close();
   if (s_verbose)
-    {
-      pout() << "in ebislayoutimplem::define" << endl;
-      pout() << "input ghost = " << a_nghost  << ", input grids = " << a_grids << endl;
-    }
+  {
+    pout() << "in ebislayoutimplem::define" << endl;
+    pout() << "input ghost = " << a_nghost  << ", input grids = " << a_grids << endl;
+  }
 
   EBGraphFactory graphFact(m_domain);
   //make graph ghost one bigger so we can define the data
@@ -90,13 +100,14 @@ EBISLayoutImplem::define(const ProblemDomain& a_domain,
     CH_TIME("LocalGraphDefine");
     localGraph.define(a_grids, 1, ivghostgraph, graphFact);
   }
+  // pout() << "ebisl: copying the graph" << endl;
   a_graph.copyTo(interv, localGraph, interv);
 
   if (s_verbose)
-    {
-      pout() << "ebislayoutimplem::define just copied graph " << endl;
-      BaseIVFAB<VolData>::setVerbose(true);
-    }
+  {
+    pout() << "ebislayoutimplem::define just copied graph " << endl;
+    BaseIVFAB<VolData>::setVerbose(true);
+  }
   EBDataFactory dataFact;
   LevelData<EBData> localData;
   {
@@ -105,34 +116,43 @@ EBISLayoutImplem::define(const ProblemDomain& a_domain,
   }
   {
     CH_TIME("EBDataCreate");
-  for (DataIterator dit= a_grids.dataIterator(); dit.ok(); ++dit)
+    for (DataIterator dit= a_grids.dataIterator(); dit.ok(); ++dit)
     {
       Box localBox = grow(a_grids.get(dit()), a_nghost);
       localBox &= m_domain;
-      localData[dit()].defineVoFData(localGraph[dit()], localBox);
-      localData[dit()].defineFaceData(localGraph[dit()],localBox);
+//      localData[dit()].defineVoFData(localGraph[dit()], localBox);
+//      localData[dit()].defineFaceData(localGraph[dit()],localBox);
+      localData[dit()].define(localGraph[dit()],localBox, a_dx, a_hasMoments);
+
     }
-  a_data.copyTo(interv, localData, interv);
+    {
+      CH_TIME("ebdata copyto");
+//      pout() << "ebisl: copying the data" << endl;
+      a_data.copyTo(interv, localData, interv);
+//      barrier();
+    }
   }
 
   if (s_verbose)
-    {
-      pout() << "EBISLayoutImplem::define just copied data " << endl;
-      BaseIVFAB<VolData>::setVerbose(false);
-    }
+  {
+    pout() << "EBISLayoutImplem::define just copied data " << endl;
+    BaseIVFAB<VolData>::setVerbose(false);
+  }
   {
     CH_TIME("EBISBoxesDefine");
-  //define the layouts data with the ghosted layout.  this includes
-  //the problem domain stuff
-  m_ebisBoxes.define(m_blGhostDom);
-  for (DataIterator dit= a_grids.dataIterator(); dit.ok(); ++dit)
+    //define the layouts data with the ghosted layout.  this includes
+    //the problem domain stuff
+//    pout() << "ebisl: weird final loop" << endl;
+    m_ebisBoxes.define(m_blGhostDom);
+    for (DataIterator dit= a_grids.dataIterator(); dit.ok(); ++dit)
     {
       const EBGraph& graphlocal = localGraph[dit()];
       Box graphregion=  graphlocal.getRegion();
-      m_ebisBoxes[dit()].define(localGraph[dit()], localData[dit()]);
+      m_ebisBoxes[dit()].define(localGraph[dit()], localData[dit()], dit());
     }
   }
   m_defined = true;
+//  pout() << "ebisl: leaving" << endl;
 }
 
 bool EBISLayout::isDefined() const
@@ -277,9 +297,8 @@ EBISLayoutImplem::setMaxRefinementRatio(const int& a_maxRefine, const EBIndexSpa
 {
   CH_assert(a_maxRefine % 2 == 0);
   CH_assert(a_maxRefine > 0);
-  if (a_maxRefine < m_maxRefinementRatio)
+  if (a_maxRefine <= m_maxRefinementRatio)
     {
-      //MayDay::Warning("why are you turning the max ref ratio down?");
       return;
     }
 
@@ -309,9 +328,8 @@ EBISLayoutImplem::setMaxCoarseningRatio(const int&                a_maxCoarsen,
 {
   CH_assert(a_maxCoarsen % 2 == 0);
   CH_assert(a_maxCoarsen > 0);
-  if (a_maxCoarsen < m_maxCoarseningRatio)
+  if (a_maxCoarsen <= m_maxCoarseningRatio)
     {
-      //MayDay::Warning("why are you turning the max coarsening ratio down?");
       return;
     }
 

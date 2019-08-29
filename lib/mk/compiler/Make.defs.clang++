@@ -17,7 +17,7 @@ makefiles+=local/Make.defs.clang++
 
 # Changed c++11 flag into c++14 as required for GRChombo
 defcxxdbgflags = -std=c++14 -g -Wall -Wno-overloaded-virtual -Wno-sign-compare
-defcxxoptflags = -std=c++14 -O3 -march=native  -Wno-sign-compare
+defcxxoptflags = -std=c++14 -ffast-math -march=native -Rpass=loop-vectorize -Wno-sign-compare
 
 # SIMD pragmas are now OpenMP ones and may want to vectorize even if not
 # using OpenMP.
@@ -30,7 +30,7 @@ else
 endif
 
 
-CH_CPP = cpp -E -P -C
+CH_CPP = cpp -E -P 
 
 fname   := $(notdir $(firstword $(subst -, ,$(FC))))
 

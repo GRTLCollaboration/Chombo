@@ -43,7 +43,15 @@ makefiles+=compiler/Make.defs.GNU
 
 ################################################################
 
-_gppversion := $(subst ., ,$(shell $(CXX) -dumpfullversion -dumpversion))
+# From GCC v7 and greater the command g++ -dumpversion only returns the major 
+# version number (e.g. 7) rather than the full version number including minor
+# number and patch level (e.g. 7.1.0) as in older versions. This causes some
+# undefined environment variables in the Chombo makefiles which then result in
+# errors when checking the compiler version is new enough. The new command is
+# g++ -dumpfullversion but the old flag is kept for backward compatibility.
+# (Thanks to the GRChombo folks at Cambridge for contributing this fix)
+
+_gppversion := $(subst ., ,$(shell $(CXX) -dumpfullversion  -dumpversion))
 _gppmajorver:= $(word 1,$(_gppversion))
 _gppminorver:= $(word 2,$(_gppversion))
 
@@ -53,7 +61,7 @@ _gppminorver:= $(word 2,$(_gppversion))
   # `-Wno-sign-compare' turns off warnings about comparing signed and unsigned int -
   #   this is a meaningful warning, but it appears way too often in our code.
   # Changed c++11 flag into c++14 as required for GRChombo
-_cxxbaseflags := -std=c++14 -Wno-unused-but-set-variable -Wno-long-long -Wno-sign-compare -Wno-deprecated -ftemplate-depth-55  -Wno-unused-local-typedefs -Wno-literal-suffix
+_cxxbaseflags := -std=c++14 -Wno-unused-but-set-variable -Wno-long-long -Wno-sign-compare -Wno-deprecated -ftemplate-depth-99  -Wno-unused-local-typedefs -Wno-literal-suffix
 
   # g++ v3.4.0 started objecting to some uses of HOFFSET()
   # TJL - Changed moving from csh to sh...
@@ -83,13 +91,6 @@ defcxxdbgflags := $(defcxxcomflags) -g -pedantic -Wall
   ##  # together so force the preprocessor to use the Fortran compiler
 ifeq ($(system),Darwin)
   CH_CPP = /usr/bin/cpp -E -P
-
-  # the preprocessor for v4.8+ adds some header gibberish that we
-  # suppress with -nostdinc.
-  ifeq (00,$(shell test $(_gppmajorver) -ge 4 ; echo $$?)$(shell test $(_gppminorver) -ge 8 ; echo $$?))
-    CH_CPP += -nostdinc
-  endif
-
 endif
 
 # the preprocessor in v3 or later strips "//" by default,
@@ -131,6 +132,7 @@ ifeq ($(USE_64),TRUE)
 endif
 
 ifeq ($(OPENMPCC),TRUE)
+  deffcomflags  += -fopenmp
   defflibflags  += -lgfortran -lm -lgomp
 else
   defflibflags  += -lgfortran -lm

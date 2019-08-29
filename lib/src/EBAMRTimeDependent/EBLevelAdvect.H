@@ -17,7 +17,7 @@
 #include "DisjointBoxLayout.H"
 #include "LevelData.H"
 #include "PiecewiseLinearFillPatch.H"
-#include "EBPWLFillPatch.H"
+#include "AggEBPWLFillPatch.H"
 #include "EBFluxRegister.H"
 #include "ProblemDomain.H"
 #include "EBPatchGodunovFactory.H"
@@ -44,6 +44,12 @@ public:
   */
   ~EBLevelAdvect();
 
+  ///
+  /**
+     forceNoEBCF = true promises that the embedded boundary 
+     will not cross the coarse-fine interface.   This will save you  
+     a  lot of compute time if you are certain you are tagging all irregulkar cells.
+  */
   EBLevelAdvect(const DisjointBoxLayout&           a_thisDBL,
                 const DisjointBoxLayout&           a_coarDBL,
                 const EBISLayout&                  a_thisEBISL,
@@ -54,6 +60,7 @@ public:
                 const bool&                        a_hasCoarser,
                 const bool&                        a_hasFiner,
                 const EBPatchGodunovFactory* const a_patchGodunov,
+                const bool&                        a_forceNoEBCF = false,
                 const EBIndexSpace*          const a_eb = Chombo_EBIS::instance());
 
   /// Actual constructor.
@@ -65,6 +72,9 @@ public:
      (coding standards).  a_nRefine is the refinement ratio between
      this level and the next coarser level.  a_numGhosts is the number
      of ghost cells in each direction.
+     forceNoEBCF = true promises that the embedded boundary 
+     will not cross the coarse-fine interface.   This will save you  
+     a  lot of compute time if you are certain you are tagging all irregulkar cells.
   */
   void define(const DisjointBoxLayout&           a_thisDBL,
               const DisjointBoxLayout&           a_coarDBL,
@@ -76,6 +86,7 @@ public:
               const bool&                        a_hasCoarser,
               const bool&                        a_hasFiner,
               const EBPatchGodunovFactory* const a_patchGodunov,
+              const bool&                        a_forceNoEBCF = false,
               const EBIndexSpace*                const a_eb = Chombo_EBIS::instance());
 
   ///
@@ -189,9 +200,10 @@ public:
   }
   void resetBCs(const RefCountedPtr<EBPhysIBCFactory>&  a_advectBC);
 protected:
-
+  
   bool                       m_hasCoarser;
   bool                       m_hasFiner;
+  bool                       m_forceNoEBCF;
   bool                       m_isDefined;
   RealVect                   m_dx;
   int                        m_refRatCrse;
@@ -202,8 +214,8 @@ protected:
   DisjointBoxLayout          m_coarGrids;
   EBISLayout                 m_thisEBISL;
   EBISLayout                 m_coarEBISL;
-  EBPWLFillPatch             m_fillPatch;
-  EBPWLFillPatch             m_fillPatchVel;
+  AggEBPWLFillPatch             m_fillPatch;
+  AggEBPWLFillPatch             m_fillPatchVel;
   ProblemDomain              m_domain;
   LayoutData<EBPatchAdvect*> m_ebPatchAdvect;
 

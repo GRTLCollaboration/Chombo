@@ -463,6 +463,10 @@ getCartesianGradientStencil(VoFStencil           a_gradStencils[SpaceDim][SpaceD
                             const RealVect&      a_dx)
 {
   RealVect normal = a_ebisBox.normal(a_vof);
+  if(normal.radSquared() < 1.0e-16)
+  {
+    MayDay::Error("bogus normal sent in");
+  }
   RealVect tangents[SpaceDim-1];
   PolyGeom::getTangentVectors(tangents, normal);
   VoFStencil emptyStencil;
@@ -514,6 +518,21 @@ getFluxStencil(VoFStencil           a_stencils[SpaceDim],
                const RealVect&      a_dx,
                const IntVectSet&    a_cfivs)
 {
+  //zero boundary areas make for bogus normals and
+  //floating point exceptions
+  Real bndryArea  = a_ebisBox.bndryArea(a_vof);
+  RealVect normal = a_ebisBox.normal(a_vof);
+  Real normmag = normal.radSquared();
+  Real tol = 1.0e-16;
+  if((normmag < tol) || (bndryArea < tol))
+  {
+    for(int idir = 0; idir < SpaceDim; idir++)
+    {
+      a_weights[idir] = 0;
+      a_stencils[idir].clear();
+    }
+    return;
+  }
   VoFStencil gradStencil[SpaceDim][SpaceDim];
   Real weight;
   VoFStencil normalStencil;
@@ -554,7 +573,7 @@ getFluxStencil(VoFStencil           a_stencils[SpaceDim],
           fluxStencil[icomp][ideriv] += gradContrib;
         }
     }
-  RealVect normal = a_ebisBox.normal(a_vof);
+
   //flux through face = sum flux[icomp][ideriv]*normal[deriv]
   for (int icomp = 0; icomp < SpaceDim; icomp++)
     {

@@ -20,6 +20,7 @@ int
 EBLoadBalance(Vector<int>&         a_procs,
               const Vector<Box>&   a_boxes,
               const ProblemDomain& a_domain,
+              const int&           a_ghosts,
               int                  a_coveredLoad,
               int                  a_irregFactor,
               bool                 a_verbose,
@@ -38,7 +39,7 @@ EBLoadBalance(Vector<int>&         a_procs,
       //we shall make fully covered boxes = constant load = covered load
       //we shall say that irregular points get irregular factor more load than
       //regular points.
-      int nghost = 0;
+      int nghost = a_ghosts;
       DisjointBoxLayout dblOrig(inBoxes, origProcs, a_domain);
       EBISLayout ebisl;
       a_ebisPtr->fillEBISLayout(ebisl, dblOrig, a_domain, nghost);

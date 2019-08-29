@@ -78,6 +78,9 @@ Pool::Pool(int         a_ptrSize,
 
 Pool::~Pool()
 {
+#ifdef CH_USE_MEMORY_TRACKING
+  ch_memcount-=memUsage();
+#endif
   for (int i = 0; i < m_pool_.size(); i++)
   {
     delete [] m_pool_[i];
@@ -93,23 +96,7 @@ Pool::~Pool()
   }
 }
 
-/// getPtr and returnPtr must be as fast as possible!
-void* Pool::getPtr()
-{
-#ifdef _OPENMP
-  return malloc(m_ptrSize_);
-#else
-  if (m_next_ == 0)
-  {
-    m_next_ = getMoreMemory();
-  }
 
-  void* result = m_next_;      // result points to first free chunk in list
-  m_next_ = *(void**)m_next_;  // point m_next_ to next free chunk in list.
-
-  return result;
-#endif
-}
 
 void Pool::returnPtr(void* ptr)
 {
@@ -164,6 +151,9 @@ long Pool::memUsage() const
 
 void Pool::clear()
 {
+#ifdef CH_USE_MEMORY_TRACKING
+  ch_memcount-=memUsage();
+#endif
   for (int i = 0; i < m_pool_.size(); i++)
   {
     delete [] m_pool_[i];
@@ -227,7 +217,7 @@ void* Pool::getMore()
       }
   }
 
-  // Thread pool:
+  // Weave pool:
   // The first few bytes in each chunk is interpreted as a pointer
   // which points to the next free chunk.  With multiple pools, and random
   // news and deletes, the pools will become threaded together.  This is ok.
@@ -238,6 +228,9 @@ void* Pool::getMore()
     *(char**)p = p + m_ptrSize_;  // Chunk at i points to chunk at i+1.
     p += m_ptrSize_;
   }
+#ifdef CH_USE_MEMORY_TRACKING
+  ch_memcount += m_ptrSize_*m_poolSize_;
+#endif
 
   *(char**)p = 0;  // Chunk at end of list points to null
   return po;       // return first chunk.

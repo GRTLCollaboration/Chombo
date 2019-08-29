@@ -17,6 +17,7 @@
 #include "CH_Timer.H"
 #include "memusage.H"
 #include "NamespaceHeader.H"
+#include "CH_OpenMP.H"
 
 // *******************************************************
 // PetscSolver Implementation
@@ -195,8 +196,9 @@ int PetscSolver<T>::create_mat_vec( const T& a_phi )
       
       if ( supportNNZExact() )
         { 
-          PetscInt nglobal, nn = NN;
+          PetscInt nglobal;
 #ifdef CH_MPI
+          PetscInt nn = NN;
           MPI_Comm wcomm = Chombo_MPI::comm;
           MPI_Datatype mtype;
           PetscDataTypeToMPIDataType(PETSC_INT,&mtype);
@@ -278,18 +280,18 @@ int PetscSolver<T>::setup_solver( const T& a_phi )
       // Add values to A
       ierr = formMatrix( m_mat, &a_phi ); CHKERRQ(ierr);
       {
-	char str[256];
-	strcpy (str,"-");
-	strcat (str,m_prestring);
+        char str[256];
+        strcpy (str,"-");
+        strcat (str,m_prestring);
 #if PETSC_VERSION_GE(3,6,0)
-	strcat (str,"pc_gamg_square_graph 20");
+        strcat (str,"pc_gamg_square_graph 20");
 #else
-	strcat (str,"pc_gamg_square_graph true");
+        strcat (str,"pc_gamg_square_graph true");
 #endif
 #if PETSC_VERSION_GE(3,7,0)
-	ierr = PetscOptionsInsertString(PETSC_NULL,str);CHKERRQ(ierr);
+        ierr = PetscOptionsInsertString(PETSC_NULL,str);CHKERRQ(ierr);
 #else
-	ierr = PetscOptionsInsertString(str);CHKERRQ(ierr);
+        ierr = PetscOptionsInsertString(str);CHKERRQ(ierr);
 #endif
       }
 
@@ -305,7 +307,7 @@ int PetscSolver<T>::setup_solver( const T& a_phi )
           ierr = SNESCreate( wcomm, &m_snes );                                       CHKERRQ(ierr);
           // these casts get rid of the 'const'. These are used in SNES as temp vector!  
           ierr = SNESSetFunction( m_snes, m_rr, m_function, (void*)this );         CHKERRQ(ierr);
-	  ierr = SNESSetJacobian( m_snes, m_mat, m_mat, m_jacobian, (void*)this ); CHKERRQ(ierr);
+          ierr = SNESSetJacobian( m_snes, m_mat, m_mat, m_jacobian, (void*)this ); CHKERRQ(ierr);
           //ierr = SNESSetApplicationContext( m_snes, (void*)this );                   CHKERRQ(ierr);
           ierr = SNESSetFromOptions( m_snes );                                       CHKERRQ(ierr);
           ierr = SNESGetKSP( m_snes, &ksp );                                         CHKERRQ(ierr);
@@ -328,7 +330,7 @@ int PetscSolver<T>::setup_solver( const T& a_phi )
               ierr = KSPMonitorSet(m_ksp,ksp_monitor_pout,PETSC_NULL,PETSC_NULL); CHKERRQ(ierr);
             }
 #if PETSC_VERSION_GE(3,5,0)
-	  ierr = KSPSetOperators(m_ksp,m_mat,m_mat);CHKERRQ(ierr);
+          ierr = KSPSetOperators(m_ksp,m_mat,m_mat);CHKERRQ(ierr);
 #else
           ierr = KSPSetOperators(m_ksp,m_mat,m_mat,SAME_NONZERO_PATTERN);CHKERRQ(ierr);
 #endif
@@ -412,7 +414,6 @@ int PetscSolver<T>::solve_private( T& a_phi,
   CH_TIMER("output", t4);
 #ifdef CH_USE_PETSC
   const DisjointBoxLayout &dbl = a_phi.disjointBoxLayout();
-  DataIterator dit( dbl );
   PetscErrorCode ierr;
   const PetscInt nc = a_rhs.nComp();
 #ifdef CH_MPI
@@ -438,15 +439,17 @@ int PetscSolver<T>::solve_private( T& a_phi,
   // add X and B from Chombo to PETSc and add stuff for EB to B
   ierr = VecSet( m_xx, 0.);CHKERRQ(ierr);
   ierr = VecSet( m_bb, 0.);CHKERRQ(ierr);
-  for ( dit = a_rhs.dataIterator() ; dit.ok() ; ++dit )
+
+  DataIterator dit = a_rhs.dataIterator();
+  int nbox=dit.size();
+#pragma omp parallel for private(addV,ierr)
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      const BaseFab<Real> &rhsFab = getRegFab(a_rhs,dit);
-      const BaseFab<Real> &xFab = getRegFab(a_phi,dit);
-      const Box& box = dbl.get(dit());
-      // const EBCellFAB& ebfab = a_rhs[dit()];
-      // const EBISBox& ebbox   = ebfab.getEBISBox();
-      //const Box &box = ebbox.getRegion(); // for Helmholtz
-      const BaseFab<PetscInt> &gidsFab = this->m_gids[dit]; 
+      const DataIndex& datInd = dit[mybox];
+      const BaseFab<Real> &rhsFab = getRegFab(a_rhs,datInd);
+      const BaseFab<Real> &xFab = getRegFab(a_phi,datInd);
+      const Box& box = dbl.get(datInd);
+      const BaseFab<PetscInt> &gidsFab = this->m_gids[datInd]; 
       BoxIterator bit(box);
       for (bit.begin(); bit.ok(); bit.next())
         {
@@ -455,9 +458,7 @@ int PetscSolver<T>::solve_private( T& a_phi,
           for (mm=0;mm<nc;mm++,ki++)
             {
               PetscScalar v = rhsFab(iv,mm);
-              //if (ki==2)pout() << "    *************************** b1(2)=" << v << endl;
-              //  v += addBCrhsValue(iv,a_phi,dit,idx2);
-              addV = addBCrhsValue(iv,a_phi,dit,idx2);
+              addV = addBCrhsValue(iv,a_phi,datInd,idx2);
               if (addV == BaseFabRealSetVal)
                 {
                   v = 0;
@@ -466,16 +467,13 @@ int PetscSolver<T>::solve_private( T& a_phi,
                 {
                   v += addV;
                 }
-              ierr = VecSetValues(m_bb,1,&ki,&v,INSERT_VALUES);CHKERRQ(ierr);
-              //if (ki==2)pout() << "    *************************** b2(2)=" << v << endl;
-              //if ( nonZeroInit )
-              //{
+              ierr = VecSetValues(m_bb,1,&ki,&v,INSERT_VALUES);////CHKERRQ(ierr);
               v = xFab(iv,mm);
-              ierr = VecSetValues(m_xx,1,&ki,&v,INSERT_VALUES);CHKERRQ(ierr);
-              //}
+              ierr = VecSetValues(m_xx,1,&ki,&v,INSERT_VALUES);////CHKERRQ(ierr);
             }
         }
-    }
+    }//dit
+
   ierr = VecAssemblyBegin( m_bb );CHKERRQ(ierr);
   ierr = VecAssemblyEnd( m_bb );CHKERRQ(ierr);
   //if (nonZeroInit)
@@ -570,12 +568,16 @@ int PetscSolver<T>::solve_mfree_private( T& a_phi,
   ierr = VecSet( m_bb, 0.);CHKERRQ(ierr);
   const DisjointBoxLayout &dbl = a_phi.disjointBoxLayout(); 
   const PetscInt nc = a_rhs.nComp();
-  for (DataIterator dit = a_rhs.dataIterator() ; dit.ok() ; ++dit )
+
+  DataIterator dit = a_rhs.dataIterator();
+  int nbox=dit.size();
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      const BaseFab<Real> &rhsFab = getRegFab(a_rhs,dit);
-      const BaseFab<Real> &xFab = getRegFab(a_phi,dit);
-      const Box& box = dbl.get(dit());
-      const BaseFab<PetscInt> &gidsFab = this->m_gids[dit]; 
+      const DataIndex& datInd = dit[mybox];
+      const BaseFab<Real> &rhsFab = getRegFab(a_rhs,datInd);
+      const BaseFab<Real> &xFab = getRegFab(a_phi,datInd);
+      const Box& box = dbl.get(datInd);
+      const BaseFab<PetscInt> &gidsFab = this->m_gids[datInd]; 
       BoxIterator bit(box);
       for (bit.begin(); bit.ok(); bit.next())
         {
@@ -584,7 +586,7 @@ int PetscSolver<T>::solve_mfree_private( T& a_phi,
           for (mm=0;mm<nc;mm++,ki++)
             {
               PetscScalar v = rhsFab(iv,mm);
-              addV = addBCrhsValue(iv,a_phi,dit,idx2);
+              addV = addBCrhsValue(iv,a_phi,datInd,idx2);
               if (addV == BaseFabRealSetVal)
                 {
                   v = 0;
@@ -593,13 +595,13 @@ int PetscSolver<T>::solve_mfree_private( T& a_phi,
                 {
                   v += addV;
                 }
-              ierr = VecSetValues(m_bb,1,&ki,&v,INSERT_VALUES);CHKERRQ(ierr);
+              ierr = VecSetValues(m_bb,1,&ki,&v,INSERT_VALUES); CHKERRQ(ierr);
               v = xFab(iv,mm);
-              ierr = VecSetValues(m_xx,1,&ki,&v,INSERT_VALUES);CHKERRQ(ierr);
-             
+              ierr = VecSetValues(m_xx,1,&ki,&v,INSERT_VALUES); CHKERRQ(ierr);
             }
-        }
-    }
+        }//bit
+    }//dit
+
   ierr = VecAssemblyBegin( m_bb );CHKERRQ(ierr);
   ierr = VecAssemblyEnd( m_bb );CHKERRQ(ierr);
   ierr = VecAssemblyBegin( m_xx );CHKERRQ(ierr);
@@ -688,15 +690,18 @@ PetscErrorCode PetscSolver<T>::putPetscInChombo( T& a_phi, const Vec xx )
   PetscErrorCode ierr;
   const PetscScalar *arr;
   const DisjointBoxLayout &dbl = a_phi.disjointBoxLayout();
-  DataIterator dit( dbl );
   const PetscInt nc = a_phi.nComp();
 
   ierr = VecGetArrayRead(xx,&arr);  CHKERRQ(ierr);
-  for ( dit = a_phi.dataIterator() ; dit.ok() ; ++dit )
+
+  DataIterator dit = a_phi.dataIterator();
+  int nbox=dit.size();
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      BaseFab<Real> &phiFab = getRegFab(a_phi,dit);
-      const Box& box = dbl.get(dit());
-      const BaseFab<PetscInt> &gidsFab = this->m_gids[dit]; 
+      const DataIndex& datInd = dit[mybox];
+      BaseFab<Real> &phiFab = getRegFab(a_phi,datInd);
+      const Box& box = dbl.get(datInd);
+      const BaseFab<PetscInt> &gidsFab = this->m_gids[datInd]; 
       BoxIterator bit(box);
       for (bit.begin(); bit.ok(); bit.next())
         {
@@ -716,19 +721,24 @@ PetscErrorCode PetscSolver<T>::putPetscInChombo( T& a_phi, const Vec xx )
 template <class T>
 PetscErrorCode PetscSolver<T>::putChomboInPetsc( Vec out, const T& a_phi )
 {
+  CH_TIME("PetscSolver::putChomboInPetsc");
+
   PetscErrorCode ierr;
   const DisjointBoxLayout &dbl = a_phi.disjointBoxLayout();
-  DataIterator dit( dbl );
   const PetscInt nc = a_phi.nComp();
   Real idx2 = 1.e0/(this->m_dx*this->m_dx);
 
   // add BC stuff to RHS (EB)
   ierr = VecSet( out, 0.);  CHKERRQ(ierr);
-  for ( dit = a_phi.dataIterator() ; dit.ok() ; ++dit )
+
+  DataIterator dit = a_phi.dataIterator();
+  int nbox=dit.size();
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      const BaseFab<Real> &phiFab = getRegFab(a_phi,dit);
-      const Box& box = dbl.get(dit());
-      const BaseFab<PetscInt> &gidsFab = this->m_gids[dit]; 
+      const DataIndex& datInd = dit[mybox];
+      const BaseFab<Real> &phiFab = getRegFab(a_phi,datInd);
+      const Box& box = dbl.get(datInd);
+      const BaseFab<PetscInt> &gidsFab = this->m_gids[datInd]; 
       BoxIterator bit(box);
       for (bit.begin(); bit.ok(); bit.next())
         {
@@ -737,12 +747,13 @@ PetscErrorCode PetscSolver<T>::putChomboInPetsc( Vec out, const T& a_phi )
           for (mm=0;mm<nc;mm++,ki++)
             {
               PetscScalar v = phiFab(iv,mm);
-              v += addBCrhsValue(iv,a_phi,dit,idx2);
+              v += addBCrhsValue(iv,a_phi,datInd,idx2);
               if (std::isnan(v)) v = 0;
               ierr = VecSetValues(out,1,&ki,&v,INSERT_VALUES);
             }
-        }
-    }
+        }//bit
+    }//dit
+
   ierr = VecAssemblyBegin( out );  CHKERRQ(ierr);
   ierr = VecAssemblyEnd( out );  CHKERRQ(ierr);
 

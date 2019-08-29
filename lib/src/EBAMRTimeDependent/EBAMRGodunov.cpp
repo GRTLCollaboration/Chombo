@@ -37,6 +37,8 @@
 #include "EBIndexSpace.H"
 #include "EBArith.H"
 #include "EBFastFR.H"
+#include "memusage.H"
+#include "AggEBPWLFillPatch.H"
 #include "NamespaceHeader.H"
 
 int  EBAMRGodunov::s_NewPlotFile = 0;
@@ -214,6 +216,7 @@ Real EBAMRGodunov::advance()
   if (s_verbosity >= 3)
     {
       pout() << " in EBAMRGodunov advance for level =" << m_level << ", with dt = " << m_dt << endl;
+      print_memory_line("in_advance");
     }
   {
     CH_TIME("copy new to old");
@@ -553,7 +556,7 @@ void EBAMRGodunov::tagCells(IntVectSet& a_tags)
           Interval intervDensity(densityIndex, densityIndex);
           EBCellFactory factory(m_ebisl);
           int nCons = m_ebPatchGodunov->numConserved();
-          LevelData<EBCellFAB> consTemp(m_grids, nCons, IntVect::Unit, factory);
+          LevelData<EBCellFAB> consTemp(m_grids, nCons, m_nGhost*IntVect::Unit, factory);
           Interval consInterv(0, nCons-1);
           m_stateNew.copyTo(consInterv, consTemp, consInterv);
           if (m_hasCoarser)
@@ -561,12 +564,13 @@ void EBAMRGodunov::tagCells(IntVectSet& a_tags)
               const EBAMRGodunov* amrGodCoarserPtr = getCoarserLevel();
               int refRatCrse = amrGodCoarserPtr->refRatio();
               int nghost = 1;
-              EBPWLFillPatch patcher(m_grids,
-                                     amrGodCoarserPtr->m_grids,
-                                     m_ebisl,
-                                     amrGodCoarserPtr->m_ebisl,
-                                     amrGodCoarserPtr->m_domainBox,
-                                     refRatCrse, m_nComp, nghost);
+              IntVect ivGhost = m_nGhost*IntVect::Unit;
+              AggEBPWLFillPatch patcher(m_grids,
+                                        amrGodCoarserPtr->m_grids,
+                                        m_ebisl,
+                                        amrGodCoarserPtr->m_ebisl,
+                                        amrGodCoarserPtr->m_domainBox,
+                                        refRatCrse, m_nComp, nghost, ivGhost);
 
               Real coarTimeOld = 0.0;
               Real coarTimeNew = 1.0;
@@ -772,6 +776,78 @@ void EBAMRGodunov::tagCellsInit(IntVectSet& a_tags)
 void EBAMRGodunov::regrid(const Vector<Box>& a_new_grids)
 {
   CH_TIME("EBAMRGodunov::regrid");
+  
+  if (s_verbosity >= 3)
+    {
+      pout() << " in EBAMRGodunov regrid for level " << m_level << endl;
+    }
+  Vector<Box>& newGrids =   (Vector<Box>&) a_new_grids;
+  {
+    CH_TIME("mortonordering");
+    mortonOrdering(newGrids);
+  }
+
+  const EBIndexSpace* const ebisPtr = Chombo_EBIS::instance();
+  // save state for last operation.  Since old is not needed anymore I can move new into old
+  
+  //not using m_ebisl because it gets wiped later
+  //the ebisl has to know about the fact that we really have
+  //four ghost cells.
+  int nGhostEBISL = 6;
+  Interval interv(0,m_nComp-1);
+  IntVect ivGhost = m_nGhost*IntVect::Unit;
+  {
+    CH_TIME("save state");
+    m_stateNew.copyTo(m_stateOld);
+  }
+
+  m_level_grids = a_new_grids;
+  Vector<int> proc_map;
+
+  if (s_isLoadBalanceSet)
+    {
+      s_loadBalance(proc_map,a_new_grids, m_domainBox, false);
+    }
+  else
+    {
+      LoadBalance(proc_map,a_new_grids);
+    }
+
+  m_grids= DisjointBoxLayout(a_new_grids,proc_map);
+
+  ebisPtr->fillEBISLayout(m_ebisl, m_grids, m_domainBox, nGhostEBISL);
+  // set up data structures
+  levelSetup();
+  EBCellFactory factoryNew(m_ebisl);
+  // reshape state with new grids
+  //print_memory_line("before state new define");
+  m_stateNew.define(m_grids,m_nComp,ivGhost, factoryNew);
+  //print_memory_line("after state new define");
+
+ 
+
+  // interpolate to coarser level
+  if (m_hasCoarser)
+    {
+      EBAMRGodunov* coarPtr = getCoarserLevel();
+      m_ebFineInterp.interpolate(m_stateNew,
+                                 coarPtr->m_stateNew,
+                                 interv);
+    }
+
+  // copy from old state
+  //print_memory_line("before state copy");
+  m_stateOld.copyTo(interv,m_stateNew, interv);
+  //print_memory_line("before old state define");
+  m_stateOld.define(m_grids,m_nComp,ivGhost, factoryNew);
+  //print_memory_line("after old state define");
+}
+
+/************************/
+/*
+void EBAMRGodunov::regrid(const Vector<Box>& a_new_grids)
+{
+  CH_TIME("EBAMRGodunov::regrid");
   if (s_verbosity >= 3)
     {
       pout() << " in EBAMRGodunov regrid for level " << m_level << endl;
@@ -838,6 +914,8 @@ void EBAMRGodunov::regrid(const Vector<Box>& a_new_grids)
   // copy from old state
   stateSaved.copyTo(interv,m_stateNew, interv);
 }
+*/
+
 /***************************/
 void EBAMRGodunov::initialGrid(const Vector<Box>& a_new_grids)
 {
@@ -891,9 +969,11 @@ void EBAMRGodunov::initialGrid(const Vector<Box>& a_new_grids)
 
   EBCellFactory factoryNew(m_ebisl);
   IntVect ivGhost = m_nGhost*IntVect::Unit;
+  //print_memory_line("before new and old define together");
   m_stateNew.define(m_grids,m_nComp, ivGhost, factoryNew);
+  //print_memory_line("after new and before old define together");
   m_stateOld.define(m_grids,m_nComp, ivGhost, factoryNew);
-
+  //print_memory_line("after new and old define together");
   // set up data structures
   levelSetup();
 }
@@ -941,11 +1021,11 @@ void EBAMRGodunov::syncWithFineLevel()
       //define fine to coarse redistribution object
       //for now set to volume weighting
       m_ebCoarToFineRedist.define(finer_m_grids, m_grids,
-                                  finer_m_ebisl,  m_ebisl,
+                                  m_ebisl,
                                   m_domainBox, nRefFine , m_nComp, 1, Chombo_EBIS::instance());
       //define coarse to coarse redistribution object
       m_ebCoarToCoarRedist.define(finer_m_grids, m_grids,
-                                  finer_m_ebisl,  m_ebisl,
+                                  m_ebisl,
                                   m_domainBox, nRefFine , m_nComp);
       // maintain flux registers
       m_ebFluxRegister.define(finer_m_grids,
@@ -1101,7 +1181,7 @@ EBAMRGodunov::levelSetup()
 
   m_hasCoarser = (coarPtr != NULL);
   m_hasFiner   = (finePtr != NULL);
-
+  pout() << "for level " << m_level << endl;
   if (m_hasCoarser)
     {
       int nRefCrse = m_coarser_level_ptr->refRatio();
@@ -1111,6 +1191,7 @@ EBAMRGodunov::levelSetup()
 
       {
         CH_TIME("ave_interp_defs");
+        //print_memory_line("before coarse average define");
         m_ebCoarseAverage.define(m_grids,
                                  coarser_m_grids,
                                  m_ebisl,
@@ -1118,6 +1199,8 @@ EBAMRGodunov::levelSetup()
                                  domainCoar,
                                  nRefCrse,
                                  m_nComp, Chombo_EBIS::instance());
+        //print_memory_line("after coarse average define");
+
         m_ebFineInterp.define(m_grids,
                               coarser_m_grids,
                               m_ebisl,
@@ -1125,9 +1208,13 @@ EBAMRGodunov::levelSetup()
                               domainCoar,
                               nRefCrse,
                               m_nComp);
+        //print_memory_line("after fine interp define");
+
       }
 
+      //print_memory_line("before eblevelgodunov define");
       // maintain levelgodunov
+      IntVect ivGhost = m_nGhost*IntVect::Unit;
       m_ebLevelGodunov.define(m_grids,
                               coarser_m_grids,
                               m_ebisl,
@@ -1141,8 +1228,10 @@ EBAMRGodunov::levelSetup()
                               m_hasSourceTerm,
                               m_ebPatchGodunovFactory,
                               m_hasCoarser,
-                              m_hasFiner);
+                              m_hasFiner,
+                              ivGhost);
 
+      //print_memory_line("after eblevelgodunov define");
       //define fine to coarse redistribution object
       //for now set to volume weighting
       {
@@ -1153,10 +1242,14 @@ EBAMRGodunov::levelSetup()
         m_ebFineToCoarRedist.setToZero();
       }
 
+      //print_memory_line("after finetocoarredist  define");
       coarPtr->syncWithFineLevel();
     }
   else
     {
+
+      //print_memory_line("before eblevelgodunov define");
+      IntVect ivGhost = m_nGhost*IntVect::Unit;
       m_ebLevelGodunov.define(m_grids,
                               DisjointBoxLayout(),
                               m_ebisl,
@@ -1170,9 +1263,12 @@ EBAMRGodunov::levelSetup()
                               m_hasSourceTerm,
                               m_ebPatchGodunovFactory,
                               m_hasCoarser,
-                              m_hasFiner);
+                              m_hasFiner,
+                              ivGhost);
+      //print_memory_line("after eblevelgodunov define");
     }
 
+  //print_memory_line("before m_sets define");
   //set up mass redistribution array
   m_sets.define(m_grids);
   for (DataIterator dit = m_grids.dataIterator();
@@ -1181,6 +1277,7 @@ EBAMRGodunov::levelSetup()
       Box thisBox = m_grids.get(dit());
       m_sets[dit()] = m_ebisl[dit()].getIrregIVS(thisBox);
     }
+  //print_memory_line("after m_sets define");
   BaseIVFactory<Real> factory(m_ebisl, m_sets);
   //the ghost cells on the mass redistribution array
   //are tied to the redistribution radius
@@ -1191,6 +1288,7 @@ EBAMRGodunov::levelSetup()
     {
       m_massDiff[dit()].setVal(0.0);
     }
+  //print_memory_line("after mass diff define");
 }
 /***************************/
 LevelData<EBCellFAB>&
@@ -1258,7 +1356,7 @@ void EBAMRGodunov::fillConsAndPrim(LevelData<EBCellFAB>& a_data) const
       Real coveredVal = -10.0;
       for (int ivar = 0; ivar < consAndPrim; ivar++)
         {
-          outputfab.setInvalidData(coveredVal, ivar);
+          outputfab.setCoveredCellVal(coveredVal, ivar);
         }
 
     }//end loop over grids
@@ -1427,9 +1525,11 @@ void EBAMRGodunov::readCheckpointLevel(HDF5Handle& a_handle)
   EBCellFactory factoryNew(m_ebisl);
   //m_nghost is set in define function
   IntVect ivGhost = m_nGhost*IntVect::Unit;
+
+  //print_memory_line("before new and old define");
   m_stateNew.define(m_grids,m_nComp, ivGhost, factoryNew);
   m_stateOld.define(m_grids,m_nComp, ivGhost, factoryNew);
-
+  //print_memory_line("after new and old define");
   //  Interval vars(0, m_nComp-1);
   //the false says to not redefine the data
   int dataStatusNew = read<EBCellFAB>(a_handle,

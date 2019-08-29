@@ -164,6 +164,8 @@ BaseIF* makeGeometry(Box&      a_domain,
   Real     sphMinRadius;
   Real     sphMaxRadius;
 
+  bool     insideRegular;
+
   // Initialize random number generator
   srand48(time(0));
 
@@ -260,6 +262,13 @@ BaseIF* makeGeometry(Box&      a_domain,
 
   Real maxDrops;
   pp.get("maxDrops",maxDrops);
+
+  // Parm Parse doesn't get bools, so work-around with int
+  int intInsideRegular;
+  pp.get("insideRegular",intInsideRegular);
+
+  if (intInsideRegular != 0) insideRegular = true;
+  if (intInsideRegular == 0) insideRegular = false;
 
   // Stay inside until the end
   bool inside = true;
@@ -531,16 +540,18 @@ BaseIF* makeGeometry(Box&      a_domain,
       finalIF = &cylinderAndSpheres;
     }
 
+  ComplementIF insideOut(*finalIF,!insideRegular);
+
   RealVect vectDx = RealVect::Unit;
   vectDx *= a_dx;
 
-  GeometryShop workshop(*finalIF,0,vectDx);
+  GeometryShop workshop(insideOut,0,vectDx);
 
   // This generates the new EBIS
   EBIndexSpace* ebisPtr = Chombo_EBIS::instance();
   ebisPtr->define(a_domain,a_origin,a_dx,workshop);
 
-  return finalIF->newImplicitFunction();
+  return insideOut.newImplicitFunction();
 }
 
 Real getDistance(const RealVect& a_point,

@@ -53,7 +53,7 @@ public:
 #ifdef CH_USE_PETSC
   virtual void setFunctionAndJacobian( PetscErrorCode (*f)(SNES,Vec,Vec,void*),
 #if PETSC_VERSION_GE(3,5,0)
-				       PetscErrorCode (*j)(SNES,Vec,Mat,Mat,void*)
+                                       PetscErrorCode (*j)(SNES,Vec,Mat,Mat,void*)
 #else
                                        PetscErrorCode (*j)(SNES,Vec,Mat*,Mat*,MatStructure*,void*)
 #endif
@@ -177,7 +177,7 @@ public:
      this function coordinates with addBCrhsValue for Dirichlet BC
      for Neumann BC no RHS modification is required
    */
-  virtual Real addBCdiagValue(const IntVect& a_iv, const IntVect& a_jv, const T& a_rhs, DataIterator dit, const Real coeff = 1)
+  virtual Real addBCdiagValue(const IntVect& a_iv, const IntVect& a_jv, const T& a_rhs, const DataIndex& a_datInd, const Real coeff = 1)
   {
     return 0;
   }
@@ -205,7 +205,7 @@ protected:
      handling boundary conditions, turn it into a term to be added to the RHS
      this function coordinates with addBCdiagValue for Dirichlet BC, should return a term that is to be added to RHS
    */
-  virtual Real addBCrhsValue(const IntVect& a_iv, const T& a_phi, DataIterator dit, const Real& coeff = 1)
+  virtual Real addBCrhsValue(const IntVect& a_iv, const T& a_phi, const DataIndex& a_datInd, const Real& coeff = 1)
   {
     return 0.0;
   }
@@ -243,9 +243,9 @@ public:
   PetscErrorCode putChomboInPetsc( Vec out, const T& a_phi );
   virtual int formMatrix( Mat, const T* =0, PetscInt my0=0, PetscInt nloc=0, PetscInt *d=0, PetscInt *o=0) = 0;
 #endif
-  virtual BaseFab<Real>& getRegFab(T& a_fab, DataIterator& dit) = 0;
-  const virtual BaseFab<Real>& getRegFab(const T& a_fab, DataIterator& dit) const = 0;
-  const virtual BaseFab<Real>& getRegFab(const T& a_fab, DataIterator& dit, Box& a_box) const = 0;
+  virtual BaseFab<Real>& getRegFab(T& a_fab, const DataIndex& a_datInd) = 0;
+  const virtual BaseFab<Real>& getRegFab(const T& a_fab, const DataIndex& a_datInd) const = 0;
+  const virtual BaseFab<Real>& getRegFab(const T& a_fab, const DataIndex& a_datInd, Box& a_box) const = 0;
   void setNull( bool n = true );
 };
 
@@ -260,21 +260,21 @@ public:
   {
   }
 
-  BaseFab<Real>& getRegFab(LevelData<FArrayBox>& a_fab, DataIterator& dit)
+  BaseFab<Real>& getRegFab(LevelData<FArrayBox>& a_fab, const DataIndex& a_datInd)
   {
-    BaseFab<Real>& fabref = static_cast<BaseFab<Real>& >(a_fab[dit()]);
+    BaseFab<Real>& fabref = static_cast<BaseFab<Real>& >(a_fab[a_datInd]);
     return fabref;
   }
 
-  const BaseFab<Real>& getRegFab(const LevelData<FArrayBox>& a_fab, DataIterator& dit) const
+  const BaseFab<Real>& getRegFab(const LevelData<FArrayBox>& a_fab, const DataIndex& a_datInd) const
   {
-    const BaseFab<Real>& fabref = static_cast<const BaseFab<Real>& >(a_fab[dit()]);
+    const BaseFab<Real>& fabref = static_cast<const BaseFab<Real>& >(a_fab[a_datInd]);
     return fabref;
   }
 
-  const BaseFab<Real>& getRegFab(const LevelData<FArrayBox>& a_fab, DataIterator& a_dit, Box& a_box) const
+  const BaseFab<Real>& getRegFab(const LevelData<FArrayBox>& a_fab, const DataIndex& a_datInd, Box& a_box) const
   {
-    const BaseFab<Real>& fabref = static_cast<const BaseFab<Real>& >(a_fab[a_dit()]);
+    const BaseFab<Real>& fabref = static_cast<const BaseFab<Real>& >(a_fab[a_datInd]);
     a_box = fabref.box();
     return fabref;
   }

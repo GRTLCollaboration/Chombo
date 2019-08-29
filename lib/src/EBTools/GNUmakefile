@@ -8,6 +8,6 @@ CHOMBO_HOME := $(shell pwd)/../..
 
 lbase := ebtools
 
-LibNames := EBAMRTools AMRTools BoxTools
+LibNames := AMRTools BoxTools
 
 include $(CHOMBO_HOME)/mk/Make.lib

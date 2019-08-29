@@ -24,6 +24,7 @@
 #include "PiecewiseLinearFillPatch.H"
 #include "AggStencil.H"
 #include "EBIndexSpace.H"
+#include "EBLevelGrid.H"
 #include "NamespaceHeader.H"
 
 ///
@@ -59,6 +60,9 @@ public:
      at each VoF.\\
      radius: the total number of
      ghost cells filled.
+     forceNoEBCF = true promises that the embedded boundary 
+     will not cross the coarse-fine interface.   This will save you  
+     a  lot of compute time if you are certain you are tagging all irregulkar cells.
   */
   AggEBPWLFillPatch(const DisjointBoxLayout& a_dblFine,
                     const DisjointBoxLayout& a_dblCoar,
@@ -69,8 +73,30 @@ public:
                     const int& a_nvar,
                     const int& a_radius,
                     const IntVect& a_ghost,
+                    const bool& a_forceNoEBCF = false,
                     const EBIndexSpace* const a_eb = Chombo_EBIS::instance());
 
+
+  /// saner interface
+  AggEBPWLFillPatch(const EBLevelGrid & a_eblgFine,
+                    const EBLevelGrid & a_eblgCoar,
+                    const int& a_nref,
+                    const int& a_nvar,
+                    const int& a_radius,
+                    const IntVect& a_ghost,
+                    const bool& a_forceNoEBCF = false,
+                    const EBIndexSpace* const a_eb = Chombo_EBIS::instance())
+  {
+    setDefaultValues();
+    define(a_eblgFine.getDBL(),
+           a_eblgCoar.getDBL(),
+           a_eblgFine.getEBISL(),
+           a_eblgCoar.getEBISL(),
+           a_eblgCoar.getDomain(),
+           a_nref, a_nvar, a_radius, a_ghost, a_forceNoEBCF, a_eb);
+  }
+                    
+                    
   ///
   /**
      Defines this object.  Existing information is overriden.
@@ -85,6 +111,9 @@ public:
      at each VoF.
      radius: the total number of
      ghost cells filled.
+     forceNoEBCF = true promises that the embedded boundary 
+     will not cross the coarse-fine interface.   This will save you  
+     a  lot of compute time if you are certain you are tagging all irregulkar cells.
   */
   void define(const DisjointBoxLayout& a_dblFine,
               const DisjointBoxLayout& a_dblCoar,
@@ -95,6 +124,7 @@ public:
               const int& a_nvar,
               const int& a_radius,
               const IntVect& a_ghost,
+              const bool& a_forceNoEBCF = false,
               const EBIndexSpace* const a_eb = Chombo_EBIS::instance());
 
   ///
@@ -225,7 +255,7 @@ protected:
   //data so we can do the wacky delta minmod thing fast.
   LayoutData< Vector<coar_logic_t> > m_coarOffsets;
 
-
+  bool m_forceNoEBCF;
   bool m_isDefined;
 
   //non-EB fill patch

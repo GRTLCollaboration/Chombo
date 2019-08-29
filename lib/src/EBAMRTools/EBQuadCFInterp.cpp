@@ -88,17 +88,24 @@ define(const DisjointBoxLayout& a_gridsFine,
     (new EBCFData(a_gridsFine, a_gridsCoar,
                   a_ebislFine, a_ebislCoar, a_domainCoar,
                   a_nref, a_cfivs, a_ebisPtr, m_doEBCFCrossing));
-
+  
   m_isDefined = true;
 
   //do EB-Crossing-CF interface tricks
   m_doEBCFCrossing = m_ebcfdata->m_doEBCFCrossing;
 
+  m_excludeIVSCoar.makeEmpty();
   if (m_doEBCFCrossing)
     {
       //define coarse ebis layouts buffers
       EBCellFactory coarFact(m_ebcfdata->m_ebislCoarsenedFine);
       m_ebBufferCoarsenedFine.define(m_ebcfdata->m_gridsCoarsenedFine, m_nComp, 2*IntVect::Unit, coarFact);
+
+      //cannot use grids underneath finer level for phistar
+      for(LayoutIterator litcofi =  m_ebcfdata->m_gridsCoarsenedFine.layoutIterator(); litcofi.ok(); ++litcofi)
+        {
+          m_excludeIVSCoar |= m_ebcfdata->m_gridsCoarsenedFine[litcofi()];
+        }
 
       //build EBCF stencils
       buildEBCFStencils();
@@ -113,6 +120,7 @@ define(const DisjointBoxLayout& a_gridsFine,
 
 /*********************/
 int
+EBQuadCFInterp::
 getPhiStarStencil(VoFStencil&     a_stencil,
                   const VolIndex& a_ghostVoFFine,
                   const VolIndex& a_ghostVoFCoar,
@@ -128,21 +136,23 @@ getPhiStarStencil(VoFStencil&     a_stencil,
   RealVect coarLoc = EBArith::getVofLocation(a_ghostVoFCoar, dxCoar, IntVect::Zero);
 
   RealVect dist = fineLoc - coarLoc;
+
   //don't want any extrapolation in a_idir direction
   //phistar lives in the line connnecting coarse cell centers
   //see algorithm doc
   dist[a_idir] = 0.0;
 
-
   //don't want any extrapolation in a_idir direction
   //this gets the stencil to extrapolation from phiCoar to phiStar
-  int order  = EBArith::getExtrapolationStencil(a_stencil, dist, dxCoar, a_ghostVoFCoar, a_ebisBoxCoar, a_idir);
+  int order  = EBArith::getExtrapolationStencil(a_stencil, dist, dxCoar, a_ghostVoFCoar, a_ebisBoxCoar, a_idir,
+                                                &m_excludeIVSCoar);
 
   return order;
 }
 
 /*********************/
 int
+EBQuadCFInterp::
 getStencils(VoFStencil&     a_fineStencil,
             VoFStencil&     a_coarStencil,
             const VolIndex& a_ghostVoFFine,
@@ -227,25 +237,6 @@ buildEBCFStencils()
           //define all the holders
           const IntVectSet& loEBCFIVS = m_ebcfdata->m_ebcfivsLo[idir][dit()];
           const IntVectSet& hiEBCFIVS = m_ebcfdata->m_ebcfivsHi[idir][dit()];
-
-
-          Box gridBox = m_ebcfdata->m_gridsFine[dit()];
-          Box grownBox = grow(gridBox, 1);
-//          if (grownBox.contains(EBDebugPoint::s_ivd))
-//            {
-//              if (loEBCFIVS.contains(EBDebugPoint::s_ivd))
-//                {
-//                  pout() << "dir = " << idir << ", gridBox = " << gridBox << ", debug iv in low side"  << endl;
-//                }
-//              if (hiEBCFIVS.contains(EBDebugPoint::s_ivd))
-//                {
-//                  pout() << "dir = " << idir << ", gridBox = " << gridBox << ", debug iv in high side"  << endl;
-//                }
-//              if (!hiEBCFIVS.contains(EBDebugPoint::s_ivd) && !loEBCFIVS.contains(EBDebugPoint::s_ivd))
-//                {
-//                  pout() << "dir = " << idir << ", gridBox = " << gridBox << ", debug iv not there" << endl;
-//                }
-//            }
 
           m_coarStencilLo[idir][dit()].define(loEBCFIVS, m_ebcfdata->m_ebislFine[dit()].getEBGraph(), 1);
           m_coarStencilHi[idir][dit()].define(hiEBCFIVS, m_ebcfdata->m_ebislFine[dit()].getEBGraph(), 1);
@@ -451,7 +442,6 @@ interpEBCFCrossing(LevelData<EBCellFAB>&       a_fineData,
   a_coarData.copyTo(a_variables, m_ebBufferCoarsenedFine, a_variables);
   for (int idir = 0; idir < SpaceDim; idir++)
     {
-      int ibox = 0;
       for (DataIterator dit = m_ebcfdata->m_gridsFine.dataIterator(); dit.ok(); ++dit)
         {
           for (m_ebcfdata->m_vofItEBCFLo[idir][dit()].reset(); m_ebcfdata->m_vofItEBCFLo[idir][dit()].ok(); ++m_ebcfdata->m_vofItEBCFLo[idir][dit()])
@@ -478,7 +468,6 @@ interpEBCFCrossing(LevelData<EBCellFAB>&       a_fineData,
                   a_fineData[dit()](vofGhost, icomp) = fineContrib + coarContrib;
                 }
             }
-          ibox++;
         }
     }
 }

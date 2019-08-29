@@ -24,6 +24,20 @@ DisjointBoxLayout::DisjointBoxLayout()
 {
 }
 
+unsigned long long int 
+DisjointBoxLayout::
+numPointsThisProc() const
+{
+  const DisjointBoxLayout& dbl = *this;
+  unsigned long long retval = 0;
+  DataIterator dit = dbl.dataIterator();
+  for(int ibox = 0; ibox < dit.size(); ibox++)
+  {
+    retval += dbl[dit[ibox]].numPts();
+  }
+  return retval;
+}
+
 DisjointBoxLayout::DisjointBoxLayout(const Vector<Box>& a_boxes,
                                      const Vector<int>& a_procIDs)
   :BoxLayout(a_boxes,a_procIDs)
@@ -43,6 +57,14 @@ DisjointBoxLayout::DisjointBoxLayout(const Vector<Box>& a_boxes,
                       // happen in constructors.
 }
 
+DisjointBoxLayout::DisjointBoxLayout(const LayoutData<Box>& a_newLayout)
+  : BoxLayout(a_newLayout)
+{
+  CH_assert(isDisjoint());
+  computeNeighbors(); // even though BoxLayout::close is virtual, virtual dispatch does not
+                      // happen in constructors.
+}
+                                     
 void
 DisjointBoxLayout::define(const Vector<Box>& a_boxes,
                           const Vector<int>& a_procIDs)
@@ -231,21 +253,21 @@ void DisjointBoxLayout::computeNeighbors()
         }
       //now run through periodic boxes.
       if(!m_physDomain.isEmpty() && !m_physDomain.domainBox().contains(gbox))
-	{
-	  std::list<std::pair<int, LayoutIndex> >::iterator it;
-	  for (it=periodicImages.begin(); it!=periodicImages.end(); ++it)
-	    {
-	      Box b = (*m_boxes)[(*it).second.intCode()].box;
-	      m_physDomain.shiftIt(b, (*it).first);
-	      if (gbox.intersectsNotEmpty(b))
-		{
-		  pair<int, LayoutIndex> entry(*it);
-		  //HERE
-		  entry.second = (*it).second;
-		  neighbors.push_back(entry);
-		}
-	    }
-	}
+        {
+          std::list<std::pair<int, LayoutIndex> >::iterator it;
+          for (it=periodicImages.begin(); it!=periodicImages.end(); ++it)
+            {
+              Box b = (*m_boxes)[(*it).second.intCode()].box;
+              m_physDomain.shiftIt(b, (*it).first);
+              if (gbox.intersectsNotEmpty(b))
+                {
+                  pair<int, LayoutIndex> entry(*it);
+                  //HERE
+                  entry.second = (*it).second;
+                  neighbors.push_back(entry);
+                }
+            }
+        }
     }
 }
 
@@ -283,9 +305,11 @@ DisjointBoxLayout::deepCopy(const BoxLayout& a_layout,
 
 void
 DisjointBoxLayout::degenerate( DisjointBoxLayout& a_to,
-                               const SliceSpec& a_sliceSpec ) const
+                               const SliceSpec& a_sliceSpec,
+                               bool a_maintainProcAssign) const
 {
   Vector<Box> boxes;
+  Vector<int> procAssign;
   boxes.reserve( this->size() );
   bool outofbounds;
   for (LayoutIterator it(this->layoutIterator()); it.ok(); ++it)
@@ -295,11 +319,20 @@ DisjointBoxLayout::degenerate( DisjointBoxLayout& a_to,
       if ( !outofbounds )
         {
           boxes.push_back( degenBox );
+          procAssign.push_back(procID(it()));
         }
     }
 
     // What happens now if boxes.size()==0?
-    a_to.defineAndLoadBalance( boxes, 0 );
+  if (!a_maintainProcAssign)
+    {
+      a_to.defineAndLoadBalance( boxes, 0 );
+    }
+  else 
+    {
+      a_to.define(boxes, procAssign, m_physDomain); 
+    }
+  
     a_to.close(); // Do we really need this?
 }
 

@@ -107,7 +107,7 @@ void EdgeToCellMax(const FluxBox& a_edgeData,
           Box cellBox = a_cellData.box();
           cellBox &= a_edgeData.box();
           int cellcomp = SpaceDim*comp + dir;
-          FORT_EDGETOCELL(CHF_CONST_FRA1(a_edgeData[dir],comp),
+          FORT_EDGETOCELLMAX(CHF_CONST_FRA1(a_edgeData[dir],comp),
                           CHF_FRA1(a_cellData, cellcomp),
                           CHF_BOX(cellBox),
                           CHF_CONST_INT(dir));

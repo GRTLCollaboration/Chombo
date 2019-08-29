@@ -13,6 +13,9 @@
 #include "DirichletConductivityEBBC.H"
 #include "EBStencil.H"
 #include "NamespaceHeader.H"
+
+int DirichletConductivityEBBC::s_velComp = 0;
+
 void
 DirichletConductivityEBBC::
 define(const LayoutData<IntVectSet>& a_cfivs,

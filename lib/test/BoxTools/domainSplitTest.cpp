@@ -21,7 +21,7 @@
 #include <fstream>
 #include <string>
 #ifdef CH_MPI
-#include <mpi.h>
+#include "mpi.h"
 #endif
 #include "UsingNamespace.H"
 
@@ -175,20 +175,71 @@ int domainSplitTest()
     if (boxes.size() == 0 )
       {
         // test fails
+        if (verbose)
+          {
+            pout() << "no boxes returned" << endl;
+          }
         passedDomainSplitTest = false;
       }
 
     // check to be sure that boxes cover domain and no box is
     // greater than ncellmax
-    IntVectSet testIVS(testDomainBox);
+    IntVectSet uncoveredIVS(testDomainBox);
     for (int n=0; n<boxes.size(); n++)
       {
-        testIVS -= boxes[n];
         if (!testDomainBox.contains(boxes[n]))
-          passedDomainSplitTest = false;
+          { // fail because boxes[n] contains cells outside testDomainBox
+            if (verbose)
+              {
+                pout() << "box " << boxes[n]
+                       << " contains cells outside " << testDomainBox << endl;
+              }
+            passedDomainSplitTest = false;
+          }
 
-        if (boxes[n].longside() > ncellmax)
-          passedDomainSplitTest =false;
+        if (!uncoveredIVS.contains(boxes[n]))
+          { // fail because boxes[n] contains cells already covered
+            if (verbose)
+              {
+                pout() << "box " << boxes[n]
+                       << " contains previously covered cells" << endl;
+              }
+            passedDomainSplitTest = false;
+          }
+        uncoveredIVS -= boxes[n];
+
+        const IntVect& lengthVect = boxes[n].size();
+        for (int idir = 0; idir < SpaceDim; idir++)
+          {
+            if (lengthVect[idir] > ncellmax)
+              { // fail because boxes[n] is too big
+                if (verbose)
+                  {
+                    pout() << "box " << boxes[n]
+                           << " has length > " << ncellmax
+                           << " in dimension " << idir << endl;
+                  }
+                passedDomainSplitTest = false;
+              }
+            if (lengthVect[idir] % block_factor != 0)
+              { // fail because length is not a multiple of block_factor
+                if (verbose)
+                  {
+                    pout() << "box " << boxes[n]
+                           << " not blocked by " << block_factor
+                           << " in dimension " << idir << endl;
+                  }
+                passedDomainSplitTest = false;
+              }
+          }
+      }
+    if (!uncoveredIVS.isEmpty())
+      { // fail because not all of testDomainBox is covered by boxes
+        if (verbose)
+          {
+            pout() << "boxes do not cover all of " << testDomainBox << endl;
+          }
+        passedDomainSplitTest = false;
       }
 
     if (verbose)
@@ -196,6 +247,212 @@ int domainSplitTest()
              << (( passedDomainSplitTest ) ? "passed" : "failed")
              << endl ;
     if (!passedDomainSplitTest) retflag += 8;
+  }
+
+  // test that nonzero low end is processed correctly
+  {
+    IntVect lo = IntVect(D_DECL6(-32, 64, 96, 16, 16, 16));
+    int block_factor = 4;
+    IntVect num_blocks = IntVect(D_DECL6(16, 12, 12, 2, 2, 2));
+    IntVect length_total = block_factor * num_blocks;
+    IntVect hi = lo + length_total - IntVect::Unit;
+    Box testDomainBox(lo, hi);
+    IntVect refineDirs = IntVect(D_DECL6(0, 0, 1, 1, 1, 1));
+    int ncellmax = 8 * block_factor;
+
+    Vector<Box> boxes;
+    domainSplit(testDomainBox, boxes, ncellmax, block_factor);
+
+    // check results
+    bool passedDomainSplitTest = true;
+    if (boxes.size() == 0)
+      {
+        // test fails
+        if (verbose)
+          {
+            pout() << "no boxes returned" << endl;
+          }
+        passedDomainSplitTest = false;
+      }
+
+    // check to be sure that boxes cover domain and no box is
+    // greater than ncellmax
+    IntVectSet uncoveredIVS(testDomainBox);
+    for (int n=0; n<boxes.size(); n++)
+      {
+        if (!testDomainBox.contains(boxes[n]))
+          { // fail because boxes[n] contains cells outside testDomainBox
+            if (verbose)
+              {
+                pout() << "box " << boxes[n]
+                       << " contains cells outside " << testDomainBox << endl;
+              }
+            passedDomainSplitTest = false;
+          }
+        if (!uncoveredIVS.contains(boxes[n]))
+          { // fail because boxes[n] contains cells already covered
+            if (verbose)
+              {
+                pout() << "box " << boxes[n]
+                       << " contains previously covered cells" << endl;
+              }
+            passedDomainSplitTest = false;
+          }
+        uncoveredIVS -= boxes[n];
+
+        const IntVect& lengthVect = boxes[n].size();
+        for (int idir = 0; idir < SpaceDim; idir++)
+          {
+            if (lengthVect[idir] > ncellmax)
+              { // fail because boxes[n] is too big
+                if (verbose)
+                  {
+                    pout() << "box " << boxes[n]
+                           << " has length > " << ncellmax
+                           << " in dimension " << idir << endl;
+                  }
+                passedDomainSplitTest = false;
+              }
+            if (lengthVect[idir] % block_factor != 0)
+              { // fail because length is not a multiple of block_factor
+                if (verbose)
+                  {
+                    pout() << "box " << boxes[n]
+                           << " not blocked by " << block_factor
+                           << " in dimension " << idir << endl;
+                  }
+                passedDomainSplitTest = false;
+              }
+          }
+      }
+    if (!uncoveredIVS.isEmpty())
+      { // fail because not all of testDomainBox is covered by boxes
+        if (verbose)
+          {
+            pout() << "boxes do not cover all of " << testDomainBox << endl;
+          }
+        passedDomainSplitTest = false;
+      }
+
+    if (verbose)
+      {
+        pout() << indent << pgmname << " domainSplit off-zero domain test: "
+               << (( passedDomainSplitTest ) ? "passed" : "failed")
+               << endl ;
+      }
+    if (!passedDomainSplitTest) retflag += 16;
+  }
+
+  // test that this does the right thing when some dimensions held fixed
+  {
+    IntVect lo = IntVect(D_DECL6(-32, 64, 96, 16, 16, 16));
+    int block_factor = 4;
+    IntVect num_blocks = IntVect(D_DECL6(16, 12, 12, 2, 2, 2));
+    IntVect length_total = block_factor * num_blocks;
+    IntVect hi = lo + length_total - IntVect::Unit;
+    Box testDomainBox(lo, hi);
+    IntVect refineDirs = IntVect(D_DECL6(0, 0, 1, 1, 1, 1));
+    int ncellmax = 8 * block_factor;
+    
+    Vector<Box> boxes;
+    domainSplit(testDomainBox, boxes, ncellmax, block_factor, refineDirs);
+
+    // check results
+    bool passedDomainSplitTest = true;
+    if (boxes.size() == 0)
+      {
+        // test fails
+        if (verbose)
+          {
+            pout() << "no boxes returned" << endl;
+          }
+        passedDomainSplitTest = false;
+      }
+
+    // check to be sure that boxes cover domain and no box has length
+    // greater than ncellmax in dimensions where refinedDirs == 1.
+    // In dimensions where refinedDirs == 0, check that boxes have full length.
+    IntVectSet uncoveredIVS(testDomainBox);
+    for (int n=0; n<boxes.size(); n++)
+      {
+        if (!testDomainBox.contains(boxes[n]))
+          { // fail because boxes[n] contains cells outside testDomainBox
+            if (verbose)
+              {
+                pout() << "box " << boxes[n]
+                       << " contains cells outside " << testDomainBox << endl;
+              }
+            passedDomainSplitTest = false;
+          }
+
+        if (!uncoveredIVS.contains(boxes[n]))
+          { // fail because boxes[n] contains cells already covered
+            if (verbose)
+              {
+                pout() << "box " << boxes[n]
+                       << " contains previously covered cells" << endl;
+              }
+            passedDomainSplitTest = false;
+          }
+        uncoveredIVS -= boxes[n];
+
+        const IntVect& lengthVect = boxes[n].size();
+        for (int idir = 0; idir < SpaceDim; idir++)
+          {
+            if (refineDirs[idir] == 0)
+              { // should not be splitting in this dimension
+                if (lengthVect[idir] != length_total[idir])
+                  { // fail because boxes[n] not full length in this dimension
+                    if (verbose)
+                      {
+                        pout() << "box " << boxes[n]
+                               << " not full length " << length_total[idir]
+                               << " in dimension " << idir << endl;
+                      }
+                    passedDomainSplitTest = false;
+                  }
+              }
+            else
+              {
+                if (lengthVect[idir] > ncellmax)
+                  { // fail because boxes[n] is too big in this dimension
+                    if (verbose)
+                      {
+                        pout() << "box " << boxes[n]
+                               << " has length > " << ncellmax
+                               << " in dimension " << idir << endl;
+                      }
+                    passedDomainSplitTest = false;
+                  }
+                if (lengthVect[idir] % block_factor != 0)
+                  { // fail because length is not a multiple of block_factor
+                    if (verbose)
+                      {
+                        pout() << "box " << boxes[n]
+                               << " not blocked by " << block_factor
+                               << " in dimension " << idir << endl;
+                      }
+                    passedDomainSplitTest = false;
+                  }
+              }
+          }
+      }
+    if (!uncoveredIVS.isEmpty())
+      { // fail because not all of testDomainBox is covered by boxes
+        if (verbose)
+          {
+            pout() << "boxes do not cover all of " << testDomainBox << endl;
+          }
+        passedDomainSplitTest = false;
+      }
+
+    if (verbose)
+      {
+        pout() << indent << pgmname << " domainSplit anisotropic test: "
+               << (( passedDomainSplitTest ) ? "passed" : "failed")
+               << endl ;
+      }
+    if (!passedDomainSplitTest) retflag += 32;
   }
 
   return retflag;

@@ -455,6 +455,7 @@ void ExtrapolateBC(FArrayBox&      a_state,
                    Interval&       a_interval,
                    int             a_order)
 {
+  CH_TIME("ExtrapolateBC");
   // for now, only 1st-order (linear) extrapolation implemented
   CH_assert(a_order == 1);
 
@@ -490,7 +491,7 @@ void ExtrapolateBC(FArrayBox&      a_state,
           a_state(ivTo, icomp) = ghostVal;
         }
     }
-
+  ch_flops()+=a_interval.size()*toRegion.numPts()*3;
 }
 
 ///

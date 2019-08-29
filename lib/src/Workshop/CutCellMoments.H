@@ -35,15 +35,15 @@ public:
   typedef IndexTM<int,dim>  IvDim;
   typedef IndexTM<Real,dim> RvDim;
 
-  typedef map<IvDim,Real,LexLT <IvDim > >  PthMoment;
+  typedef map<IvDim,Real >  PthMoment;
 
-  typedef map<IndexTM<int,dim-1>,Real,LexLT < IndexTM<int,dim-1> > > PthMomentLesserDimension;
+  typedef map<IndexTM<int,dim-1>,Real > PthMomentLesserDimension;
 
   typedef map<IndexTM<int,1>,Real >     OneDMoments;
   typedef map<int,IvDim>                LocPthMoment;
-  typedef map<IvDim,int,LexLT <IvDim> > PthMomentLoc;
+  typedef map<IvDim,int > PthMomentLoc;
 
-  typedef map<Iv2,CutCellMoments<dim-1>, LexLT<Iv2> > BdCutCellMoments;
+  typedef map<Iv2,CutCellMoments<dim-1> > BdCutCellMoments;
 
   // Constructors
   CutCellMoments();
@@ -74,9 +74,7 @@ public:
   void initializeMap(PthMomentLesserDimension & a_map1,
                      PthMomentLesserDimension & a_map2);
 
-  void initializeMap(OneDMoments & a_map1,
-                     OneDMoments & a_map2);
-
+  
   // Get the value of the moment depending on the values of the booleans
   // m_allVerticesIn/Out these functions are used under refinement, when
   // moments on the faces are needed even on a covered/regular cell
@@ -91,11 +89,7 @@ public:
 
   void addBdMoments(CutCellMoments<dim>     & a_coarseCutCell,
                     const IFData<dim+1>     & a_IFData,
-#if RECURSIVE_GEOMETRY_GENERATION == 0
-                    const int               & a_degreeP,
-#else
                     const int               & a_degreePmax,
-#endif
                     const bool              & a_useConstraints,
                     const IndexTM<Real,dim> & a_refinedCenterDelta,
                     const IndexTM<int,dim>  & a_localHilo);
@@ -198,11 +192,7 @@ public:
 
   void addBdMoments(CutCellMoments<1>     & a_coarseCutCell,
                     const IFData<2>       & a_IFData,
-#if RECURSIVE_GEOMETRY_GENERATION == 0
-                    const int             & a_degreeP,
-#else
                     const int             & a_degreePmax,
-#endif
                     const bool            & a_useConstraints,
                     const IndexTM<Real,1> & a_refinedCenterDelta,
                     const IndexTM<int,1>  & a_localHilo);

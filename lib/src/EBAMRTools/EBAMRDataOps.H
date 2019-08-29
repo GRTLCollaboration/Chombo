@@ -375,6 +375,13 @@ public:
   static void setCoveredVal(Vector<LevelData<EBCellFAB>* >&a_data,
                             const Real& a_value);
 
+  ///
+  /**
+   */
+  static void setCoveredVal(Vector<LevelData<EBCellFAB>* >&a_data,
+                            const int&              a_comp,
+                            const Real& a_value);
+
 
   ///
   /**
@@ -511,6 +518,13 @@ public:
                    const Real& a_scale);
 
 
+  ///
+  /**
+   */
+  static void incr(Vector<LevelData<EBFluxFAB>* >& a_lhs,
+                   const Vector<LevelData<EBFluxFAB>* >&   a_rhs,
+                   const Real& a_scale);
+
 
   ///
   /**
@@ -533,6 +547,7 @@ public:
                    const Real& b);
 
 
+  /*
   //! Evaluates a linear combination of EBCellFAB data on an AMR hierarchy. This version
   //! operates only on a given component of each LevelData.
   //! \a a_lhs[\a a_lhsComp] := \a a * \a a_x[\a a_xComp]  + \a b * \a a_y[\a a_yComp].
@@ -552,7 +567,7 @@ public:
                    const int&  a_lhsComp,
                    const int&  a_xComp,
                    const int&  a_yComp);
-
+  */
 
   //! Places the sum \a a_in1 + \a a_in2 into \a a_result.
   //! \param a_result The AMR hierarchy that will store the sum.
@@ -677,6 +692,7 @@ public:
 
   ///
   /**
+     VERY weird function changes data
    */
   static void setMaxMin(Vector<LevelData<EBCellFAB>* >& a_data,
                         const Real&                     a_maxVal,
@@ -685,11 +701,14 @@ public:
 
   ///
   /**
+     This is what you want if you want the max and min of data
+     It cannot subtract off finer stuff if you do not send refRat
    */
   static void getMaxMin(Real&                                 a_maxVal,
                         Real&                                 a_minVal,
                         const Vector<LevelData<EBCellFAB>* >& a_data,
-                        const int&                            a_comp);
+                        const int&                            a_comp,
+                        Vector<int>      a_refRat = Vector<int>());
 
 
   ///
@@ -740,6 +759,15 @@ public:
   static  Real sum(const Vector<LevelData<EBCellFAB>* >& a_data,
                    const Vector<DisjointBoxLayout>&      a_grids,
                    const Vector<EBISLayout>&             a_ebisl,
+                   const Vector<int> &                   a_refRat,
+                   int   a_comp,
+                   bool  a_mutiplyByKappa);
+
+  ///
+  /**
+   */
+  static  Real sum(const Vector<LevelData<EBCellFAB>* >& a_data,
+                   const Vector<EBLevelGrid>&            a_eblg,
                    const Vector<int> &                   a_refRat,
                    int   a_comp,
                    bool  a_mutiplyByKappa);

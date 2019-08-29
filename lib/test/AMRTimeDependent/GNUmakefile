@@ -8,7 +8,7 @@ CHOMBO_HOME := $(shell pwd)/../..
 
 makefiles+=lib_test_AMRTimeDependent
 
-ebase := testAMR # testFourthOrderFillPatch
+ebase := testAMR testFourthOrderFillPatch
 
 LibNames := AMRTimeDependent AMRTools BoxTools
 

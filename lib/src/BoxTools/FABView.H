@@ -36,6 +36,8 @@ int InitWriteFAB()
 
   viewIVSFABRV(NULL);
 
+  viewCFAB(NULL);
+
   browseFAB(NULL);
 
   browseLevel(NULL);

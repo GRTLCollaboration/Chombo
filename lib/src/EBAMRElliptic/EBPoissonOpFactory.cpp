@@ -36,7 +36,8 @@ EBPoissonOpFactory(const EBLevelGrid&                            a_eblg,
                    const Real&                                   a_alpha,
                    const Real&                                   a_beta,
                    const IntVect&                                a_ghostCellsPhi,
-                   const IntVect&                                a_ghostCellsRHS)
+                   const IntVect&                                a_ghostCellsRHS,
+                   bool a_forceNoCoarser)
   : m_ghostCellsPhi( a_ghostCellsPhi ),
     m_ghostCellsRHS( a_ghostCellsRHS )
 {
@@ -56,7 +57,7 @@ EBPoissonOpFactory(const EBLevelGrid&                            a_eblg,
   int mgRef = 2;
   m_eblgVecMG.push_back(m_eblg);
 
-  bool hasCoarser = true;
+  bool hasCoarser = !a_forceNoCoarser;
   while (hasCoarser)
     {
       int imgsize = m_eblgVecMG.size();

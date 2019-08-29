@@ -44,6 +44,7 @@ EBLevelCCProjector(const DisjointBoxLayout &                        a_grids,
                    const IntVect&                                   a_nghostPhi,
                    const IntVect&                                   a_nghostRhs)
 {
+  CH_TIME("EBLevelCCProjector::constructor");
   m_grids          = a_grids;
   m_gridsCoar      = a_gridsCoar;
   m_ebislCoar      = a_ebislCoar;
@@ -83,6 +84,7 @@ project(LevelData<EBCellFAB> &         a_velocity,
         const LevelData<EBCellFAB> &   a_velCoar,
         const LevelData<BaseIVFAB<Real> >* const a_boundaryVel)
 {
+  CH_TIME("EBLevelCCProjector::project");
   //interpolate at coarse-fine interface
   Interval interv(0, SpaceDim-1);
   if (m_hasCoarser)
@@ -155,6 +157,7 @@ ccpExtrapolateToDomainBoundaries(LevelData<EBFluxFAB> &        a_macData,
                                  const ProblemDomain &         a_domain,
                                  const RealVect &              a_dx)
 {
+  CH_TIME("EBLevelCCProjector::ccpExtrapolateToDomainBoundaries");
 
   for (DataIterator dit = a_grids.dataIterator(); dit.ok(); ++dit)
     {
@@ -392,7 +395,7 @@ ccpAverageStressToFaces(EBFaceFAB &             a_faceVel,
                         const ProblemDomain &   a_domain,
                         const RealVect &        a_dx)
 {
-  CH_TIME("EBLevelCCProjector::ccpAverageVelocityToFaces");
+  CH_TIME("EBLevelCCProjector::ccpAverageStressToFaces");
   FaceStop::WhichFaces stopCrit;
   if (a_domain.isPeriodic(a_idir))
     {
@@ -476,6 +479,7 @@ ccpAverageFaceToCells(EBCellFAB &             a_cellData,
                       const ProblemDomain &   a_domain,
                       const RealVect &        a_dx)
 {
+  CH_TIME("ccpAverageFaceToCells");
   IntVectSet ivsIrreg = a_ebGraph.getIrregCells(a_grid);
   int icomp = 0;
   for (int idir = 0; idir < SpaceDim; idir++)
@@ -540,6 +544,7 @@ ccpAverageFaceToCellsScalar(EBCellFAB &             a_cellData,
                             const RealVect &        a_dx,
                             const int &             a_dir)
 {
+  CH_TIME("ccpAverageFaceToCellsScalar");
   IntVectSet ivsIrreg = a_ebGraph.getIrregCells(a_grid);
   int icomp = 0;
   const EBFaceFAB & faceData = a_fluxData[a_dir];
@@ -601,6 +606,7 @@ ccpCellGradientFromFaceData(EBCellFAB &             a_cellGrad,
                             const RealVect &        a_dx,
                             const int &             a_dir)
 {
+  CH_TIME("ccpCellGradientFromFaceData");
   IntVectSet ivsIrreg = a_ebGraph.getIrregCells(a_grid);
   int icomp = 0;
   const EBFaceFAB & faceData = a_fluxData[a_dir];
@@ -661,7 +667,7 @@ ccpGetCoveredExtrapValue(const VolIndex&         a_vof,
                          const RealVect &        a_dx,
                          const int&              a_icomp)
 {
-
+  CH_TIME("ccpGetCoveredExtrapValue");
   Real extrapValCov = 0.;
 
   bool dropOrder = false;
@@ -706,6 +712,7 @@ ccpOneDCoveredExtrapValue(const VolIndex&         a_vof,
                           const RealVect &        a_dx,
                           const int&              a_icomp)
 {
+  CH_TIME("ccpOneDGetCoveredExtrapValue");
   const bool doNormalDir = true;
   const bool doTangenDir = true;
 
@@ -889,6 +896,7 @@ ccpAverageFaceToCells(LevelData<EBCellFAB> &        a_cellData,
                       const ProblemDomain &         a_domain,
                       const RealVect &              a_dx)
 {
+  CH_TIME("ccpAverageFAceToCells");
   LevelData<EBFluxFAB>& nonConstFlux = (LevelData<EBFluxFAB>&) a_macData;
   nonConstFlux.exchange();
   for (DataIterator dit = a_grids.dataIterator(); dit.ok(); ++dit)
@@ -911,6 +919,7 @@ ccpAverageFaceToCellsScalar(LevelData<EBCellFAB> &        a_cellData,
                             const RealVect &              a_dx,
                             const int &                   a_dir)
 {
+  CH_TIME("ccpAverageFAceToCellsScalar");
   LevelData<EBFluxFAB>& nonConstFlux = (LevelData<EBFluxFAB>&) a_macData;
   nonConstFlux.exchange();
   for (DataIterator dit = a_grids.dataIterator(); dit.ok(); ++dit)
@@ -933,6 +942,7 @@ ccpCellGradientFromFaceData(LevelData<EBCellFAB> &        a_cellData,
                             const RealVect &              a_dx,
                             const int &                   a_dir)
 {
+  CH_TIME("ccpGradientFromFaceData");
   LevelData<EBFluxFAB>& nonConstFlux = (LevelData<EBFluxFAB>&) a_macData;
   nonConstFlux.exchange();
   for (DataIterator dit = a_grids.dataIterator(); dit.ok(); ++dit)
@@ -960,6 +970,7 @@ ccpGetExtrapInformation( Tuple<int,SpaceDim-1>&   a_planeDirs,  // plane of inte
                          const Side::LoHiSide&    a_sd)         //whether low or hi side is covered
 {
 
+  CH_TIME("ccpGetExtrapInformation");
   //find the interpolation plane---plane with biggest normal
   a_interpPlane =0;
   for (int idir = 0; idir < SpaceDim; idir++)
@@ -1020,6 +1031,7 @@ ccpGetFacesInInterpolationStencil(bool&                          a_dropOrder,   
                                   const Side::LoHiSide&          a_sd,            //whether low or hi side is covered
                                   const int&                     a_istepOut )     //number of steps away from covered face
 {
+  CH_TIME("ccpGetFacesInInterpolationStencil");
   //find which normal is biggest
   //calculate the location where the line intersects the interpolation plane
   IntVect cellsFromStart;
@@ -1201,6 +1213,7 @@ ccpLinearInterp(Real &                    a_dataOnLine,
                 const Vector<Real>&       a_interpolationData,
                 const int&                a_planeDir)
 {
+  CH_TIME("ccpLinearInterp");
   CH_assert(a_faceLoc.size()           >= 2);
   CH_assert(a_interpolationData.size() >= 2);
   Real x0 = a_faceLoc[0][a_planeDir];
@@ -1224,6 +1237,7 @@ ccpBilinearInterp(Real &                             a_dataOnLine,
                   const Vector<Real>&                a_interpolationData,
                   const Tuple<int, SpaceDim-1>&      a_planeDirs)
 {
+  CH_TIME("ccpBiLinearInterp");
   CH_assert(a_faceLoc.size()           >= 4);
   CH_assert(a_interpolationData.size() >= 4);
 
@@ -1266,6 +1280,7 @@ ccpJohansenExtrapFaceToCovered(bool&                   a_dropOrder,
                                const RealVect&         a_dx,
                                const int&              a_icomp)
 {
+  CH_TIME("ccpJohansenExtrapFaceToCovered");
 
   Tuple<int,SpaceDim-1>   planeDirs;    //arranged in order of increasing size of normal
   RealVect                startingPt;   //location of center of the covered cell.

@@ -9,11 +9,9 @@
 #endif
 
 #include "LoadBalance.H"
-#include "EBArith.H"
-
 #include "slowEBCO.H"
 #include "EBArith.H"
-
+#include "ParmParse.H"
 #include "CH_Timer.H"
 #include "slowEBCOFactory.H"
 #include "EBCoarseAverage.H"
@@ -219,6 +217,15 @@ MGnewOp(const ProblemDomain& a_domainFine,
         int                  a_depth,
         bool                 a_homoOnly)
 {
+  ParmParse pp;
+  bool turn_off_mg = false;
+  pp.query("turn_off_multigrid", turn_off_mg);
+  if(turn_off_mg)
+    {
+      pout() << "turn off multigrid for slowEBConductivity because turn_off_multigrid = true " << endl;
+      return NULL;
+    }
+
   //find out if there is a real starting point here.
   int ref=-1;
   bool found = false;

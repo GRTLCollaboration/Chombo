@@ -44,17 +44,6 @@ getFaceFlux(BaseFab<Real>&        a_flux,
 
 
   const Box& box = a_flux.box();
-  //remember that box is face centered
-  int iside;
-
-  if (a_side == Side::Lo)
-    {
-      iside = -1;
-    }
-  else
-    {
-      iside =  1;
-    }
   int ncompGph = SpaceDim*SpaceDim;
   FArrayBox faceGph(box, ncompGph);
   faceGph.setVal(0.);
@@ -210,6 +199,28 @@ NeumannViscousTensorDomainBCFactory::
 {
 }
 
+NeumannViscousTensorDomainBC*
+NeumannViscousTensorDomainBCFactory::create(const ProblemDomain& a_domain,
+                                            const EBISLayout&    a_layout,
+                                            const RealVect&      a_dx)
+{
+  NeumannViscousTensorDomainBC* newBC = new NeumannViscousTensorDomainBC();
+  if(m_onlyHomogeneous)
+    {
+      newBC->setValue(0.);
+    }
+  else if (m_isFunction)
+    {
+      newBC->setFunction(m_flux);
+    }
+  else
+    {
+      newBC->setValue(m_value);
+    }
+
+  return newBC;
+}
+
 void
 NeumannViscousTensorDomainBCFactory::
 setValue(Real a_value)
@@ -230,21 +241,5 @@ setFunction(RefCountedPtr<BaseBCFuncEval> a_flux)
   m_onlyHomogeneous = false;
   m_isFunction = true;
 }
-NeumannViscousTensorDomainBC*
-NeumannViscousTensorDomainBCFactory::create(const ProblemDomain& a_domain,
-                                            const EBISLayout&    a_layout,
-                                            const RealVect&      a_dx)
-{
-  NeumannViscousTensorDomainBC* newBC = new NeumannViscousTensorDomainBC();
-  if (m_isFunction)
-    {
-      newBC->setFunction(m_flux);
-    }
-  else
-    {
-      newBC->setValue(m_value);
-    }
 
-  return newBC;
-}
 #include "NamespaceFooter.H"

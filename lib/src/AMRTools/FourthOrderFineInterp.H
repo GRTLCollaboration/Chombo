@@ -16,7 +16,7 @@
 #include "LevelData.H"
 #include "ProblemDomain.H"
 #include "FourthOrderPatchInterp.H"
-#include "UsingNamespace.H"
+#include "NamespaceHeader.H"
 
 /// Fourth-order interpolation in space
 
@@ -196,4 +196,5 @@ private:
   FourthOrderFineInterp(const FourthOrderFineInterp&);
 };
 
+#include "NamespaceFooter.H"
 #endif

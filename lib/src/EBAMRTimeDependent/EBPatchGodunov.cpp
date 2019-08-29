@@ -219,7 +219,8 @@ fillUpdateStencil(EBPatchGodunov::updateStencil_t& a_stencil, const VolIndex& a_
   if (numVoFs > 1)
     {
       a_stencil.m_vofOffset.m_multiValued = true;
-      const BaseIVFAB<Real>& baseivfabPhi= m_primState.getMultiValuedFAB();
+      //   const MiniIVFAB<Real>& baseivfabPhi= m_primState.getMultiValuedFAB();
+      const MiniIVFAB<Real>& baseivfabPhi= m_primState.getMultiValuedFAB();
       a_stencil.m_vofOffset.m_offset = baseivfabPhi.getIndex(a_vof, 0) - baseivfabPhi.dataPtr(0);
     }
   else
@@ -3734,10 +3735,13 @@ applyArtificialViscosity(EBFluxFAB&             a_openFlux,
   //since this is an update in place
   int numCons = numConserved();
   CH_assert(a_openFlux.getRegion() == a_box);
-  EBFluxFAB fluxSave(m_ebisBox, a_box, numCons);
+  EBFluxFAB fluxSave(m_ebisBox, a_openFlux.box(), numCons);
 
   Interval interv(0, numCons-1);
-  fluxSave.copy(a_box, interv, a_box, a_openFlux, interv);
+  for(int idir = 0; idir < SpaceDim; idir++)
+    {
+      fluxSave[idir].copy(a_box, interv, a_box, a_openFlux[idir], interv);
+    }
 
   for (int idir = 0; idir < SpaceDim; idir++)
     {

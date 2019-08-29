@@ -14,6 +14,7 @@
 #include "MeshRefine.H"
 #include "BoxIterator.H"
 #include "MayDay.H"
+#include "Misc.H"
 #include "SPMD.H"
 #include "CH_Timer.H"
 #include "NamespaceHeader.H"
@@ -355,7 +356,10 @@ MeshRefine::define(const ProblemDomain& a_baseDomain,
   // do some quick sanity checks
   CH_assert( a_blockFactor >= 1 );
   CH_assert( a_bufferSize >= 0 );
-  CH_assert( (a_maxBoxSize >= 2*a_bufferSize) || (a_maxBoxSize == 0) );
+  // In periodic case, this assertion prevents the problem of a box
+  // being its own periodic image.  Removed 16 March 2016 because it
+  // also prevents legitimate use cases.
+  // CH_assert( (a_maxBoxSize >= 2*a_bufferSize) || (a_maxBoxSize == 0) );
   CH_assert( (a_blockFactor <= a_maxBoxSize) || (a_maxBoxSize == 0) );
   CH_assert( a_fillRatio > 0.0 || a_fillRatio <= 1.0 );
 
@@ -366,8 +370,9 @@ MeshRefine::define(const ProblemDomain& a_baseDomain,
 
   computeLocalBlockFactors();
 
-  m_isDefined = true;
+  setRefineDirs(IntVect::Unit); // can change this later
 
+  m_isDefined = true;
 }
 
 // this function is overloaded by MultiBlockMeshRefine
@@ -386,6 +391,10 @@ void MeshRefine::granularity(int a_granularity)
 void MeshRefine::setPNDMode(int a_mode)
 {
   CH_assert(a_mode == 0 || a_mode == 1);
+  if (isDefined() && (a_mode == 0) && (m_refineDirs != IntVect::Unit))
+    {
+      MayDay::Error("MeshRefine PNDMode 0 requires refinement in all dimensions");
+    }
   m_PNDMode = a_mode;
 }
 
@@ -408,11 +417,13 @@ MeshRefine::regrid(Vector<Vector<Box> >&   a_newmeshes,
   //
   // Create a vector of tags from the single set of tags that is given
   Vector<IntVectSet> tags_vector( a_topLevel+1 ,a_tags );
+  restrictUnrefined(tags_vector[0]);
 
   // Refine the levels above the base level
   for ( int i = 1 ; i <= a_topLevel ; i++ )
     {
       tags_vector[i] = refine(tags_vector[i-1], m_nRefVect[i-1] ) ;
+      restrictUnrefined(tags_vector[i]);
     }
 
   // run the version of refine that takes a vector of tags
@@ -538,6 +549,7 @@ MeshRefine::regrid(Vector<Vector<Box> >&   a_newmeshes,
               // this fake level, we can then refine up to the new level, and the blocking
               // factor will be automatically enforced.
               modifiedTags[level].coarsen (m_level_blockfactors[level]);
+              restrictUnrefined(modifiedTags[level]); // FIXME: needed?
               // Same block-factor coarsening for the domains
               Domains[level].coarsen(m_level_blockfactors[level]);
               // Same block-factor coarsening for the buffers
@@ -551,7 +563,7 @@ MeshRefine::regrid(Vector<Vector<Box> >&   a_newmeshes,
             const int crFactor = m_level_blockfactors[a_baseLevel];
             for (int i = 0; i != OldBaseMesh.size(); ++i)
               {
-                OldBaseMesh[i].coarsen(crFactor);
+                OldBaseMesh[i].coarsen(inRefineDirs(crFactor));
               }
           }
 
@@ -600,17 +612,17 @@ MeshRefine::regrid(Vector<Vector<Box> >&   a_newmeshes,
               {
                 for (int i = 0; i < all_tags.size(); ++i)
                   {
-//                     modifiedTags[lvl] |= all_tags[i];
+                     modifiedTags[lvl] |= all_tags[i];
                     //**FIXME -- revert to above line when IVS is fixed.
                     //**The following works around a bug in IVS that appears if
                     //**the above line is used.  This bug is observed when there
                     //**is a coarsening of an IVS containing only IntVect::Zero
                     //**followed by an IVS |= IVS.
-                    for (IVSIterator ivsit(all_tags[i]); ivsit.ok(); ++ivsit)
-                      {
-                        modifiedTags[lvl] |= ivsit();
-                      }
-                    //**FIXME -- end
+                   // for (IVSIterator ivsit(all_tags[i]); ivsit.ok(); ++ivsit)
+                   //   {
+                   //     modifiedTags[lvl] |= ivsit();
+                   //   }
+                    //**FIXME -- hopefully fixed (BVS 10/30/2015)
                     // Regain memory used (BVS,NDK 6/30/2008)
                     all_tags[i].makeEmpty();
                   }
@@ -652,7 +664,7 @@ MeshRefine::regrid(Vector<Vector<Box> >&   a_newmeshes,
             a_newmeshes[lvl+1] = lvlboxes ;
             for (int ibox = 0; ibox < a_newmeshes[lvl+1].size(); ++ibox)
               {
-                a_newmeshes[lvl+1][ibox].refine(m_level_blockfactors[lvl]*m_nRefVect[lvl]);
+                a_newmeshes[lvl+1][ibox].refine(inRefineDirs(m_level_blockfactors[lvl]*m_nRefVect[lvl]));
               }
             // Make the boxes ready for the next iteration.
             // Don't have to do this for the last iteration.
@@ -670,9 +682,9 @@ MeshRefine::regrid(Vector<Vector<Box> >&   a_newmeshes,
                   m_level_blockfactors[lvl];
                 for (int ibox = 0 ; ibox < lvlboxes.size() ; ++ibox)
                   {         
-                    lvlboxes[ibox].grow(blocked_BufferSize[lvl]);
+                    lvlboxes[ibox].grow(blocked_BufferSize[lvl]*m_refineDirs);
                     clipBox(lvlboxes[ibox], Domains[lvl]);
-                    lvlboxes[ibox].coarsen(allInOne_nRef);
+                    lvlboxes[ibox].coarsen(inRefineDirs(allInOne_nRef));
                   }
               }
           }
@@ -760,17 +772,6 @@ void MeshRefine::buildSupport(const ProblemDomain& lvldomain, Vector<Box>& lvlbo
     }
 }
 
-inline bool isPower2(const int a_i)
-{
-  if (a_i <= 0) return false;      // Catch <= 0
-  unsigned i = a_i;
-  while (!(i & 1))                 // Find first bit
-    {
-      i >>= 1;
-    }
-  return (i >> 1) ? false : true;  // Can't have any other bits
-}
-
 void
 MeshRefine::computeLocalBlockFactors()
 {
@@ -791,7 +792,7 @@ MeshRefine::computeLocalBlockFactors()
       m_level_blockfactors[lev] = (m_blockFactor + m_nRefVect[lev] -1)/m_nRefVect[lev];
       // The coarsening ratio due to blocking needs to be a power of 2 otherwise
       // IntVectSet will complain.  Catch here to better describe the error.
-      if (!isPower2(m_level_blockfactors[lev]))
+      if (!Misc::isPower2(m_level_blockfactors[lev]))
         {
           pout() << "Unable to implement blocking for level " << lev+1 << ".  "
             "Blocking requires ceil(blockFactor/nRef) to be a power of 2 but "
@@ -962,6 +963,7 @@ MeshRefine::makePNDs(Vector<IntVectSet>&          a_pnds,
 
           a_totalBufferSize[lvl+1] = a_totalBufferSize[lvl]*allInOne_nRef;
           a_pnds[lvl+1].refine(allInOne_nRef);
+          restrictUnrefined(a_pnds[lvl+1]);
         }
     }
 }
@@ -1005,13 +1007,13 @@ bool MeshRefine::properlyNested(const Box& a_box,
   else
     {
       Box growBox(a_box);
-      growBox.grow(a_totalBufferSize);
+      growBox.grow(a_totalBufferSize*m_refineDirs);
       growBox &= a_domain.domainBox();
       if (!a_pnd.contains(growBox)) return false; //typical case
       if (a_domain.isPeriodic())
       {
         Box growPeriodic(a_box);
-        growPeriodic.grow(a_totalBufferSize);
+        growPeriodic.grow(a_totalBufferSize*m_refineDirs);
         growPeriodic &= a_domain; // now intersect with (possibly) periodic domain
         if (growPeriodic != growBox)
         {
@@ -1133,4 +1135,67 @@ MeshRefine::isDefined() const
 {
   return m_isDefined;
 }
+
+/// set each component to 1 or 0 according to whether or not we refine in that direction. Default IntVect::Unit.
+void
+MeshRefine::setRefineDirs(const IntVect& a_refineDirs)
+{
+  if (isDefined() && (m_PNDMode == 0) && (a_refineDirs != IntVect::Unit))
+    {
+      MayDay::Error("MeshRefine PNDmode 0 requires refinement in all dimensions");
+    }
+  m_refineDirs = a_refineDirs;
+
+  m_lowestRefineDir = -1;
+  for (int idir = 0; idir < SpaceDim; idir++)
+    {
+      if (m_refineDirs[idir] == 1)
+        {
+          m_lowestRefineDir = idir;
+          break;
+        }
+    }
+  CH_assert(m_lowestRefineDir >= 0);
+}
+
+IntVect
+MeshRefine::inRefineDirs(int a_val) const
+{ // Need m_refineDirs to be set (default IntVect::Unit).
+  CH_assert( isDefined() );
+  IntVect valDirs = (a_val - 1)*m_refineDirs + IntVect::Unit;
+  return valDirs;
+}
+
+
+// intersects the Box with the hyperplane of 0 in dimensions where m_refineDirs == 0
+void
+MeshRefine::restrictUnrefined(Box& a_box) const
+{ // Need m_refineDirs to be set (default IntVect::Unit).
+  CH_assert( isDefined() );
+  if (m_refineDirs != IntVect::Unit)
+    {
+      for (int idir = 0; idir < SpaceDim; idir++)
+        {
+          if (m_refineDirs[idir] == 0)
+            {
+              a_box.setRange(idir, 0);
+            }
+        }
+    }
+}
+
+// intersects the IntVectSet with the hyperplane of 0 in dimensions where m_refineDirs == 0
+void
+MeshRefine::restrictUnrefined(IntVectSet& a_ivs) const
+{ // Need m_refineDirs to be set (default IntVect::Unit).
+  CH_assert( isDefined() );
+  if (m_refineDirs != IntVect::Unit)
+    {
+      Box projectedMinBox(a_ivs.minBox());
+      restrictUnrefined(projectedMinBox);
+      // projectedMinBox is a_ivs.minBox() projected to restricted hyperplane.
+      a_ivs &= projectedMinBox;
+    }
+}
+
 #include "NamespaceFooter.H"

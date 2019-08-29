@@ -157,6 +157,12 @@ protected:
                       const int&       idir0,
                       const int&       idir1);
 
+protected:
+  void RecursiveKDTreeInsert(vector<pair<RealVect,pair<IntVect,bool>*> > &allNodes,
+                             const int                                   &nstart,
+                             const int                                   &nend,
+                             const int                                   &depth);
+
 private:
   STLExplorer()
   {

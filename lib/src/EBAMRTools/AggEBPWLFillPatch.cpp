@@ -63,13 +63,15 @@ AggEBPWLFillPatch(const DisjointBoxLayout& a_dblFine,
                   const int& a_nvar,
                   const int& a_radius,
                   const IntVect& a_ghost,
+                  const bool& a_forceNoEBCF,
                   const EBIndexSpace* const a_ebisPtr)
 {
   CH_TIME("AggEBPWLFillPatch::AggEBPWLFillPatch");
   setDefaultValues();
 
   define(a_dblFine, a_dblCoar, a_ebislFine, a_ebislCoar,
-         a_domainCoar, a_nref, a_nvar, a_radius,  a_ghost, a_ebisPtr);
+         a_domainCoar, a_nref, a_nvar, a_radius,  a_ghost, 
+         a_forceNoEBCF, a_ebisPtr);
 }
 /************************************/
 /************************************/
@@ -84,6 +86,7 @@ define(const DisjointBoxLayout& a_dblFine,
        const int& a_nvar,
        const int& a_radius,
        const IntVect& a_ghost,
+       const bool& a_forceNoEBCF,
        const EBIndexSpace* const a_ebisPtr)
 {
   CH_TIME("AggEBPWLFillPatch::define");
@@ -92,6 +95,7 @@ define(const DisjointBoxLayout& a_dblFine,
   //first cell is interpolated, rest are extrapolated.
   //if this is 0, there is not even interpolation.
   CH_assert(a_radius > 0);
+  m_forceNoEBCF = a_forceNoEBCF;
   m_radius = a_radius;
   m_isDefined = true;
   m_refRat = a_nref;
@@ -103,35 +107,38 @@ define(const DisjointBoxLayout& a_dblFine,
   definePieceWiseLinearFillPatch(a_dblFine,
                                  a_dblCoar);
 
-  m_fineEBISL = a_ebislFine;
-  if (m_fineEBISL.getMaxCoarseningRatio() < m_refRat)
+  if(!m_forceNoEBCF)
     {
-      m_fineEBISL.setMaxCoarseningRatio(m_refRat,a_ebisPtr);
+      m_fineEBISL = a_ebislFine;
+      if (m_fineEBISL.getMaxCoarseningRatio() < m_refRat)
+        {
+          m_fineEBISL.setMaxCoarseningRatio(m_refRat,a_ebisPtr);
+        }
+      m_fineGrids = a_dblFine;
+      m_coarGrids = a_dblCoar;
+      //needs to be extra because the stencil of
+      //the derivs has an extra coarse cell
+      const int coarse_slope_radius =
+        (m_radius + m_refRat - 1) / m_refRat;
+      const int coarse_ghost_radius = coarse_slope_radius + 1;
+
+      m_coarGhostRad = coarse_ghost_radius;
+      IntVect ghostiv = m_coarGhostRad*IntVect::Unit;
+
+      CH_assert(a_ebisPtr->isDefined());
+      m_coarsenedFineGrids = DisjointBoxLayout();
+      coarsen(m_coarsenedFineGrids, a_dblFine, m_refRat);
+      a_ebisPtr->fillEBISLayout(m_coarsenedFineEBISL,
+                                m_coarsenedFineGrids,
+                                a_domainCoar, m_coarGhostRad);
+      //  m_coarsenedFineEBISL.setMaxCoarseningRatio(m_refRat);
+      EBCellFactory ebcellfact(m_coarsenedFineEBISL);
+      m_coarOnFDataOld.define(m_coarsenedFineGrids, m_nComp,
+                              ghostiv, ebcellfact);
+      m_coarOnFDataNew.define(m_coarsenedFineGrids, m_nComp,
+                              ghostiv, ebcellfact);
+      makeStencils();
     }
-  m_fineGrids = a_dblFine;
-  m_coarGrids = a_dblCoar;
-  //needs to be extra because the stencil of
-  //the derivs has an extra coarse cell
-  const int coarse_slope_radius =
-    (m_radius + m_refRat - 1) / m_refRat;
-  const int coarse_ghost_radius = coarse_slope_radius + 1;
-
-  m_coarGhostRad = coarse_ghost_radius;
-  IntVect ghostiv = m_coarGhostRad*IntVect::Unit;
-
-  CH_assert(a_ebisPtr->isDefined());
-  m_coarsenedFineGrids = DisjointBoxLayout();
-  coarsen(m_coarsenedFineGrids, a_dblFine, m_refRat);
-  a_ebisPtr->fillEBISLayout(m_coarsenedFineEBISL,
-                            m_coarsenedFineGrids,
-                            a_domainCoar, m_coarGhostRad);
-  //  m_coarsenedFineEBISL.setMaxCoarseningRatio(m_refRat);
-  EBCellFactory ebcellfact(m_coarsenedFineEBISL);
-  m_coarOnFDataOld.define(m_coarsenedFineGrids, m_nComp,
-                          ghostiv, ebcellfact);
-  m_coarOnFDataNew.define(m_coarsenedFineGrids, m_nComp,
-                          ghostiv, ebcellfact);
-  makeStencils();
 }
 /************************************/
 /************************************/
@@ -140,6 +147,7 @@ AggEBPWLFillPatch::
 makeStencils()
 {
   CH_TIME("AggEBPWLFillPatch::makeStencil");
+  CH_assert(!m_forceNoEBCF);
   LayoutData< IntVectSet > irregRegionsFine;
   LayoutData< IntVectSet > irregRegionsCoFi;
   LayoutData< Vector<VolIndex> > srcVoFs;
@@ -182,6 +190,8 @@ defineAggStencils(LayoutData<Vector<VoFStencil> >  a_loStencils[SpaceDim],
                   const LayoutData< Vector<VolIndex> >&   a_srcVoFs)
 
 {
+  CH_TIME("AggEBPWLFillPatch::defineAggStencils");
+  CH_assert(!m_forceNoEBCF);
   for (int idir = 0; idir < SpaceDim; idir++)
     {
       m_stenLo[idir].define(m_coarsenedFineGrids);
@@ -246,6 +256,7 @@ getOffsets(const LayoutData< Vector<VolIndex> >&  a_srcVoFsCoar,
            const LayoutData<IntVectSet>           a_coarCeInte[SpaceDim])
 
 {
+  CH_assert(!m_forceNoEBCF);
   //first get the coarse offsets for the slopes and so on
   m_coarOffsets.define(m_coarsenedFineGrids);
   int ibox = 0;
@@ -329,6 +340,7 @@ getIVS(LayoutData<IntVectSet>& a_irregRegionsFine,
 {
   CH_TIME("AggEBPWLFillPatch::getIVS");
   ProblemDomain domFine = refine(m_coarDomain, m_refRat);
+  CH_assert(!m_forceNoEBCF);
   for (DataIterator dit = m_coarsenedFineGrids.dataIterator();
       dit.ok(); ++dit)
     {
@@ -384,6 +396,7 @@ getLoHiCenIVS(LayoutData<IntVectSet>  a_coarLoInterp[SpaceDim],
   //now create the coarse lo hi and center intvectsets--
   //these sets determine where you have to do one sided differences
   //because of the configuration of the coarse layout.
+  CH_assert(!m_forceNoEBCF);
   int ibox = 0;
   for (DataIterator dit = m_coarsenedFineGrids.dataIterator();
       dit.ok(); ++dit)
@@ -454,6 +467,7 @@ getSten(LayoutData<Vector<VoFStencil> >  a_loStencils[SpaceDim],
         const LayoutData< Vector<VolIndex> >&   a_srcVoFs)
 {
   CH_TIME("AggEBPWLFillPatch::getSten");               //
+  CH_assert(!m_forceNoEBCF);
 
   /////////////////////////
   for (int derivDir = 0; derivDir < SpaceDim; derivDir++)
@@ -577,31 +591,35 @@ interpolate(LevelData<EBCellFAB>& a_fineData,
                           a_variables.size());
   }
 
-  //level data copy fills coarse ghost cells as well as interior
-  a_coarDataOld.copyTo(a_variables, m_coarOnFDataOld, a_variables);
-  a_coarDataNew.copyTo(a_variables, m_coarOnFDataNew, a_variables);
-
-  m_coarOnFDataOld.exchange(a_variables);
-  m_coarOnFDataNew.exchange(a_variables);
-  int ibox = 0;
-  for (DataIterator fineit = m_coarsenedFineGrids.dataIterator();
-      fineit.ok(); ++fineit)
+  if(!m_forceNoEBCF)
     {
-      Box fineBox = m_fineGrids.get(fineit());
-      Box coarsenedFineBox = m_coarsenedFineGrids.get(fineit());
-      EBCellFAB&  fineData = a_fineData[fineit()];
-      const EBCellFAB&  coarDataOld = m_coarOnFDataOld[fineit()];
-      const EBCellFAB&  coarDataNew = m_coarOnFDataNew[fineit()];
-      // interpolateFAB interpolates from an entire coarse grid onto an
-      // entire fine grids coarse-fine regions.
-      interpolateFAB(fineData,
-                     coarDataOld,
-                     coarDataNew,
-                     a_coarTimeOld,
-                     a_coarTimeNew,
-                     a_fineTime, fineit(),
-                     a_variables);
-      ibox++;
+
+      //level data copy fills coarse ghost cells as well as interior
+      a_coarDataOld.copyTo(a_variables, m_coarOnFDataOld, a_variables);
+      a_coarDataNew.copyTo(a_variables, m_coarOnFDataNew, a_variables);
+
+      m_coarOnFDataOld.exchange(a_variables);
+      m_coarOnFDataNew.exchange(a_variables);
+      int ibox = 0;
+      for (DataIterator fineit = m_coarsenedFineGrids.dataIterator();
+           fineit.ok(); ++fineit)
+        {
+          Box fineBox = m_fineGrids.get(fineit());
+          Box coarsenedFineBox = m_coarsenedFineGrids.get(fineit());
+          EBCellFAB&  fineData = a_fineData[fineit()];
+          const EBCellFAB&  coarDataOld = m_coarOnFDataOld[fineit()];
+          const EBCellFAB&  coarDataNew = m_coarOnFDataNew[fineit()];
+          // interpolateFAB interpolates from an entire coarse grid onto an
+          // entire fine grids coarse-fine regions.
+          interpolateFAB(fineData,
+                         coarDataOld,
+                         coarDataNew,
+                         a_coarTimeOld,
+                         a_coarTimeNew,
+                         a_fineTime, fineit(),
+                         a_variables);
+          ibox++;
+        }
     }
 }
 /************************************/
@@ -631,6 +649,7 @@ getSlopes(const EBCellFAB& a_coarDataOld,
           const Interval& a_variables) const
 {
   CH_TIME("AggEBPWLFillPatch::getSlopes");
+  CH_assert(!m_forceNoEBCF);
   int ibeg = a_variables.begin();  int isiz = a_variables.size();
   for (int idir = 0; idir < SpaceDim; idir++)
     {

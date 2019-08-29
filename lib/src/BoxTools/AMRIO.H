@@ -20,6 +20,7 @@
 #include "REAL.H"
 #include "Vector.H"
 #include "FArrayBox.H"
+#include "CFArrayBox.H"
 #include "FluxBox.H"
 #include "IntVectSet.H"
 #include "IVSFAB.H"
@@ -558,6 +559,11 @@ void viewIVSFABIV(const IVSFAB<IntVect>* a_dataPtr);
 void viewIVSFABRV(const IVSFAB<RealVect>* a_dataPtr);
 
 ///
+/** Make a copy of *a_dataPtr as FArrayBox, then call viewFAB on FArrayBox.
+*/
+void viewCFAB(const CFArrayBox* a_dataPtr);
+
+///
 /** View *a_dataPtr by writing it to an HDF5 plotfile (to a temporary file)
     and then running chombobrowser with a python script which brings up a data
     browser by default. The file has the same format as WriteAMRHierarchyHDF5,
@@ -592,8 +598,17 @@ viewBFR(const BaseFab<Real>* a_dataPtr);
 void
 writeFABname(const FArrayBox      * a_dataPtr,
              const char           * a_filename,
-             const Vector<string> & a_compNames = Vector<string>());
-
+             const Vector<string> & a_compNames = Vector<string>(),
+             const Real           & a_dx = 1.0);
+///
+/** Writes a plotfile using the same format as WriteAMRHierarchyHDF5, but
+    for a CFArrayBox.  This is useful for debugging.  *a_dataPtr is written
+    to the file given by a_filename.  It has two components named "real"
+    and "imaginary"
+*/
+void
+writeCFABname(const CFArrayBox      * a_dataPtr,
+             const char           * a_filename);
 ///
 /** View a modified version of *a_dataPtr where the data are set to zero
     on the grids of *a_dataFinePtr coarsened by a_refRatio.

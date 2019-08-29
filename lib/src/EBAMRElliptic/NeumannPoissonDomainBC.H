@@ -166,8 +166,7 @@ public:
                           const int&            a_idir,
                           const int&            a_icomp,
                           const Real&           a_time,
-                          const Side::LoHiSide& a_side,
-                          const bool&           a_doDivFreeOutflow);
+                          const Side::LoHiSide& a_side);
 
 private:
   bool m_onlyHomogeneous;

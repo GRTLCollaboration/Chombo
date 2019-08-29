@@ -17,8 +17,8 @@
 using std::complex;
 
 #include "REAL.H"
-
 #include "BaseNamespaceHeader.H"
+using std::complex;
 
 /// Complex numbers suitable for use in FABs
 /** Chombo has its own complex number class so it can:
@@ -32,7 +32,7 @@ using std::complex;
 class Complex : public complex<Real>
 {
 public:
-  ///
+  
   inline Complex()
   {
   }
@@ -66,11 +66,41 @@ public:
 
   inline Complex& operator=(const Complex& rhs)
   {
-    complex<Real>::operator=(rhs);
+    reinterpret_cast<Real(&)[2]>(*this)[0] = reinterpret_cast<const Real(&)[2]>(rhs)[0];
+    reinterpret_cast<Real(&)[2]>(*this)[1] = reinterpret_cast<const Real(&)[2]>(rhs)[1];
+    //complex<Real>::operator=(rhs);
     return *this;
   }
 
+  inline Complex& operator*=(Real s) 
+  {
+    reinterpret_cast<Real(&)[2]>(*this)[0] *=s;
+    reinterpret_cast<Real(&)[2]>(*this)[1] *=s;
+    return *this;
+  }
+ 
+  inline Complex& operator*=(const Complex& in)
+  {
+    Real a = reinterpret_cast<const Real(&)[2]>(in)[0];
+    Real b = reinterpret_cast<const Real(&)[2]>(in)[1];
+    Real c   = reinterpret_cast<const Real(&)[2]>(*this)[0];
+    Real d   = reinterpret_cast<const Real(&)[2]>(*this)[1];
+    reinterpret_cast<Real(&)[2]>(*this)[0] = a*c - b*d;
+    reinterpret_cast<Real(&)[2]>(*this)[1] = a*b + b*c;
+    return *this;
+  }
 
+  inline Complex operator*(const Complex& in) const
+  {
+    Complex rtn;
+    Real a = reinterpret_cast<const Real(&)[2]>(in)[0];
+    Real b = reinterpret_cast<const Real(&)[2]>(in)[1];
+    Real c   = reinterpret_cast<const Real(&)[2]>(*this)[0];
+    Real d   = reinterpret_cast<const Real(&)[2]>(*this)[1];
+    reinterpret_cast<Real(&)[2]>(rtn)[0] = a*c - b*d;
+    reinterpret_cast<Real(&)[2]>(rtn)[1] = a*b + b*c;
+    return rtn;
+  }
   static inline Complex Zero() {return Complex(0,0);} 
 };
 
@@ -83,7 +113,7 @@ public:
 // This is the most likely implementation, and the only real problems are
 // whether the compiler puts the data at the beginning of the class's
 // memory, and whether it will allow the cast.
-inline Real & Complex::re()
+inline Real & Complex::re() 
 {
   return (((Real*)this)[0]);
 }

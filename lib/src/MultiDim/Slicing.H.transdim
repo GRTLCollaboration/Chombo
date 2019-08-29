@@ -55,13 +55,14 @@ sliceBaseFab( typename BaseFabTraits<BaseFabT>::OneDimLessBaseFab& a_to,
 
 /**
   Arg a_to is a_from sliced at a_slicespec.position along the a_slicespec.direction-th
-  axis.
+  axis.  If a_maintain_proc_assignments = true, processor assignments are maintained
 */
 template<typename DBL_T> void
 sliceDisjointBoxLayout(
   typename ObjTraits< DimTraits<DBL_T>::dim - 1 >::DisjointBoxLayout& a_to,
   const DBL_T& a_from,
-  const typename ObjTraits< DimTraits<DBL_T>::dim >::SliceSpec& a_slicespec );
+  const typename ObjTraits< DimTraits<DBL_T>::dim >::SliceSpec& a_slicespec,
+  bool a_maintain_proc_assignments=false );
 
 
 
@@ -76,6 +77,22 @@ sliceLevelData( typename ObjTraits< DimTraits<LD_T>::dim - 1 >::LevelData& a_to,
                 const LD_T& a_from,
                 const typename ObjTraits< DimTraits<LD_T>::dim >::SliceSpec& a_slicespec );
 
+/**
+  Version of sliceLevelData which does strictly local copying, which allows it 
+  to maintain ghost cell values in the sliced LD
+
+  Arg a_from becomes a slice of a_to at a_slicespec.position along the
+  a_slicespec.direction-th axis.
+  If a_to is defined, we use its DisjointBoxLayout, otherwise we create an appropriate
+  new DisjointBoxLayout for it.
+*/
+template<typename LD_T> void
+sliceLevelDataLocalOnly( typename ObjTraits< DimTraits<LD_T>::dim - 1 >::LevelData& a_to,
+                         const LD_T& a_from,
+                         const typename ObjTraits< DimTraits<LD_T>::dim >::SliceSpec& a_slicespec );
+
+
+
 
 /**
    Template specialization for LevelData<FluxBox>
@@ -88,6 +105,23 @@ template<typename LD_T> void
 sliceLevelFlux( typename ObjTraits< DimTraits<LD_T>::dim - 1 >::LevelFlux& a_to,
                 const LD_T& a_from,
                 const typename ObjTraits< DimTraits<LD_T>::dim >::SliceSpec& a_slicespec );
+
+
+/**
+  Version of sliceLevelFlux which does strictly local copying, which allows it
+  to maintain ghost cell values in the sliced LD
+  Arg a_from becomes a slice of a_to at a_slicespec.position along the
+  a_slicespec.direction-th axis.
+  If a_to is defined, we use its DisjointBoxLayout, otherwise we create an appropriate
+  new DisjointBoxLayout for it.
+*/
+template<typename LD_T> void
+sliceLevelFluxLocalOnly( typename ObjTraits< DimTraits<LD_T>::dim - 1 >::LevelFlux& a_to,       
+                         const LD_T& a_from,
+                         const typename ObjTraits< DimTraits<LD_T>::dim >::SliceSpec& a_slicespec );
+
+
+
 
 } // namespace CH_MultiDim
 

@@ -13,6 +13,9 @@
 #include "BoxIterator.H"
 
 #include "PetscSolver.H"
+
+// for now, include both ViscousTensorOp versions
+#include "NWOViscousTensorOp.H"
 #include "ViscousTensorOp.H"
 
 #include "NamespaceHeader.H"
@@ -121,14 +124,34 @@ void PetscSolverViscousTensor<LevelData<FArrayBox> >::define( LinearOp<LevelData
                                                               bool a_homogeneous )
 {
   PetscSolver<LevelData<FArrayBox> >::define( a_operator, a_homogeneous );
-  ViscousTensorOp *op = dynamic_cast<ViscousTensorOp*>( a_operator );  CH_assert(op);
-  m_dxCrse = op->dxCrse();
+  NWOViscousTensorOp *nwo_op = dynamic_cast<NWOViscousTensorOp*>( a_operator );
+  // (DFM -- 10/25/26) since there are two ViscousTensorOps in play here, figure out which one by doing a dynamic cast
+  // to NWOViscousTensorOp. If that doesn't work, then we're looking at a old-school ViscousTensorOp...
+  // for now, have to duplicate code for each instance since there's no inheritance relationship between the two
+  if (nwo_op)
+    {
+      m_dxCrse = nwo_op->dxCrse();
+      
+      // as a start, grab eta, lamdba, and A
+      define( nwo_op->getAlpha(), nwo_op->getBeta(), 
+              &(*nwo_op->getACoef()),
+              &(*nwo_op->getEta()),
+              &(*nwo_op->getLambda()));
 
-  // as a start, grab eta, lamdba, and 
-  define( op->getAlpha(), op->getBeta(), 
-          &(*op->getACoef()),
-          &(*op->getEta()),
-          &(*op->getLambda()));
+    }
+  else
+    {
+      // old-style ViscousTensorOp
+      ViscousTensorOp *op = dynamic_cast<ViscousTensorOp*>( a_operator );  CH_assert(op);
+      m_dxCrse = op->dxCrse();
+      
+      // as a start, grab eta, lamdba, and A
+      define( op->getAlpha(), op->getBeta(), 
+              &(*op->getACoef()),
+              &(*op->getEta()),
+              &(*op->getLambda()));
+
+    }
 }
 
 #ifdef CH_USE_PETSC

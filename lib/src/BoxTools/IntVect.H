@@ -18,6 +18,8 @@
 #include "SPACE.H"
 #include "Vector.H"
 #include "IndexTM.H"
+#include <cstdint>
+#include "SPMD.H"
 #include "Misc.H"
 #include <functional>
 
@@ -52,10 +54,12 @@ public:
   */
   /*@{*/
 
+
   ///
   /**
      Construct an IntVect whose components are uninitialized.
   */
+  inline
   IntVect()
   {}
 
@@ -67,10 +71,10 @@ public:
 
   ///
   /**
-     Destructor.
+     Destructor.   Let the compiler build the default destructor (bvs)
   */
-  ~IntVect()
-  {}
+  //~IntVect()
+  // {}
 
   ///
   /**
@@ -90,9 +94,9 @@ public:
 
   ///
   /**
-     The copy constructor.
+     The copy constructor. let compiler build default copy constructor (bvs)
   */
-  IntVect (const IntVect& rhs);
+  //  IntVect (const IntVect& rhs);
 
   IntVect (const IndexTM<int, CH_SPACEDIM>& a_tm);
 
@@ -102,9 +106,9 @@ public:
   }
   ///
   /**
-     The assignment operator.
+     The assignment operator. Let compiler build default assign operator
   */
-  IntVect& operator= (const IntVect& rhs);
+  //  IntVect& operator= (const IntVect& rhs);
 
   ///
   /**
@@ -663,6 +667,8 @@ public:
 
   static size_t io_offset;
 
+  inline uint64_t hash(const IntVect& origin, const IntVect& blockingFactor) const; 
+
 protected:
   //
   // Box is a friend of ours.
@@ -677,12 +683,16 @@ protected:
   /**
      The individual components of this IntVect.
   */
-  int vect[SpaceDim];
+  int vect[CH_SPACEDIM];
 
   /**
      Number of bytes of storage used by this IntVect.
   */
   static const size_t IntVectSize;
+  static const uint32_t morton256_x[256];
+  static const uint32_t morton256_y[256];
+  static const uint32_t morton256_z[256];
+  
 };
 #include "NamespaceFooter.H"
 
@@ -693,13 +703,32 @@ namespace std { template <> inline bool less<CH_XD::IntVect>::operator()(const C
 #include "NamespaceVar.H"
 
 ///functions for linearization
+template < >
 int linearSize(const CH_XDIR::IntVect& a_iv);
 
 ///functions for linearization
-void linearOut(void* a_outBuf, const CH_XDIR::IntVect& a_iv);
+template < >
+void linearIn(CH_XDIR::IntVect& a_iv, const void* a_inBuf);
 
 ///functions for linearization
-void linearIn(CH_XDIR::IntVect& a_iv, const void* a_inBuf);
+template < >
+void linearOut(void* a_outBuf, const CH_XDIR::IntVect& a_iv);
+
+//Vector<IntVect>  specialization
+template < >
+int linearSize(const Vector<CH_XDIR::IntVect>& a_input);
+template < >
+void linearIn(Vector<CH_XDIR::IntVect>& a_outputT, const void* const inBuf);
+template < >
+void linearOut(void* const a_outBuf, const Vector<CH_XDIR::IntVect>& a_inputT);
+
+//Vector<Vector<IntVect> > specialization
+template < >
+int linearSize(const Vector<Vector<CH_XDIR::IntVect> >& a_input);
+template < >
+void linearIn(Vector<Vector<CH_XDIR::IntVect> >& a_outputT, const void* const inBuf);
+template < >
+void linearOut(void* const a_outBuf, const Vector<Vector<CH_XDIR::IntVect> >& a_inputT);
 
 #include "BaseNamespaceFooter.H"
 
@@ -744,21 +773,21 @@ IntVect::IntVect (const int *a)
           vect[3] = a[3], vect[4] = a[4], vect[5] = a[5]);
 }
 
-inline
-IntVect::IntVect (const IntVect &iv)
-{
+//inline
+//IntVect::IntVect (const IntVect &iv)
+//{
   //D_EXPR6(vect[0]=iv.vect[0], vect[1]=iv.vect[1], vect[2]=iv.vect[2]);
-  memcpy(vect, iv.vect, IntVectSize);
-}
+//  memcpy(vect, iv.vect, IntVectSize);
+//}
 
-inline
-IntVect&
-IntVect::operator= (const IntVect &iv)
-{
-  D_EXPR6(vect[0]=iv.vect[0], vect[1]=iv.vect[1], vect[2]=iv.vect[2],
-          vect[3]=iv.vect[3], vect[4]=iv.vect[4], vect[5]=iv.vect[5]);
-  return *this;
-}
+//inline
+//IntVect&
+//IntVect::operator= (const IntVect &iv)
+//{
+//  D_EXPR6(vect[0]=iv.vect[0], vect[1]=iv.vect[1], vect[2]=iv.vect[2],
+//          vect[3]=iv.vect[3], vect[4]=iv.vect[4], vect[5]=iv.vect[5]);
+//  return *this;
+//}
 
 inline
 int&
@@ -1300,6 +1329,43 @@ IntVect::coarsen (const IntVect& p)
   return *this;
 }
 
+inline uint64_t IntVect::hash(const IntVect& origin, const IntVect& blockingFactor) const
+{
+
+  uint64_t answer = 0;
+#if CH_SPACEDIM >= 4
+//kind of a strawman hash function for higher dims.  I doubt this is what Brian wants.
+  for(int idir = 0; idir < CH_SPACEDIM; idir++)
+  {
+  int bfact = 1;
+  for(int jdir = 0; jdir < idir; jdir++)
+  {
+  bfact *= blockingFactor[jdir];
+  }
+  answer += origin[idir]*bfact;
+  }
+#else
+  uint32_t z=0, y=0, x;
+#if CH_SPACEDIM > 2
+  z = (vect[2]-origin[2])/blockingFactor[2];
+#endif
+#if CH_SPACEDIM > 1
+  y = (vect[1]-origin[1])/blockingFactor[1];
+#endif
+  x = (vect[0]-origin[0])/blockingFactor[0];
+  answer = morton256_z[(z >> 16) & 0xFF ] | // we start by shifting the third byte, since we only look at the first 21 bits
+    morton256_y[(y >> 16) & 0xFF ] |
+    morton256_x[(x >> 16) & 0xFF ];
+  answer = answer << 48 | morton256_z[(z >> 8) & 0xFF ] | // shifting second byte
+    morton256_y[(y >> 8) & 0xFF ] |
+    morton256_x[(x >> 8) & 0xFF ];
+  answer = answer << 24 |
+    morton256_z[(z) & 0xFF ] | // first byte
+    morton256_y[(y) & 0xFF ] |
+    morton256_x[(x) & 0xFF ];
+#endif
+  return answer;
+}
 #endif /* WRAPPER */
 
 #include "NamespaceFooter.H"

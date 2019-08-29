@@ -91,6 +91,13 @@ public:
   }
 
   ///
+  virtual void setType(Vector< RefCountedPtr<LevelData<BaseIVFAB<int> > > >& a_type)
+  {
+    m_type = a_type;
+    m_typeBased = true;
+  }
+
+  ///
   virtual EBAMRPoissonOp*
   MGnewOp(const ProblemDomain& a_FineindexSpace,
           int                  a_depth,
@@ -175,6 +182,9 @@ private:
 
   Vector< RefCountedPtr<LevelData<BaseIVFAB<Real> > > > m_data;
   bool m_dataBased;
+
+  Vector< RefCountedPtr<LevelData<BaseIVFAB<int> > > > m_type;
+  bool m_typeBased;
 
   ///weak construction bad
   EBAMRPoissonOpFactory()

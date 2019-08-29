@@ -12,7 +12,7 @@ ebase = mginterpTest aggpwlfpTest correct1d2dTest fastFRTest newIntRedistTest   
         halfQuadTest allRegFluxRegTest aveConserveTest averageTest    \
         coarsenTest averageFluxTest pwlinterpTest fpExactTest         \
         levelRedistTest fluxRegTest fullRedistTest quadCFITestEBCross \
-	halfTensorTest bigHalfQuadTest
+	halfTensorTest bigHalfQuadTest  nwoQuadCFITest
 
 LibNames = EBAMRTools Workshop EBTools AMRTools BoxTools
 

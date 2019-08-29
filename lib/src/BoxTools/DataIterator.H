@@ -18,8 +18,8 @@
 #include "LayoutIterator.H"
 #include "NamespaceHeader.H"
 
-#ifdef CH_MPI
 
+#ifdef CH_MPI
 ///An Iterator based on a BoxLayout object.
 /**
    An Iterator based on a BoxLayout object.  It does not
@@ -54,23 +54,14 @@ public:
 
   /// return the index that this iterator is at
   /** Aborts if the iterator is not ok() */
-  inline const DataIndex& operator()() const ;
+  const DataIndex& operator()() const ;
+
   /// return a copy of the index that this iterator is at
   /** Aborts if the iterator is not ok() */
   DataIndex i() const
   {
     return this->operator()();
   }
-
-  // const DataIndex& operator[](int ivec) const
-  // {
-  //   return (*m_indices)[ivec];
-  // }
-
-  // DataIndex& operator[](int ivec)
-  // {
-  //   return (*m_indices)[ivec];
-  // }
 
   DataIndex operator[](int ivec) const
   {
@@ -79,7 +70,8 @@ public:
 
 
   /// move the iterator to the next index in the layout
-  inline virtual void operator++();
+  virtual void operator++();
+
   /// move the iterator to the next index in the layout
   void incr()
   {
@@ -104,6 +96,65 @@ public:
     return m_indices->size();
   }
 
+  ///functions for using measurements of time and memory for load balancing.
+  
+  ///sets  m_time values to zero
+  void clearTime();
+
+  //sets memory measurement to zero
+  void clearPeak();
+
+  ///gets current time data
+  Vector<unsigned long long> getTime() const
+  {
+    return m_time;
+  }
+
+  ///gets current memory data
+  Vector<unsigned long long> getPeak() const
+  {
+    return m_peak;
+  }
+
+  Vector<Box> getBoxes()
+  {
+    return m_layout.boxArray();
+  }
+
+  ///enables timing.  does not set to zero.  use clear time for that
+  void enableTime()
+  {
+    //only defines if not defined before
+    defineTime();
+    m_timeEnabled = true;
+  }
+
+  ///enables measurements based on how much peak memory moves
+  void enablePeak()
+  {
+    //only defines if not defined before
+    definePeak();
+    m_peakEnabled = true;
+  }
+
+  ///turns off timing
+  void disableTime()
+  {
+    m_timeEnabled = false;
+  }
+
+  ///turns off memory measurement
+  void disablePeak()
+  {
+    m_peakEnabled = false;
+  }
+
+  /// After you are finished timing your local elements, call mergeTimes to fill-in off-processor times.
+  void mergeTime();
+
+  /// After you are finished measuring the memory your local elements, call mergeTimes to fill-in off-processor times.
+  void mergePeak();
+
 private:
 
   friend class BoxLayout;
@@ -118,41 +169,22 @@ protected:
   const Vector<DataIndex>* m_indices;
 
   int m_current;
+
+  void defineTime();
+  void definePeak();
+
+  Vector<unsigned long long> m_time;
+  Vector<unsigned long long> m_peak;
+
+  bool m_timeEnabled;
+  bool m_timeDefined;
+
+  bool m_peakEnabled;
+  bool m_peakDefined;
+  unsigned long long m_startTime;
+  unsigned long long m_startPeak;
 };
-
-inline DataIterator::DataIterator()
-  : m_current(-1)
-{
-}
-
-inline const DataIndex& DataIterator::operator()() const
-{
-  CH_assert(ok());
-  return m_indices->operator[](m_current);
-}
-
-inline void DataIterator::operator++()
-{
-  ++m_current;
-}
-
-inline bool DataIterator::ok() const
-{
-  return m_current < m_indices->size();
-}
-
-inline void DataIterator::reset()
-{
-  begin();
-}
-
-inline void DataIterator::begin()
-{
-  m_current=0;
-}
-
 #else
-
 // serial version
 
 class DataIterator : public LayoutIterator
@@ -193,6 +225,61 @@ public:
     return (DataIndex)((*m_indicies)[ivec]);
   }
 
+
+  ///load balancing function.  no-op in serial
+  void clearTime()
+  {
+  }
+
+  ///load balancing function.  no-op in serial
+  void clearPeak()
+  {
+  }
+
+  ///load balancing function.  no-op in serial
+  Vector<unsigned long long> getTime() const
+  {
+    Vector<unsigned long long> retval(m_layout.size(), 1.);
+    return retval;
+  }
+
+  Vector<unsigned long long> getPeak() const
+  {
+    Vector<unsigned long long> retval(m_layout.size(), 1.);
+    return retval;
+  }
+
+  Vector<Box> getBoxes()
+  {
+    return m_layout.boxArray();
+  }
+
+  ///load balancing function.  no-op in serial
+  void enableTime()
+  {
+  }
+
+  void enablePeak()
+  {
+  }
+
+  ///load balancing function.  no-op in serial
+  void disableTime()
+  {
+  }
+
+  void disablePeak()
+  {
+  }
+
+  ///load balancing function.  no-op in serial
+  void mergeTime()
+  {
+  }
+
+  void mergePeak()
+  {
+  }
 private:
   friend class BoxLayout;
   friend class DisjointBoxLayout;
@@ -204,7 +291,7 @@ protected:
   {}
 };
 
-#endif  /*CH_MPI*/
+
 
 #define DATAITERATOR(CLASS, BOXLAYOUT)                \
         DataIterator dit = BOXLAYOUT .dataIterator(); \
@@ -238,6 +325,8 @@ protected:
 #define ENDITERATOR2(CLASS, TYPE1, VAL1, TYPE2, VAL2)                 \
             MT_END3(CLASS, TYPE1, VAL1, TYPE2, VAL2, DataIndex, di)   \
           }
+
+#endif
 
 #include "NamespaceFooter.H"
 #endif

@@ -17,6 +17,7 @@
 #include "EBIndexSpace.H"
 #include "EBArith.H"
 #include "EBAlias.H"
+#include "ParmParse.H"
 #include <algorithm>
 
 #include "NamespaceHeader.H"
@@ -199,7 +200,13 @@ getEBCFIVSGrid(IntVectSet&                a_ebcfivs,
     }
 
   IntVectSet ivsIrreg = a_ebisBox.getIrregIVS(grownBoxSide);
-  ivsIrreg.grow(3);
+  //ParmParse pp("ebcfdata");
+  //bool growthree = true;
+  //pp.get("grow_three", growthree);
+  //if(growthree)
+    {
+      ivsIrreg.grow(3);
+    }
   ivsIrreg  &= a_domain;
   a_ebcfivs &= ivsIrreg;
   a_ebcfivs &= gridSide;

@@ -9,10 +9,6 @@
 #endif
 
 #include <iostream>
-using std::cout;
-using std::cin;
-using std::cerr;
-using std::endl;
 #include <iomanip>
 #include <cmath>
 #include <cstdio>
@@ -30,11 +26,7 @@ using std::endl;
 #include "CH_Timer.H"
 #include "NamespaceHeader.H"
 
-#ifdef CH_USE_TIMER
-using namespace Chombo;
-#endif
-
-#define SMALL_TIME 1.0e-8
+//#define SMALL_TIME 1.0e-8
 
 //-----------------------------------------------------------------------
 // RUDIMENTARY SIGNAL HANDLING -- when control-C is pressed, what happens?
@@ -99,9 +91,6 @@ void AMR::setDefaultValues()
   m_dt_tolerance_factor = 1.1;
   m_fixedDt = -1;
   m_blockFactor = 4;
-#ifdef CH_USE_TIMER
-  m_timer = NULL ;
-#endif
   m_scheduler = RefCountedPtr<Scheduler>();
 }
 //-----------------------------------------------------------------------
@@ -364,6 +353,7 @@ void AMR::define(int                          a_max_level,
                          a_prob_domain,
                          0,
                          m_ref_ratios[0]);
+  m_amrlevels[0]->time(m_cur_time);
 
   // Create finer levels.
   int ref_factor = 1;
@@ -378,6 +368,7 @@ void AMR::define(int                          a_max_level,
                                    level_prob_domain,
                                    level+1,
                                    m_ref_ratios[level+1]);
+      m_amrlevels[level+1]->time(m_cur_time);
       m_amrlevels[level]->finerLevelPtr(m_amrlevels[level+1]);
     }
 
@@ -776,9 +767,6 @@ void AMR::run(Real a_max_time, int a_max_step)
   CH_assert(isDefined());
   CH_assert(isSetUp());
 
-#ifdef CH_USE_TIMER
-  double last_timestep_time = 0 ;
-#endif
   if (m_verbosity >= 3)
     {
       pout() << "AMR::coarseTimeStep:" << endl;
@@ -796,6 +784,10 @@ void AMR::run(Real a_max_time, int a_max_step)
   sigaction(SIGINT, &ctrlC, &oldCtrlC);
 #endif
 
+#ifdef CH_MPI
+  double wc_run0, wc_run1; // used to get the wall-clock time for the step
+#endif
+
   Real old_dt_base = m_dt_base;
   bool steadyStateStop = false;
   for ( ; (m_cur_step < a_max_step) &&
@@ -803,8 +795,8 @@ void AMR::run(Real a_max_time, int a_max_step)
         ++m_cur_step, m_cur_time += old_dt_base)
     {
         s_step = m_cur_step;
-#ifdef CH_USE_TIMER
-      m_timer->start() ;
+#ifdef CH_MPI
+        wc_run0=MPI_Wtime();
 #endif
       old_dt_base = m_dt_base;
       for (int level = 0; level <= m_max_level; ++level)
@@ -848,8 +840,8 @@ void AMR::run(Real a_max_time, int a_max_step)
       (void)timeStep(level,stepsLeft,timeBoundary);
 
       assignDt();
-#ifdef CH_USE_TIMER
-      m_timer->stop();
+#ifdef CH_MPI
+        wc_run1=MPI_Wtime();
 #endif
       if (m_verbosity >= 1)
         {
@@ -868,9 +860,9 @@ void AMR::run(Real a_max_time, int a_max_step)
                  << setiosflags(ios::showpoint)
                  << setiosflags(ios::scientific)
                  << old_dt_base
-#ifdef CH_USE_TIMER
-                 << "  wallclocktime = "
-                 << m_timer->wc_time() - last_timestep_time
+#ifdef CH_MPI
+                 << setprecision(2)
+                 << "  wallclocktime = " << wc_run1-wc_run0
 #endif
                  << resetiosflags(ios::scientific)
                  << endl;
@@ -878,9 +870,6 @@ void AMR::run(Real a_max_time, int a_max_step)
           pout().width(origWidth);
           pout().precision(origPrecision);
         }
-#ifdef CH_USE_TIMER
-      last_timestep_time = m_timer->wc_time() ;
-#endif
 
       // If we have assigned a signal handler for interrupts, check for
       // an interrupt and call the handler.
@@ -1836,8 +1825,14 @@ void AMR::writeCheckpointFile() const
       pout() << "checkpoint file name = " << iter_str << endl;
     }
 
-  HDF5Handle handle(iter_str.c_str(), HDF5Handle::CREATE);
-
+#ifdef CH_MPI
+  MPI_Barrier(Chombo_MPI::comm);
+#endif
+  HDF5Handle handle;
+  {
+    CH_TIME("AMR::writeCheckpointFile.openFile");
+    handle.open(iter_str.c_str(), HDF5Handle::CREATE);
+  }
   // write amr data
   HDF5HeaderData header;
   header.m_int ["max_level"]  = m_max_level;
@@ -1860,8 +1855,10 @@ void AMR::writeCheckpointFile() const
     }
 
   // should steps since regrid be in the checkpoint file?
-  header.writeToFile(handle);
-
+  {
+    CH_TIME("writeHeader");
+    header.writeToFile(handle);
+  }
   if (m_verbosity >= 3)
     {
       pout() << header << endl;
@@ -1876,7 +1873,13 @@ void AMR::writeCheckpointFile() const
       m_amrlevels[level]->writeCheckpointLevel(handle);
     }
 
-  handle.close();
+#ifdef CH_MPI
+  MPI_Barrier(Chombo_MPI::comm);
+#endif
+  {
+    CH_TIME("AMR::closeCheckpoint");
+    handle.close();
+  }
 #endif
 }
 //-----------------------------------------------------------------------
@@ -1954,20 +1957,6 @@ bool AMR::isSetUp() const
 {
   return m_isSetUp;
 }
-//-----------------------------------------------------------------------
-
-//-----------------------------------------------------------------------
-#ifdef CH_USE_TIMER
-Timer * AMR::timer(Timer *a_timer )
-{
-  Timer * old_timer = m_timer ;
-  if ( a_timer != NULL )
-  {
-    m_timer = a_timer ;
-  }
-  return old_timer ;
-}
-#endif
 //-----------------------------------------------------------------------
 
 //-----------------------------------------------------------------------

@@ -116,7 +116,7 @@ lib_ch_targets := BaseTools BoxTools AMRTools AMRElliptic OldAMRElliptic AMRTime
 extra_test_targets := DotProduct ChomboFortran
 endif
 ifeq ($(DIM),3)
-lib_ch_targets := BaseTools BoxTools AMRTools AMRElliptic OldAMRElliptic AMRTimeDependent ParticleTools InfiniteDomain HOAMRTools MOLAMRTimeDependent HOMappedGeometry HOMappedConservation
+lib_ch_targets := BaseTools BoxTools AMRTools AMRElliptic OldAMRElliptic AMRTimeDependent ParticleTools HOAMRTools MOLAMRTimeDependent HOMappedGeometry HOMappedConservation
 extra_test_targets := DotProduct ChomboFortran
 endif
 ifeq ($(DIM),4)
@@ -287,7 +287,7 @@ ifneq ($(wildcard include/multidim),)
 	-cd include/multidim && find . -name "*.H.*" -exec $(RM) {} \;	
 	-cd include/multidim && find . -name "dim*.txt" -exec $(RM) {} \;
 endif
-	-find . -depth -type d \( -name d -o -name p -o -name f -o -name o \) -exec $(RM) -r {} \;
+	-find . -depth -type d \( -name d -o -name \*.dSYM -o -name p -o -name f -o -name o -o -name cubin -o -name rose \) -exec $(RM) -r {} \;
 	-find . \( -name \*.ex -o -name \*.a -o -name \*_F.H -o -name \*.hdf5 -o -name \*.h5 -o -name pout.\[0-9\]\* -o -name \*PROF.prof \) -a \( ! -path './src/CCSE/*' \) -exec $(RM) {} \;
 	-find . \( -name \*.tmp\? -o -name core -o -name \*.stackdump -o -name \*~ -o -name work.pc\* -o -name gmon.out -o -name leak.out\* -o -name .\#\* \) -exec $(RM) {} \;
 	-find . -depth  \( -name .check.*  \) -exec $(RM) -r {} \;

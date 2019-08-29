@@ -68,8 +68,7 @@ getFaceVel(Real&                 a_faceFlux,
            const int&            a_idir,
            const int&            a_icomp,
            const Real&           a_time,
-           const Side::LoHiSide& a_side,
-           const bool&           a_doDivFreeOutflow)
+           const Side::LoHiSide& a_side)
 {
   CH_assert(a_idir == a_face.direction());
   Real value;
@@ -544,7 +543,7 @@ void DirichletPoissonDomainBC::getFaceFlux(BaseFab<Real>&        a_faceFlux,
                 }
 
               Real value = m_value;
-
+              
               // FORT_SETHODIRICHLETFACEFLUX(CHF_FRA1(a_faceFlux,comp),
               //                             CHF_CONST_FRA1(a_phi,comp),
               //                             CHF_CONST_REAL(value),

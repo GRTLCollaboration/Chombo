@@ -536,8 +536,9 @@ cccccccccccccccc
          dqlim = zero
       else
          dqlim = dqlim*sign(one, dql)
+         ch_flops=ch_flops+2
       endif
-
+      ch_flops=ch_flops+8
       return
       end
 cccccccccccccccc

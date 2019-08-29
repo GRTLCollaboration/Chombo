@@ -17,13 +17,13 @@ C    Please refer to Copyright.txt, in Chombo's root directory.
       real_t  sumdu,minflattot,minZetaDir
 
       CHF_AUTOMULTIDO[box;i]
-         sumdu = zero
+         sumdu = 0
 
          do iv = 0,CHF_NCOMP[du] - 1
             sumdu = sumdu + du(CHF_AUTOIX[i],iv)
          enddo
 
-         if (sumdu .lt. zero) then
+         if (sumdu .lt. 0) then
             minflattot = zetaDir(CHF_AUTOIX[i],0)
 
             do iv = 1,CHF_NCOMP[du] - 1
@@ -124,7 +124,7 @@ c     Perform pointwise operation in the interior.
             if (ratio .le. r0) then
                zetaTwiddle(CHF_AUTOIX[i]) = one
             else if (ratio .ge. r1) then
-               zetaTwiddle(CHF_AUTOIX[i]) = zero
+               zetaTwiddle(CHF_AUTOIX[i]) = 0
             else
                zetaTwiddle(CHF_AUTOIX[i]) = one - (ratio - r0)/(r1 - r0)
             endif
@@ -378,8 +378,8 @@ c     dW comes in with the centered diff value
             dWlim = min(two*abs(dWl),two*abs(dWr))
             dWlim = min(dWlim,abs(dWc))
 
-            if (dWl * dWr .lt. zero) then
-               dWlim = zero
+            if (dWl * dWr .lt. 0) then
+               dWlim = 0
             else
                dWlim = dWlim*sign(one,dWl)
             endif
@@ -434,7 +434,7 @@ c     dW comes in with the centered diff value
 
 !     dp1 < 0 means slopes of W in [i-e:i] and [i:i+e] have opp signs
 !     dp2 < 0 means slopes of W in [i-2*e:i-e] and [i+e:i+2*e] have opp signs
-            if (dpmin .lt. zero) then
+            if (dpmin .lt. 0) then
 !     extremum-preserving van Leer limiter
                dW2L = dWL - dWLL
 !     30 Oct 2008:  inserted half here, which I'd forgotten
@@ -449,7 +449,7 @@ c     dW comes in with the centered diff value
 
                dWvl = cvl * three * half * dW2lim
 !     Note sign2 * dWC, not sign2 * dW2C.
-               if (sign2 * dWC .lt. zero) then
+               if (sign2 * dWC .lt. 0.0) then
                   dWlim = min(dWvl, two * abs(dWL))
                else
                   dWlim = min(dWvl, two * abs(dWR))
@@ -492,12 +492,12 @@ c     in order from smallest to largest
 
             lambdaK = lambda(CHF_AUTOIX[i],iv)
 
-            if (lambdaK .gt. zero) then
+            if (lambdaK .gt. 0) then
                dWMinus(CHF_AUTOIX[i],iv) = dW(CHF_AUTOIX[i],iv) *
      &              (-half) * (one + dtbydx * lmin   )
                dWPlus (CHF_AUTOIX[i],iv) = dW(CHF_AUTOIX[i],iv) *
      &              half * (one - dtbydx * lambdaK)
-            elseif (lambdaK .lt. zero) then
+            elseif (lambdaK .lt. 0) then
                dWMinus(CHF_AUTOIX[i],iv) = dW(CHF_AUTOIX[i],iv) *
      &              (-half) * (one + dtbydx * lambdaK)
                dWPlus (CHF_AUTOIX[i],iv) = dW(CHF_AUTOIX[i],iv) *
@@ -587,7 +587,7 @@ c     in order from smallest to largest
       do iv = 0, CHF_NCOMP[U] - 1
          CHF_AUTOMULTIDO[fbox; i]
             dv = divu(CHF_AUTOIX[i])
-            if (dv .lt. zero) then
+            if (dv .lt. 0) then
                uLo = U(CHF_OFFSETIX[i; +f2cLo], iv)
                uHi = U(CHF_OFFSETIX[i; +f2cHi], iv)
                F(CHF_AUTOIX[i], iv) = F(CHF_AUTOIX[i], iv) +
@@ -613,11 +613,11 @@ c     in order from smallest to largest
          CHF_AUTOMULTIDO[box; i]
             dWl = dWMinus(CHF_AUTOIX[i], iv)
             dWh = dWPlus (CHF_AUTOIX[i], iv)
-            if (dWl * dWh .lt. zero) then
+            if (dWl * dWh .lt. 0) then
                dWc = (dWh + dWl) * half
                d2W =  dWh - dWl
                s = sign(one,dWc)
-               if (dWc * d2W .gt. zero) then
+               if (dWc * d2W .gt. 0) then
                   dWPlus (CHF_AUTOIX[i],iv) =
      &                 s * min(-two * s * dWl, s * dWh)
                else
@@ -625,8 +625,8 @@ c     in order from smallest to largest
      &                 s * min(s * dWl, -two * s * dWh)
                endif
             else
-               dWPlus (CHF_AUTOIX[i], iv) = zero
-               dWMinus(CHF_AUTOIX[i], iv) = zero
+               dWPlus (CHF_AUTOIX[i], iv) = 0
+               dWMinus(CHF_AUTOIX[i], iv) = 0
             endif
          CHF_ENDDO
       enddo
@@ -671,7 +671,7 @@ c     in order from smallest to largest
             dWM = dWMinus(CHF_AUTOIX[i], iv)
             dWP = dWPlus (CHF_AUTOIX[i], iv)
             extrem = .false.
-            if (dWM * dWP .ge. zero) then
+            if (dWM * dWP .ge. 0) then
 !     face averages are both above or both below the cell average
                extrem = .true.
             else
@@ -691,9 +691,9 @@ c     in order from smallest to largest
 !     if dWminA >= dWminF, pick the difference between cell averages.
 !     if dWMinF > dWminA, pick the difference across neighboring cells.
                   if ( ( (dWminA .ge. dWminF) .and.
-     &                 (dWL * dWR .le. zero) ) .or.
+     &                 (dWL * dWR .le. 0) ) .or.
      &                 ( (dWminF .gt. dWminA) .and.
-     &                 (diffWL * diffWR .le. zero) ) ) then
+     &                 (diffWL * diffWR .le. 0) ) ) then
                      extrem = .true.
                   else
                      if (bigM) then
@@ -712,10 +712,10 @@ c     in order from smallest to largest
                d2WL  = d2W(CHF_OFFSETIX[i; -ioff], iv)
                d2WC  = d2W(CHF_AUTOIX[i], iv)
                d2WR  = d2W(CHF_OFFSETIX[i; +ioff], iv)
-               if ((d2WC - d2WL) * (d2WR - d2WC) .lt. zero) then
+               if ((d2WC - d2WL) * (d2WR - d2WC) .lt. 0) then
                   atfcf = dW2fcf(CHF_AUTOIX[i], iv)
                   if (abs(atfcf) .lt. eps) then
-                     rho = zero
+                     rho = 0
                   else
                      sd2WL = sign(one, d2WL)
                      sd2WC = sign(one, d2WC)
@@ -733,7 +733,7 @@ c     in order from smallest to largest
                         rho = d2Wlim / atfcf
                      else
 !     d2Wlim == 0
-                        rho = zero
+                        rho = 0
                      endif
                   endif
                   dWPlus (CHF_AUTOIX[i], iv) = dWP * rho
@@ -748,7 +748,7 @@ c     in order from smallest to largest
                dWM = dWMinus(CHF_AUTOIX[i], iv)
                dWP = dWPlus (CHF_AUTOIX[i], iv)
                extrem = .false.
-               if (dWM * dWP .ge. zero) then
+               if (dWM * dWP .ge. 0) then
 !     face averages are both above or both below the cell average
                   extrem = .true.
                else
@@ -773,7 +773,7 @@ c     in order from smallest to largest
                extrem = .false.
 !     dWP = W[i + e/2] - W[i]
 !     dWM = W[i - e/2] - W[i]
-               if (dWM * dWP .ge. zero) then
+               if (dWM * dWP .ge. 0) then
 !     face averages are both above or both below the cell average
                   extrem = .true.
                else
@@ -885,7 +885,7 @@ c     in order from smallest to largest
          do iv = 0,nSlope - 1
             lambdaK = lambda(CHF_AUTOIX[i], iv)
 
-            if (lambdaK .gt. zero) then
+            if (lambdaK .gt. 0) then
                sigMinus = sigmin
                sigPlus  = lambdaK*dtbydx
             else
@@ -912,7 +912,8 @@ c     in order from smallest to largest
 
       subroutine GETSECONDDIFF(
 !
-!     Returns second-order approximation to second derivative.
+!     Returns second-order approximation to second derivative,
+!     or first-order at boundary cells.
 !
      &     CHF_FRA[d2W],
      &     CHF_CONST_FRA[W],
@@ -941,29 +942,35 @@ c     in order from smallest to largest
             d2W(CHF_AUTOIX[i], iv) = dWR - dWL
          CHF_ENDDO
          if (hasLo .eq. 1) then
-!     Left-sided coefficients:
+!     For SECOND-order approx, left-sided coefficients:
 !     2, -5,  4, -1   which can be obtained from the sum of
 !     1, -2,  1       multiplied by 2, and
 !         1, -2,  1   multiplied by -1.
+!     Then:
+!              d2W(CHF_AUTOIX[i], iv) =
+!     &           two * d2W(CHF_OFFSETIX[i; +ioff], iv)
+!     &           - d2W(CHF_OFFSETIX[i; +2*ioff], iv)
+!     But this SECOND-order approx leads to bad artifacts.
+!     It is OK to drop 1 order at boundary with this FIRST-order approx.
             CHF_AUTOMULTIDO[loBox; i]
                d2W(CHF_AUTOIX[i], iv) =
-     &           two * d2W(CHF_OFFSETIX[i; +ioff], iv)
-     &           - d2W(CHF_OFFSETIX[i; +2*ioff], iv)
-!     This gives only FIRST-order approx to second derivative:
-!     &           d2W(CHF_OFFSETIX[i; +ioff], iv)
+     &           d2W(CHF_OFFSETIX[i; +ioff], iv)
             CHF_ENDDO
          endif
          if (hasHi .eq. 1) then
-!     Right-sided coefficients:
+!     For SECOND-order approx, right-sided coefficients:
 !     -1,  4, -5, 2   which can be obtained from the sum of
 !      1, -2,  1      multiplied by -1, and
 !          1, -2, 1   multiplied by 2.
+!     Then:
+!               d2W(CHF_AUTOIX[i], iv) =
+!     &           two * d2W(CHF_OFFSETIX[i; -ioff], iv)
+!     &           - d2W(CHF_OFFSETIX[i; -2*ioff], iv)
+!     But this SECOND-order approx leads to bad artifacts.
+!     It is OK to drop 1 order at boundary with this FIRST-order approx.
             CHF_AUTOMULTIDO[hiBox; i]
                d2W(CHF_AUTOIX[i], iv) =
-     &           two * d2W(CHF_OFFSETIX[i; -ioff], iv)
-     &           - d2W(CHF_OFFSETIX[i; -2*ioff], iv)
-!     This gives only FIRST-order approx to second derivative:
-!     &           d2W(CHF_OFFSETIX[i; -ioff], iv)
+     &           d2W(CHF_OFFSETIX[i; -ioff], iv)
             CHF_ENDDO
          endif
       enddo
@@ -1052,7 +1059,7 @@ c     in order from smallest to largest
      &              min(limitC * min(abs(d2WL), abs(d2WR)),
      &              abs(atcfc))
             else
-               d2Wlim(CHF_AUTOIX[i], lvar) = zero
+               d2Wlim(CHF_AUTOIX[i], lvar) = 0
             endif
          CHF_ENDDO
       enddo
@@ -1092,14 +1099,14 @@ c     in order from smallest to largest
             dWL = Wf - WL
             dp = dWR * dWL
 !     dp >= 0 means Wf is between WL and WR.
-            if (dp .lt. zero) then
+            if (dp .lt. 0) then
 !     Find d2Wlim.
                d2WL  = d2Wc(CHF_OFFSETIX[i; +f2cLo], lvar)
                d2WR  = d2Wc(CHF_OFFSETIX[i; +f2cHi], lvar)
                d2Wcfc = three * (dWR - dWL)
 !     New condition added by petermc, 15 May 2010:
 !     Apply limiter iff d2Wcfc is NOT between d2WL and d2WR.
-               if ((d2Wcfc - d2WL) * (d2WR - d2Wcfc) .lt. zero) then
+               if ((d2Wcfc - d2WL) * (d2WR - d2Wcfc) .lt. 0) then
                   sd2WL = sign(one, d2WL)
                   sd2WR = sign(one, d2WR)
                   sd2cfc = sign(one, d2Wcfc)
@@ -1110,7 +1117,7 @@ c     in order from smallest to largest
      &                    min(limitC * min(abs(d2WL), abs(d2WR)),
      &                    abs(d2Wcfc))
                   else
-                     d2Wlim = zero
+                     d2Wlim = 0
                   endif
 !     petermc, 1 May 2009, changed from /three to /six :
 !     ERROR in equation (19) in Colella & Sekora,
@@ -1555,7 +1562,7 @@ c     current direction.
 !     condExtr == (prodExtr1 <= 0) | (prodExtr2 <= 0)
 !              == (-prodE1 <= 0) | (prodE2 <= 0)
 !     Extremum check.
-            if ( (prodE1 .ge. zero) .or. (prodE2 .le. zero)) then
+            if ( (prodE1 .ge. 0) .or. (prodE2 .le. 0)) then
 !     This is an extremum.  Check if it is a potential discontinuity,
 !     by checking relative sizes and signs of second derivatives.
 !     d2WL == d2wm
@@ -1565,10 +1572,10 @@ c     current direction.
                d2WC  = d2W(CHF_AUTOIX[i], iv)
                d2WR  = d2W(CHF_OFFSETIX[i; +ii], iv)
                atfcf = dW2fcf(CHF_AUTOIX[i], iv)
-!     Set d2Wlim = stuff, if signs are all same; zero, otherwise.
-!     Set rho = d2Wlim/d2Wfcf, if |d2Wfcf| >= eps; zero, otherwise.
-!     So rho is set to zero unless signs are all same AND |d2Wfcf| >= eps.
-               rho = zero
+!     Set d2Wlim = stuff, if signs are all same; 0, otherwise.
+!     Set rho = d2Wlim/d2Wfcf, if |d2Wfcf| >= eps; 0, otherwise.
+!     So rho is set to 0 unless signs are all same AND |d2Wfcf| >= eps.
+               rho = 0
                if (abs(atfcf) .ge. eps) then
                   sd2WL = sign(one, d2WL)
                   sd2WC = sign(one, d2WC)
@@ -1584,7 +1591,7 @@ c     current direction.
      &                    limitC * abs(d2WL),
      &                    limitC * abs(d2WR))
                      rho = d2Wlim / atfcf
-!     Otherwise, d2Wlim = zero, and rho = zero.
+!     Otherwise, d2Wlim = 0, and rho = 0.
                   endif
                endif
                if (rho .lt. (one - eps)) then
@@ -1602,11 +1609,11 @@ c     current direction.
                   prodD3 = C3 * max(abs(d3Wmax), abs(d3Wmin))
      &                 - abs(d3Wmax - d3Wmin)
 !     Is the extremum is located close to where d2W is nearly linear?
-                  if (prodD3 .le. zero) then
+                  if (prodD3 .le. 0) then
 !     The answer is no.
 !     We are well-separated from a cubic, so we can apply the limiter.
 !     dwfm * dwfp == -dWM * dWP
-                     if (prodE1 .gt. zero) then
+                     if (prodE1 .gt. 0) then
 !     extrapLo == wfaceLo == wavg - dwfm == wavg + dWM
 !     New extrapLo == wavg - dwfm * rho == wavg + dWM * rho
 !     Hence new dWM == extrapLo - wavg == dWM * rho
@@ -1651,11 +1658,11 @@ c     current direction.
                bigM = ( abs(dWM) .gt. two * abs(dWP) )
                bigP = ( abs(dWP) .gt. two * abs(dWM) )
                prodE1 = dWM * dWP
-               if (prodE1 .ge. zero) then
+               if (prodE1 .ge. 0) then
                   d2WC  = d2W(CHF_AUTOIX[i], iv)
                   d2WR  = d2W(CHF_OFFSETIX[i; +ii], iv)
                   atfcf = dW2fcf(CHF_AUTOIX[i], iv)
-                  rho = zero
+                  rho = 0
                   if (abs(atfcf) .ge. eps) then
                      sd2WC = sign(one, d2WC)
                      sd2WR = sign(one, d2WR)
@@ -1677,8 +1684,8 @@ c     current direction.
                      d3Wmax = max(d3WR, d3WRR)
                      prodD3 = C3 * max(abs(d3Wmax), abs(d3Wmin))
      &                    - abs(d3Wmax - d3Wmin)
-                     if (prodD3 .le. zero) then
-                        if (prodE1 .gt. zero) then
+                     if (prodD3 .le. 0) then
+                        if (prodE1 .gt. 0) then
                            dWMinus(CHF_AUTOIX[i], iv) = dWM * rho
                            dWPlus (CHF_AUTOIX[i], iv) = dWP * rho
                         elseif ( bigM ) then
@@ -1706,12 +1713,12 @@ c     current direction.
                bigM = ( abs(dWM) .gt. two * abs(dWP) )
                bigP = ( abs(dWP) .gt. two * abs(dWM) )
                prodE1 = dWM * dWP
-               if (prodE1 .ge. zero) then
+               if (prodE1 .ge. 0) then
                   d2WL  = d2W(CHF_OFFSETIX[i; -ii], iv)
                   d2WC  = d2W(CHF_AUTOIX[i], iv)
                   d2WR  = d2W(CHF_OFFSETIX[i; +ii], iv)
                   atfcf = dW2fcf(CHF_AUTOIX[i], iv)
-                  rho = zero
+                  rho = 0
                   if (abs(atfcf) .ge. eps) then
                      sd2WL = sign(one, d2WL)
                      sd2WC = sign(one, d2WC)
@@ -1737,8 +1744,8 @@ c     current direction.
                      d3Wmax = max(d3WL, d3WR, d3WRR)
                      prodD3 = C3 * max(abs(d3Wmax), abs(d3Wmin))
      &                    - abs(d3Wmax - d3Wmin)
-                     if (prodD3 .le. zero) then
-                        if (prodE1 .gt. zero) then
+                     if (prodD3 .le. 0) then
+                        if (prodE1 .gt. 0) then
                            dWMinus(CHF_AUTOIX[i], iv) = dWM * rho
                            dWPlus (CHF_AUTOIX[i], iv) = dWP * rho
                         elseif ( bigM ) then
@@ -1768,11 +1775,11 @@ c     current direction.
                bigM = ( abs(dWM) .gt. two * abs(dWP) )
                bigP = ( abs(dWP) .gt. two * abs(dWM) )
                prodE1 = dWM * dWP
-               if (prodE1 .ge. zero) then
+               if (prodE1 .ge. 0) then
                   d2WL  = d2W(CHF_OFFSETIX[i; -ii], iv)
                   d2WC  = d2W(CHF_AUTOIX[i], iv)
                   atfcf = dW2fcf(CHF_AUTOIX[i], iv)
-                  rho = zero
+                  rho = 0
                   if (abs(atfcf) .ge. eps) then
                      sd2WL = sign(one, d2WL)
                      sd2WC = sign(one, d2WC)
@@ -1794,8 +1801,8 @@ c     current direction.
                      d3Wmax = max(d3WLL, d3WL)
                      prodD3 = C3 * max(abs(d3Wmax), abs(d3Wmin))
      &                    - abs(d3Wmax - d3Wmin)
-                     if (prodD3 .le. zero) then
-                        if (prodE1 .gt. zero) then
+                     if (prodD3 .le. 0) then
+                        if (prodE1 .gt. 0) then
                            dWMinus(CHF_AUTOIX[i], iv) = dWM * rho
                            dWPlus (CHF_AUTOIX[i], iv) = dWP * rho
                         elseif ( bigM ) then
@@ -1824,12 +1831,12 @@ c     current direction.
                bigM = ( abs(dWM) .gt. two * abs(dWP) )
                bigP = ( abs(dWP) .gt. two * abs(dWM) )
                prodE1 = dWM * dWP
-               if (prodE1 .ge. zero) then
+               if (prodE1 .ge. 0) then
                   d2WL  = d2W(CHF_OFFSETIX[i; -ii], iv)
                   d2WC  = d2W(CHF_AUTOIX[i], iv)
                   d2WR  = d2W(CHF_OFFSETIX[i; +ii], iv)
                   atfcf = dW2fcf(CHF_AUTOIX[i], iv)
-                  rho = zero
+                  rho = 0
                   if (abs(atfcf) .ge. eps) then
                      sd2WL = sign(one, d2WL)
                      sd2WC = sign(one, d2WC)
@@ -1855,8 +1862,8 @@ c     current direction.
                      d3Wmax = max(d3WLL, d3WL, d3WR)
                      prodD3 = C3 * max(abs(d3Wmax), abs(d3Wmin))
      &                    - abs(d3Wmax - d3Wmin)
-                     if (prodD3 .le. zero) then
-                        if (prodE1 .gt. zero) then
+                     if (prodD3 .le. 0) then
+                        if (prodE1 .gt. 0) then
                            dWMinus(CHF_AUTOIX[i], iv) = dWM * rho
                            dWPlus (CHF_AUTOIX[i], iv) = dWP * rho
                         elseif ( bigM ) then

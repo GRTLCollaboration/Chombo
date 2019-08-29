@@ -44,20 +44,20 @@ $avoidblock="CH_GPU|_dummy_";
 while ($ARGV[0] =~ /^-/) {
     $_ = shift;
     if (/^-I(.+)/) {
-	die "$1 does not exist\n" if (!-e $1);
-	die "$1 not a directory\n" if (!-d $1);
-	die "cannot read $1\n" if (!-r $1);
-	push(@incldir,("$1/"));
+        die "$1 does not exist\n" if (!-e $1);
+        die "$1 not a directory\n" if (!-d $1);
+        die "cannot read $1\n" if (!-r $1);
+        push(@incldir,("$1/"));
     } elsif (/^-X(.+)/) {
-	die "Sorry, -X option not implemented\n";
-	#push(@excldir,($1));
+        die "Sorry, -X option not implemented\n";
+        #push(@excldir,($1));
     } elsif (/^-DBG$/) {
-	$debug = 1;
+        $debug = 1;
     } elsif (/^-D(\S*)/) {
         # ignore cpp defines except those also in avoidblock which are removed
         $avoidblock =~ s/$1\|?//;
     } else {
-#	die "invalid argument: $_\n";
+#       die "invalid argument: $_\n";
     }
 }
 
@@ -78,18 +78,18 @@ foreach $ifile (@ARGV) {
 
     while (@searchlist) {
         # get next file off search list
-	$file = shift(@searchlist);
+        $file = shift(@searchlist);
 
         # NOTE: the last char in $file is either a double quote (") or
         #       a right angle bracket (>).  Strip off this character and
-	#       save it.  If it is a quote, search current directory first.
-	#       If its a right angle bracket, only search directories
-	#       specified with -I options.
-	$incltype = chop $file;
+        #       save it.  If it is a quote, search current directory first.
+        #       If its a right angle bracket, only search directories
+        #       specified with -I options.
+        $incltype = chop $file;
 
-	# NOTE: if the first char in $file is a "/" indicating an absolute
-	#       path, do not search directory list
-	$abspath = ($file =~ /^\// ? 1 : 0);
+        # NOTE: if the first char in $file is a "/" indicating an absolute
+        #       path, do not search directory list
+        $abspath = ($file =~ /^\// ? 1 : 0);
 
         # Check for special ChomboFortran prototype files
         # and replace them with the source file.  Later we'll
@@ -107,22 +107,22 @@ foreach $ifile (@ARGV) {
         }
 
         $found = 0 ;
-	foreach $d (@incldir) {
-	    if ($d ne "" && $abspath) {
-		# this is an absolute path, dont search current directory
-		next;
-	    }
-	    if ($d eq "" && $incltype eq ">") {
-		# dont search current directory
-		next;
-	    }
-	    $dep = "$d$file";
-	    print "Will search $d for $file :: $dep\n" if $debug;
-	    if (-e $dep) {
+        foreach $d (@incldir) {
+            if ($d ne "" && $abspath) {
+                # this is an absolute path, dont search current directory
+                next;
+            }
+            if ($d eq "" && $incltype eq ">") {
+                # dont search current directory
+                next;
+            }
+            $dep = "$d$file";
+            print "Will search $d for $file :: $dep\n" if $debug;
+            if (-e $dep) {
 
                 $found = 1 ;
 
-	        print "$ofile: $dep\n" if $debug;
+                print "$ofile: $dep\n" if $debug;
 
                 # file found, see if it is a special ChomboFortran prototype file
                 # and add the prototype filename to the dependency table
@@ -136,26 +136,39 @@ foreach $ifile (@ARGV) {
                 }
 
                 # otherwise, just build the dependency and enter in table
-		$deptable{ $dep } = 1;
+                $deptable{ $dep } = 1;
 
-		# grep file for includes and, if not seen before, add
-		# to end of search list
-		open(FL,"$dep") || die "cant open $dep\n";
+                # grep file for includes and, if not seen before, add
+                # to end of search list
+                open(FL,"$dep") || die "cant open $dep\n";
                 # Avoid includes in #ifdef blocks marked by $avoidblock
                 $avoidlvl=0;
-		while (<FL>) {
+                while (<FL>) {
                     if ($avoidlvl == 0) {
-		        if (/^\s*#\s*include\s+["<]\s*([^">]+[">])/) {
-		            if ($usedfiles{ $1 }++ == 0) {
-		                print " ::: including ::$1::\n" if $debug;
-		                # this file not searched yet, add to list
-		                # NOTE: last char is either double quote
-		                #       or right angle bracket.
-		                push(@searchlist,($1));
-		            }
-		        }
+                        if (/^\s*#\s*include\s+["<]\s*([^">]+[">])/) {
+                            if ($usedfiles{ $1 }++ == 0) {
+                                print " ::: including ::$1::\n" if $debug;
+                                # this file not searched yet, add to list
+                                # NOTE: last char is either double quote
+                                #       or right angle bracket.
+                                push(@searchlist,($1));
+                            }
+                        }
                         elsif (/^\s*#\s*ifdef\s+(?:$avoidblock)/) {
                             $avoidlvl = 1;
+                        }
+
+                        if ($file =~ /.F$/ or $file =~ /.F90$/) {
+                            if (/^\s*USE\s+([^ ,\n\r]*)/) {
+                                $lmod = lc $1;
+                                print " ::: USEing ::$lmod.mod::\n" if $debug;
+                                print "$ofile: $lmod.mod\n";
+                            }
+                            if (/^\s*use\s+([^ ,\n\r]*)/) {
+                                $lmod = lc $1;
+                                print " ::: USEing ::$lmod.mod::\n" if $debug;
+                                print "$ofile: $lmod.mod\n";
+                            }
                         }
                     }
                     else {
@@ -166,53 +179,54 @@ foreach $ifile (@ARGV) {
                             --$avoidlvl;
                         }
                     }
-		}
-		
-		# if this file is a header (.H) and it includes template
-		# declarations, add the corresponcing .cpp file to the
-		# searchlist.
-		# Assume the .cpp file is in the same directory as the .H
+                }
+                
+                # if this file is a header (.H) and it includes template
+                # declarations, add the corresponcing .cpp file to the
+                # searchlist.
+                # Assume the .cpp file is in the same directory as the .H
+
 #
 #       Dec. 18/2000
-				# Brian thought that including the cpp for any file
-				# that has the word 'template' in it is really dumb. the only
-				# cpp file that should be in a .d file is the self-named cpp file.
-				# items which have definition scope beyond a single translation unit
-				# should ALWAYS be in a .H file.   g++ requires this anyways.
-#		if ($file =~ /\S*\.[Hh]$/) {
-#		    $Cfile = $file;
-#		    $Cfile =~ s/\.H$/\.cpp/;
-#		    print "Found Header file $dep\n" if $debug;
-#		    print " . . Corresponding .cpp file is: $Cfile\n" if $debug;
-#		    # position file pointer to beginning of file
-#		    seek(FL,0,0);
-#		    # search for template declarations
-#		    while (<FL>) {
-#			# search for string "template" not in a comment
-#			s/\/\/.*//;
-#			if (/template/) {
-#			    print "$dep contains template\n" if $debug;
-#			    print "$_" if $debug;
-#			    $inclCfile = $Cfile . $incltype;
-#			    if ($usedfiles{ $inclCfile } == 0) {
-#				# print " ::: including ::$inclCfile::\n";
-#				# this file not searched yet, add to list
-#				# NOTE: last char is either double quote
-#				#       or right angle bracket.
-#				push(@searchlist,($inclCfile));
-#			    }
-#			    # mark as used file
-#			    $usedfiles{ $inclCfile }++;
-#			    # stop searching for tempate
-#			    last;
-#			}
-#		  }
-#		}
+# Brian thought that including the cpp for any file
+# that has the word 'template' in it is really dumb. the only
+# cpp file that should be in a .d file is the self-named cpp file.
+# items which have definition scope beyond a single translation unit
+# should ALWAYS be in a .H file.   g++ requires this anyways.
+#               if ($file =~ /\S*\.[Hh]$/) {
+#                   $Cfile = $file;
+#                   $Cfile =~ s/\.H$/\.cpp/;
+#                   print "Found Header file $dep\n" if $debug;
+#                   print " . . Corresponding .cpp file is: $Cfile\n" if $debug;
+#                   # position file pointer to beginning of file
+#                   seek(FL,0,0);
+#                   # search for template declarations
+#                   while (<FL>) {
+#                       # search for string "template" not in a comment
+#                       s/\/\/.*//;
+#                       if (/template/) {
+#                           print "$dep contains template\n" if $debug;
+#                           print "$_" if $debug;
+#                           $inclCfile = $Cfile . $incltype;
+#                           if ($usedfiles{ $inclCfile } == 0) {
+#                               # print " ::: including ::$inclCfile::\n";
+#                               # this file not searched yet, add to list
+#                               # NOTE: last char is either double quote
+#                               #       or right angle bracket.
+#                               push(@searchlist,($inclCfile));
+#                           }
+#                           # mark as used file
+#                           $usedfiles{ $inclCfile }++;
+#                           # stop searching for tempate
+#                           last;
+#                       }
+#                 }
+#               }
 
-		# since file was found in search path, jump out of loop
-		last;
-	    }
-	}
+                # since file was found in search path, jump out of loop
+                last;
+            }
+        }
 
         # If the file is a ChomboFortran file, and it wasn't found in
         # any directory, make a dependency for the prototype file
@@ -225,11 +239,11 @@ foreach $ifile (@ARGV) {
 #            $deptable{ "./" . $` . "_CUX.H" } = 1;
 #        }
 
-	print "@searchlist\n" if $debug;
+        print "@searchlist\n" if $debug;
     }
 
     # now generate dependency list
     for $dep (keys %deptable) {
-	print "$ofile: $dep\n";
+        print "$ofile: $dep\n";
     }
 }

@@ -119,8 +119,6 @@ EBViscousTensorOpFactory(const Vector<EBLevelGrid>&                             
   m_ghostCellsPhi = a_ghostCellsPhi;
   m_lambda        = a_lambda;
   m_acoef         = a_acoef;
-  m_acoef0.resize(a_acoef.size());
-  m_acoef1.resize(a_acoef.size());
   m_eta           = a_eta;
   m_lambdaIrreg   = a_lambdaIrreg;
   m_etaIrreg      = a_etaIrreg;
@@ -244,163 +242,6 @@ EBViscousTensorOpFactory(const Vector<EBLevelGrid>&                             
 }
 //-----------------------------------------------------------------------
 
-//-----------------------------------------------------------------------
-EBViscousTensorOpFactory::
-EBViscousTensorOpFactory(const Vector<EBLevelGrid>&                                  a_eblgs,
-                         const Real&                                                 a_alpha,
-                         const Real&                                                 a_beta,
-                         const Vector<RefCountedPtr<LevelData<EBCellFAB> > >&        a_acoef0,
-                         const Vector<RefCountedPtr<LevelData<EBCellFAB> > >&        a_acoef1,
-                         const Vector<RefCountedPtr<LevelData<EBFluxFAB> > >&        a_eta,
-                         const Vector<RefCountedPtr<LevelData<EBFluxFAB> > >&        a_lambda,
-                         const Vector<RefCountedPtr<LevelData<BaseIVFAB<Real> > > >& a_etaIrreg,
-                         const Vector<RefCountedPtr<LevelData<BaseIVFAB<Real> > > >& a_lambdaIrreg,
-                         const Real&                                                 a_dxCoarse,
-                         const Vector<int>&                                          a_refRatio,
-                         const RefCountedPtr<BaseDomainBCFactory>&                   a_domainBCFactory,
-                         const RefCountedPtr<BaseEBBCFactory>    &                   a_ebBCFactory,
-                         const IntVect&                                              a_ghostCellsPhi,
-                         const IntVect&                                              a_ghostCellsRhs,
-                         int a_numLevels,
-                         bool a_noMG)
-{
-  CH_assert(a_eblgs.size() <= a_refRatio.size());
-  m_noMG = a_noMG;
-  m_ghostCellsRhs = a_ghostCellsRhs;
-  m_ghostCellsPhi = a_ghostCellsPhi;
-  m_lambda        = a_lambda;
-  m_acoef0        = a_acoef0;
-  m_acoef1        = a_acoef1;
-  m_eta           = a_eta;
-  m_lambdaIrreg   = a_lambdaIrreg;
-  m_etaIrreg      = a_etaIrreg;
-  m_alpha         = a_alpha;
-  m_beta          = a_beta;
-  if (a_numLevels > 0)
-  {
-    m_numLevels = a_numLevels;
-  }
-  else
-  {
-    m_numLevels = a_eblgs.size();
-  }
-
-  m_domainBCFactory = a_domainBCFactory;
-  m_ebBCFactory     = a_ebBCFactory;
-
-  m_eblgs           = a_eblgs;
-  m_refRatio        = a_refRatio;
-  m_dx.resize(m_numLevels);
-
-  m_dx[0] = a_dxCoarse;
-  for (int ilev = 1; ilev < m_numLevels; ilev++)
-  {
-    m_dx[ilev] = m_dx[ilev-1];
-    m_dx[ilev] /= m_refRatio[ilev-1];
-  }
-  m_alpha = a_alpha;
-  m_beta = a_beta;
-
-  // Set up a time-dependent a coefficient for each AMR level.
-  m_acoef.resize(m_numLevels);
-  for (int ilev = 0; ilev < m_numLevels; ++ilev)
-  {
-    int nghost = 1;
-    EBCellFactory fact(m_eblgs[ilev].getEBISL());
-    m_acoef[ilev] = RefCountedPtr<LevelData<EBCellFAB> >(new LevelData<EBCellFAB>(m_eblgs[ilev].getDBL(), 1, nghost*IntVect::Unit, fact));
-  }
-
-  m_eblgsMG      .resize(m_numLevels);
-  m_acoefMG      .resize(m_numLevels);
-  m_etaMG        .resize(m_numLevels);
-  m_lambdaMG     .resize(m_numLevels);
-  m_etaIrregMG   .resize(m_numLevels);
-  m_lambdaIrregMG.resize(m_numLevels);
-  m_hasMGObjects .resize(m_numLevels);
-  for (int ilev = 0; ilev < m_numLevels; ilev++)
-  {
-    if ((ilev==0) || (m_refRatio[ilev] > 2))
-    {
-      m_hasMGObjects[ilev] = true;
-
-      int mgRef = 2;
-      m_eblgsMG      [ilev].resize(0);
-      m_acoefMG      [ilev].resize(0);
-      m_etaMG        [ilev].resize(0);
-      m_lambdaMG     [ilev].resize(0);
-      m_etaIrregMG   [ilev].resize(0);
-      m_lambdaIrregMG[ilev].resize(0);
-
-      m_eblgsMG      [ilev].push_back(m_eblgs      [ilev]);
-      m_acoefMG      [ilev].push_back(m_acoef      [ilev]);
-      m_etaMG        [ilev].push_back(m_eta        [ilev]);
-      m_lambdaMG     [ilev].push_back(m_lambda     [ilev]);
-      m_etaIrregMG   [ilev].push_back(m_etaIrreg   [ilev]);
-      m_lambdaIrregMG[ilev].push_back(m_lambdaIrreg[ilev]);
-
-      bool hasCoarser = true;
-      while (hasCoarser)
-      {
-        int imgsize = m_eblgsMG[ilev].size();
-        const EBLevelGrid& eblgFine=  m_eblgsMG[ilev][imgsize-1];
-        DisjointBoxLayout dblCoarMG;
-        ProblemDomain  domainCoarMG;
-        int maxBoxSize = 32;
-        bool dumbool;
-        hasCoarser = EBAMRPoissonOp::getCoarserLayouts(dblCoarMG,
-            domainCoarMG,
-            eblgFine.getDBL(),
-            eblgFine.getEBISL(),
-            eblgFine.getDomain(),
-            mgRef,
-            eblgFine.getEBIS(),
-            maxBoxSize, dumbool);
-
-        if (hasCoarser)
-        {
-          m_eblgsMG[ilev].push_back(EBLevelGrid(dblCoarMG, domainCoarMG, 4, eblgFine.getEBIS()));
-          int img = m_eblgsMG[ilev].size() - 1;
-          const EBLevelGrid& eblgCoar = m_eblgsMG[ilev][img  ];
-          const EBLevelGrid& eblgFine = m_eblgsMG[ilev][img-1];
-
-          LayoutData<IntVectSet> irregSets(eblgCoar.getDBL());
-          int nghost = 1;
-          for (DataIterator dit = eblgCoar.getDBL().dataIterator(); dit.ok(); ++dit)
-          {
-            Box grownBox = grow(eblgCoar.getDBL().get(dit()), nghost);
-            grownBox &= domainCoarMG;
-            irregSets[dit()] = eblgCoar.getEBISL()[dit()].getIrregIVS(grownBox);
-          }
-          EBFluxFactory       ebfluxfact(eblgCoar.getEBISL());
-          EBCellFactory       ebcellfact(eblgCoar.getEBISL());
-          BaseIVFactory<Real> baseivfact(eblgCoar.getEBISL(), irregSets);
-
-          RefCountedPtr<LevelData<BaseIVFAB<Real> > >    etaIrregCoar( new LevelData<BaseIVFAB<Real> >(eblgCoar.getDBL(), 1, nghost*IntVect::Unit, baseivfact) );
-          RefCountedPtr<LevelData<BaseIVFAB<Real> > > lambdaIrregCoar( new LevelData<BaseIVFAB<Real> >(eblgCoar.getDBL(), 1, nghost*IntVect::Unit, baseivfact) );
-          RefCountedPtr<LevelData<EBCellFAB> >              acoefCoar( new LevelData<EBCellFAB>       (eblgCoar.getDBL(), 1, nghost*IntVect::Unit, ebcellfact) );
-          RefCountedPtr<LevelData<EBFluxFAB> >                etaCoar( new LevelData<EBFluxFAB>       (eblgCoar.getDBL(), 1, nghost*IntVect::Unit, ebfluxfact) );
-          RefCountedPtr<LevelData<EBFluxFAB> >             lambdaCoar( new LevelData<EBFluxFAB>       (eblgCoar.getDBL(), 1, nghost*IntVect::Unit, ebfluxfact) );
-
-          coarsenStuff(*acoefCoar, *etaCoar, *lambdaCoar, *etaIrregCoar, *lambdaIrregCoar, eblgFine, eblgCoar,
-              *m_acoefMG[ilev][img-1], *m_etaMG[ilev][img-1], *m_lambdaMG[ilev][img-1],
-              *m_etaIrregMG[ilev][img-1], *m_lambdaIrregMG[ilev][img-1], mgRef);
-
-          m_acoefMG      [ilev].push_back(     acoefCoar);
-          m_etaMG        [ilev].push_back(        etaCoar);
-          m_lambdaMG     [ilev].push_back(     lambdaCoar);
-          m_etaIrregMG   [ilev].push_back(   etaIrregCoar);
-          m_lambdaIrregMG[ilev].push_back(lambdaIrregCoar);
-        }
-      }
-
-    }
-    else
-    {
-      m_hasMGObjects[ilev] = false;
-    }
-  }
-}
-//-----------------------------------------------------------------------
 
 //-----------------------------------------------------------------------
 EBViscousTensorOp*
@@ -424,7 +265,7 @@ MGnewOp(const ProblemDomain& a_domainFine,
 
   RefCountedPtr<LevelData<BaseIVFAB<Real> > >     etaIrreg;
   RefCountedPtr<LevelData<BaseIVFAB<Real> > >  lambdaIrreg;
-  RefCountedPtr<LevelData<EBCellFAB> >               acoef, acoef0, acoef1;
+  RefCountedPtr<LevelData<EBCellFAB> >               acoef;
   RefCountedPtr<LevelData<EBFluxFAB> >                 eta;
   RefCountedPtr<LevelData<EBFluxFAB> >              lambda;
 
@@ -461,12 +302,6 @@ MGnewOp(const ProblemDomain& a_domainFine,
     etaIrreg    =    m_etaIrreg[ref];
     lambdaIrreg = m_lambdaIrreg[ref];
     acoef       =       m_acoef[ref];
-    if (m_acoef0[ref] != NULL)
-    {
-      CH_assert(m_acoef1[ref] != NULL);
-      acoef0 = m_acoef0[ref];
-      acoef1 = m_acoef1[ref];
-    }
     eta         =         m_eta[ref];
     lambda      =      m_lambda[ref];
 
@@ -533,22 +368,11 @@ MGnewOp(const ProblemDomain& a_domainFine,
   //no need for finer or coarser amr levels here
   int bogRef = 2;
   EBViscousTensorOp* newOp = NULL;
-  if (acoef0 == NULL)
-  {
-    // Time-independent a coefficient.
-    newOp = new EBViscousTensorOp(EBLevelGrid(), eblgMGLevel, EBLevelGrid(), eblgCoarMG,
-                                  m_alpha, m_beta, acoef, eta, lambda, etaIrreg, lambdaIrreg,
-                                  dxMGLevel, dxCoar,  bogRef, bogRef,  dombc, ebbc,
-                                  hasCoarMGObjects, m_ghostCellsPhi, m_ghostCellsRhs);
-  }
-  else
-  {
-    // Time-dependent a coefficient.
-    newOp = new EBViscousTensorOp(EBLevelGrid(), eblgMGLevel, EBLevelGrid(), eblgCoarMG,
-                                  m_alpha, m_beta, acoef0, acoef1, acoef, eta, lambda, etaIrreg, lambdaIrreg,
-                                  dxMGLevel, dxCoar,  bogRef, bogRef,  dombc, ebbc,
-                                  hasCoarMGObjects, m_ghostCellsPhi, m_ghostCellsRhs);
-  }
+  // Time-independent a coefficient.
+  newOp = new EBViscousTensorOp(EBLevelGrid(), eblgMGLevel, EBLevelGrid(), eblgCoarMG,
+                                m_alpha, m_beta, acoef, eta, lambda, etaIrreg, lambdaIrreg,
+                                dxMGLevel, dxCoar,  bogRef, bogRef,  dombc, ebbc,
+                                hasCoarMGObjects, m_ghostCellsPhi, m_ghostCellsRhs);
 
   // We're finished.
   return newOp;
@@ -611,24 +435,11 @@ AMRnewOp(const ProblemDomain& a_domainFine)
   RefCountedPtr<ViscousBaseDomainBC> dombc(viscDomBC);
 
   EBViscousTensorOp* newOp = NULL;
-  if (m_acoef0[ref] == NULL)
-  {
-    // Time-independent a coefficient.
-    newOp = new EBViscousTensorOp(eblgFine, eblgMGLevel, eblgCoar, eblgCoarMG,
-                                  m_alpha, m_beta, m_acoef[ref], m_eta[ref], m_lambda[ref],
-                                  m_etaIrreg[ref], m_lambdaIrreg[ref], dxMGLevel, dxCoar,
-                                  refToFiner, refToCoarser,  dombc, ebbc, hasCoarMGObjects,
-                                  m_ghostCellsPhi, m_ghostCellsRhs);
-  }
-  else
-  {
-    // Time-dependent a coefficient.
-    newOp = new EBViscousTensorOp(eblgFine, eblgMGLevel, eblgCoar, eblgCoarMG,
-                                  m_alpha, m_beta, m_acoef0[ref], m_acoef1[ref], m_acoef[ref],
-                                  m_eta[ref], m_lambda[ref], m_etaIrreg[ref], m_lambdaIrreg[ref],
-                                  dxMGLevel, dxCoar, refToFiner, refToCoarser,  dombc, ebbc,
-                                  hasCoarMGObjects, m_ghostCellsPhi, m_ghostCellsRhs);
-  }
+  newOp = new EBViscousTensorOp(eblgFine, eblgMGLevel, eblgCoar, eblgCoarMG,
+                                m_alpha, m_beta, m_acoef[ref], m_eta[ref], m_lambda[ref],
+                                m_etaIrreg[ref], m_lambdaIrreg[ref], dxMGLevel, dxCoar,
+                                refToFiner, refToCoarser,  dombc, ebbc, hasCoarMGObjects,
+                                m_ghostCellsPhi, m_ghostCellsRhs);
 
   return newOp;
 }

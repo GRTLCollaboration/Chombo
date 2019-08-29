@@ -66,11 +66,7 @@ template <int dim> CutCellMoments<dim>::CutCellMoments(const IFData<dim>& a_info
       bdId[BDID_DIR] = idir;
       bdId[BDID_HILO] = hilo;
 
-#if RECURSIVE_GEOMETRY_GENERATION == 0
-      IFData<dim-1> reducedInfo(a_info,idir,hilo);
-#else
       IFData<dim-1> reducedInfo(a_info,a_info.m_maxOrder+1,idir,hilo);
-#endif
       CutCellMoments<dim-1>bdCutCellMoments(reducedInfo);
 
       m_bdCutCellMoments[bdId] = bdCutCellMoments;
@@ -115,16 +111,12 @@ template <int dim> const CutCellMoments<dim - 1> CutCellMoments<dim>::getBdCutCe
 // depending on the value of a_IFData.m_allVerticesIn/Out
 template <int dim> void CutCellMoments<dim>::addBdMoments(CutCellMoments<dim>     & a_coarseBdCutCell,
                                                           const IFData<dim+1>     & a_IFData,
-#if RECURSIVE_GEOMETRY_GENERATION == 0
-                                                          const int               & a_degreeP,
-#else
                                                           const int               & a_degreePmax,
-#endif
                                                           const bool              & a_useConstraints,
                                                           const IndexTM<Real,dim> & a_refinedCenterDelta,
                                                           const IndexTM<int,dim>  & a_hilo)
 {
-  typedef map<IvDim,int,LexLT <IvDim> > PthMomentLoc;
+  typedef map<IvDim,int > PthMomentLoc;
 
   if (a_IFData.m_allVerticesIn)
   {
@@ -133,11 +125,7 @@ template <int dim> void CutCellMoments<dim>::addBdMoments(CutCellMoments<dim>   
     // function.  Generate a full cell quadrature map.
     PthMoment fullCellMap;
 
-#if RECURSIVE_GEOMETRY_GENERATION == 0
-    for (int iDegree = a_degreeP; iDegree > 0; iDegree--)
-#else
     for (int iDegree = a_degreePmax; iDegree > 0; iDegree--)
-#endif
     {
       // Creating a lsproblem generates the monomial map that is
       // needed to fill the moment maps
@@ -151,11 +139,7 @@ template <int dim> void CutCellMoments<dim>::addBdMoments(CutCellMoments<dim>   
       }
     }
 
-#if RECURSIVE_GEOMETRY_GENERATION == 0
-    for (int iDegree = a_degreeP; iDegree > 0; iDegree--)
-#else
     for (int iDegree = a_degreePmax; iDegree > 0; iDegree--)
-#endif
     {
       LSProblem<dim> lsp(iDegree,a_useConstraints);
 
@@ -173,11 +157,7 @@ template <int dim> void CutCellMoments<dim>::addBdMoments(CutCellMoments<dim>   
   }
   else
   {
-#if RECURSIVE_GEOMETRY_GENERATION == 0
-    for (int iDegree = a_degreeP; iDegree > 0; iDegree--)
-#else
     for (int iDegree = a_degreePmax; iDegree > 0; iDegree--)
-#endif
     {
       LSProblem<dim> lsp(iDegree,a_useConstraints);
 
@@ -194,11 +174,7 @@ template <int dim> void CutCellMoments<dim>::addBdMoments(CutCellMoments<dim>   
     }
   }
 
-#if RECURSIVE_GEOMETRY_GENERATION == 0
-  for (int iDegree = a_degreeP; iDegree >= 0; iDegree--)
-#else
   for (int iDegree = a_degreePmax; iDegree >= 0; iDegree--)
-#endif
   {
     LSProblem<dim> lsp(iDegree,a_useConstraints);
 
@@ -245,22 +221,14 @@ template <int dim> void CutCellMoments<dim>::addBdMoments(CutCellMoments<dim>   
       // Drop one dimension to add up the boundary moments. Dropping one
       // dimension allows an easier implementation as 1D is a particular
       // case
-#if RECURSIVE_GEOMETRY_GENERATION == 0
-      (m_bdCutCellMoments[bdId]).addBdMoments(a_coarseBdCutCell.m_bdCutCellMoments[bdId],m_IFData,a_degreeP+1,a_useConstraints,localRefinedCellCenter,localHilo);
-#else
       (m_bdCutCellMoments[bdId]).addBdMoments(a_coarseBdCutCell.m_bdCutCellMoments[bdId],m_IFData,a_degreePmax+1,a_useConstraints,localRefinedCellCenter,localHilo);
-#endif
     }
     else
     {
       for (int side = 0; side < 2; side++)
       {
         bdId[1]=side;
-#if RECURSIVE_GEOMETRY_GENERATION == 0
-        (m_bdCutCellMoments[bdId]).addBdMoments(a_coarseBdCutCell.m_bdCutCellMoments[bdId],m_IFData,a_degreeP,a_useConstraints,localRefinedCellCenter,localHilo);
-#else
         (m_bdCutCellMoments[bdId]).addBdMoments(a_coarseBdCutCell.m_bdCutCellMoments[bdId],m_IFData,a_degreePmax,a_useConstraints,localRefinedCellCenter,localHilo);
-#endif
       }
     }
   }
@@ -482,14 +450,6 @@ template <int dim> void CutCellMoments<dim>::initializeMap(PthMoment & a_map1,
   }
 }
 
-template <int dim> void CutCellMoments<dim>::initializeMap(OneDMoments & a_map1,
-                                                           OneDMoments & a_map2)
-{
-  for (typename OneDMoments::const_iterator it = a_map2.begin(); it != a_map2.end(); ++it)
-  {
-    a_map1[it->first] = 0.0;
-  }
-}
 
 template <int dim> Real CutCellMoments<dim>::getBdMoment(const IvDim             & a_mono,
                                                          const IFData<dim+1>     & a_IFData,

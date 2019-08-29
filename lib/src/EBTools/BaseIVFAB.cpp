@@ -25,5 +25,24 @@ template class BaseIVFAB<bool>;
 template class BaseIVFAB<VoFStencil>;
 template class BaseIVFAB<VolData>;
 
+template <>
+int BaseIVFAB<Real>::preAllocatable()
+{
+  return 1;  // symmetric allocatable
+}
+
+template <>
+int BaseIVFAB<int>::preAllocatable()
+{
+  return 1;  // symmetric allocatable
+}
+
+template <>
+int BaseIVFAB<bool>::preAllocatable()
+{
+  return 1;  // symmetric allocatable
+}
+
+
 #include "NamespaceFooter.H"
 #endif

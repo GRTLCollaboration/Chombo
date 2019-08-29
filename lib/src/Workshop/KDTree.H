@@ -1,4 +1,4 @@
- /*
+/*
 
 LICENSE NOTICE
 
@@ -102,6 +102,9 @@ OF SUCH DAMAGE.
 #endif
 
 #define RESTRICT __restrict__
+
+#include <string>
+using std::string;
 
 #include "KDStruct.H"
 
@@ -287,6 +290,11 @@ int KDSetDataDestructor(KDTree *tree, void (*destr)(void*));
     <>max/min/avg depth printed to stdout
     <>depth of each leaf printed to "leafDepths.txt"
    */
+
+  int KDTreePrint(KDTree const *tree);
+
+  int KDNodePrint(KDNode const *node,
+                  const string &prefix);
 
 /******************************************************************/
   int KDSearch(KDTree const *tree, Real const *pos, int *foundFlag);

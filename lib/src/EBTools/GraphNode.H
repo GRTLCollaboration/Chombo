@@ -325,6 +325,7 @@ inline void GraphNode::clear()
       m_cellList->~Vector<GraphNodeImplem>();
       s_Arena.free(m_cellList);
 #ifdef CH_USE_MEMORY_TRACKING
+      ch_memcount-=sizeof(Vector<GraphNodeImplem>);
       s_Arena.bytes -= sizeof(Vector<GraphNodeImplem>);
       CH_assert(s_Arena.bytes >= 0);
 #endif

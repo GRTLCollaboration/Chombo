@@ -51,6 +51,7 @@ void RedistStencil::define(const DisjointBoxLayout& a_dbl,
                            const int&               a_redistRadius,
                            bool                     a_do2DStencil)
 {
+  CH_TIME("RedistStencil::define");
   m_isDefined = true;
 
   // This is temporary to test some things about redistribution.
@@ -172,6 +173,8 @@ void RedistStencil::computePointStencil(VoFStencil&      a_stencil,
                                         const DataIndex& a_datInd,
                                         const bool&      a_do2DStencil)
 {
+  CH_TIME("RedistStencil::computePointStencil");
+
   const EBISBox& ebisBox = m_ebisl[a_datInd];
 
   bool need2DStencil = false;

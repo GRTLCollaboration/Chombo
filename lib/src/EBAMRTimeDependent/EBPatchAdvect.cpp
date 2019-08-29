@@ -880,7 +880,7 @@ transversePred(EBCellFAB&       a_rhoLo,
                const int&       a_dir,
                const Box&       a_box)
 {
-  CH_TIME("EBPatchAdvect::normalPred");
+  CH_TIME("EBPatchAdvect::transversePred");
   CH_assert(m_isVelSet);
   const EBCellFAB& velcc = *m_normalVelPtr;
 
@@ -1050,7 +1050,7 @@ extrapolateBCG(EBFluxFAB&                       a_flux,
                const DataIndex&                 a_dit,
                bool                             a_verbose)
 {
-  CH_TIME("EBPatchAdvect::extrapolateBCG");
+  CH_TIME("EBPatchAdvect::extrapolateBCG(fluxfab)");
 
   //Dan does this in EBPatchGodunov::extrapolatePrim which is called by EBLevelAdvect
   //we never go there for BCG so just use the virtual function
@@ -1123,7 +1123,11 @@ extrapolateBCG(EBCellFAB           a_primMinu[SpaceDim],
                const DataIndex&    a_dit,
                bool                a_verbose)
 {
-  CH_TIME("EBPatchAdvect::extrapolateBCG");
+  CH_TIMERS("EBPatchAdvect::extrapolateBCG(cellfab)");
+  CH_TIMER("slopesNorm",t1);
+  CH_TIMER("incrementWithSource",t2);
+  CH_TIMER("slopesTang",t3);
+  CH_TIMER("floorPrimitives",t4);
 
   Box slopeBoxG1 = grow(a_box, 1);
   Box slopeBoxG2 = grow(a_box, 2);
@@ -1197,7 +1201,7 @@ extrapolateBCG(EBCellFAB           a_primMinu[SpaceDim],
       normSlopeBox.grow(idir, 1);
       normSlopeBox &= m_domain;
 
-      // normSlopes.define(m_ebisBox, normSlopeBox, numSlop);
+      CH_START(t1);
       normSlopes.define(m_ebisBox, normSlopeBox, numSlop);
 
       EBCellFAB deltaWL, deltaWR;
@@ -1225,7 +1229,9 @@ extrapolateBCG(EBCellFAB           a_primMinu[SpaceDim],
                  // slopeBoxG2);
                  // a_box);
                  normSlopeBox);
+      CH_STOP(t1);
 
+      CH_START(t2);
       if (a_source.isDefined())
         {
           incrementWithSource(a_primMinu[idir],
@@ -1243,7 +1249,9 @@ extrapolateBCG(EBCellFAB           a_primMinu[SpaceDim],
                               // a_box);
                               normSlopeBox);
         }
+      CH_STOP(t2);
 
+      CH_START(t3);
       Tuple<int,SpaceDim-1> tanDirs = PolyGeom::computeTanDirs(idir);
       for (int itan = 0; itan < SpaceDim-1; itan++)
         {
@@ -1256,9 +1264,9 @@ extrapolateBCG(EBCellFAB           a_primMinu[SpaceDim],
           tanSlopes[itan].define(m_ebisBox, tanSlopeBox[itan], numSlop);
 
           //Minion stability fix
-          EBCellFAB& statePlusSource = m_primState;
-          // EBCellFAB statePlusSource;
-          // statePlusSource.copy(a_consState);
+          EBCellFAB statePlusSource;
+          statePlusSource.clone(a_consState);
+          //statePlusSource.clone(m_primState);
           statePlusSource.plus(a_source, 0.5*m_dt);
 
           // upwindSlope(a_slopesPrim[tanDir],
@@ -1281,9 +1289,12 @@ extrapolateBCG(EBCellFAB           a_primMinu[SpaceDim],
                          // a_box);
                          normSlopeBox);
         }
+      CH_STOP(t3);
 
+      CH_START(t4);
       floorPrimitives(a_primMinu[idir], normSlopeBox);
       floorPrimitives(a_primPlus[idir], normSlopeBox);
+      CH_STOP(t4);
 
     }
 }
@@ -1878,7 +1889,6 @@ riemann(EBFaceFAB&       a_primGdnv,
   //  CH_assert((s_curComp >= 0) && (s_curComp < SpaceDim);
   CH_assert(s_curComp >= 0);
   CH_assert(m_isVelSet);
-  CH_assert(!m_domain.isPeriodic(a_faceDir));
 
   // const EBCellFAB& normalVel = *m_normalVelPtr;
   const EBFluxFAB& advectVel = *m_advectionVelPtr;
@@ -2053,6 +2063,12 @@ primNames()
   return retval;
 }
 /*****************************/
+///
+/**
+   This used to set the flux to zero.  Now, in most (non-multifluid) cases,
+   it is not called at all.    This now extrapolates to the eb which is the wrong
+   thing to do for advection with a fixed boundary (where the flux should just be zero)
+*/
 void
 EBPatchAdvect::
 computeEBIrregFlux(BaseIVFAB<Real>&  a_ebIrregFlux,
@@ -2109,7 +2125,7 @@ averageVelToCC(EBCellFAB&                        a_normalVel,
       //treat every cell as regular
       BaseFab<Real>&       regCellVel = a_normalVel.getSingleValuedFAB();
       const BaseFab<Real>& regFaceVel = faceNormVel.getSingleValuedFAB();
-      FORT_AVEFACETOCELL(CHF_FRA(regCellVel),
+      FORT_EBAVEFACETOCELL(CHF_FRA(regCellVel),
                          CHF_CONST_FRA1(regFaceVel,0),
                          CHF_CONST_INT(faceDir),
                          CHF_BOX(a_box));

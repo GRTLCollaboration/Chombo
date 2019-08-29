@@ -90,6 +90,7 @@ EBLevelMACProjector(const DisjointBoxLayout&                        a_grids,
                     const IntVect&                                  a_nghostPhi,
                     const IntVect&                                  a_nghostRhs)
 {
+  CH_TIME("EBLevelMACProjector::constructor");
   m_grids  = a_grids;
   m_ebisl  = a_ebisl;
   m_domain = a_domain;
@@ -131,6 +132,7 @@ project(LevelData<EBFluxFAB>&  a_velocity,
         LevelData<EBFluxFAB>&  a_gradPhi,
         const LevelData<BaseIVFAB<Real> >* const a_boundaryVelocity)
 {
+  CH_TIME("EBLevelMACProjector::project");
   CH_assert(a_velocity.nComp() == 1);
   CH_assert(a_gradPhi.nComp() == 1);
 
@@ -193,6 +195,7 @@ macGradient(LevelData<EBFluxFAB>&        a_gradPhi,
             const ProblemDomain&         a_domain,
             const RealVect&              a_dx)
 {
+  CH_TIME("EBLevelMACProjector::macGradient");
   Interval interv(0,0);
   //cast to non-const so we can do exchange.
   //none of the valid data is changed so const-nitude
@@ -219,7 +222,8 @@ macGradient(EBFluxFAB&           a_gradPhi,
             const ProblemDomain& a_domain,
             const RealVect&      a_dx)
 {
-  a_gradPhi.setVal(0.);
+  CH_TIME("EBLevelMACProjector::macGradient(box)");
+  a_gradPhi.setVal(123456789e10);
   for (int idir = 0; idir < SpaceDim; idir++)
     {
       EBFaceFAB&      gradPhiFAB = a_gradPhi[idir];
@@ -276,6 +280,7 @@ macEnforceGradientBC(LevelData<EBFluxFAB>&              a_gradPhi,
                      const Real&                        a_time,
                      RefCountedPtr<BaseDomainBCFactory> a_domainBCFactPhi)
 {
+  CH_TIME("EBLevelMACProjector::macEnforceGradientBC");
   BaseDomainBC* domainBCPhi = a_domainBCFactPhi->create(a_domain, a_ebisl, a_dx);
   Interval interv(0,0);
   //cast to non-const so we can do exchange.
@@ -356,6 +361,7 @@ macKappaDivergence(EBCellFAB&             a_divVel,
                    const RealVect&        a_dx,
                    const BaseIVFAB<Real>* a_boundaryVel)
 {
+  CH_TIME("EBLevelMACProjector::macKappaDivergence(box)");
   //set the divergence initially to zero
   //then loop through directions and increment the divergence
   //with each directions flux difference.
@@ -451,7 +457,7 @@ macEnforceVelocityBC(LevelData<EBFluxFAB>&              a_velocity,
 {
   CH_TIME("EBLevelMACProjector::macEnforceVelocityBC");
   BaseDomainBC* domainBC = a_domainBCFactVel->create(ProblemDomain(a_domain), a_ebisl, a_dx);
-  domainBC->enforceFaceVel(a_velocity,a_grids,a_ebisl,a_domain,a_dx,a_time,a_origin,a_doDivFreeOutflow,a_comp);
+  domainBC->enforceFaceVel(a_velocity,a_grids,a_ebisl,a_domain,a_dx,a_time,a_origin,a_comp);
   delete domainBC;
 }
 

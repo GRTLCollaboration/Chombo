@@ -64,10 +64,10 @@ described below in the section on time-dependent mode.
 OPTIONAL ARGUMENTS:
 Also, there are a number of optional arguments, including:
 
-compare.errorVars = <list of plotfile components> -- names of variables
+compare.error_var = <list of plotfile components> -- names of variables
     for which to compute the error.  If the argument isn't present
     then the intersection of the variables in the two files being
-    compared is used for "compare.errorVars".  It is an error for the
+    compared is used for "compare.error_var".  It is an error for the
     argument to be present but have no component names.
 
 compare.doPlots = <integer> -- if this is 1, then the compare code
@@ -94,6 +94,10 @@ compare.sum_var <list of variable names> -- There are also some
     error by summing the overlying exact-solution values and then 
     subtracting the underlying computed-solution value. 
     These variables may be specified using the "sum_var" inputs variable.
+
+compare.weight_var = <variable name> -- name of variable used to
+    weight cells.  If the weight_var option is given, then this
+    variable must be present in the "computed" solution file.
 
 compare.sameSize = <integer> -- if sameSize is 1, then the mode of
     operation is altered somewhat. Instead  of one single-level fine
@@ -145,6 +149,11 @@ compare.bogus_value = <Real> -- value to which error is initialized
 compare.removeMean = <1,0> -- if true (1), compute the mean of the
     differences, remove it before the norms are computed, and report
     the mean with the norms.  Default is false (0).
+
+compare.divide_by_dt -- divide errors by 
+    dt=(t_computed - t_exact). Useful for computing rates of change in a 
+    series of plotfiles.
+
 
 TIME-DEPENDENT MODE:
 

@@ -38,9 +38,9 @@
 #include "Vector.H"
 #include "MomentumTGA.H"
 #include "DisjointBoxLayout.H"
-#include "EBQuadCFInterp.H"
-#include "EBSpaceTimeFunction.H"
-
+#include "NWOEBQuadCFInterp.H"
+#include "EBNormalizeByVolumeFraction.H"
+#include "CellCenterToFaceCentroidTransform.H"
 #include "NamespaceHeader.H"
 
 //! \class EBAMRCNS
@@ -62,8 +62,7 @@ public:
   //! \param a_initialConditions A function of space and time that defines 
   //!                            initial conditions for the solver.
   EBAMRCNS(const EBAMRCNSParams& a_params,
-           const RefCountedPtr<EBPatchPolytropicFactory>& a_godFactory,
-           const RefCountedPtr<EBSpaceTimeFunction>& a_initialConditions);
+           const RefCountedPtr<EBPatchPolytropicFactory>& a_godFactory);
 
   //! Destructor.
   virtual ~EBAMRCNS();
@@ -309,13 +308,13 @@ public:
 
   //put ustar into state
   void finalAdvance(LevelData<EBCellFAB>& a_Ustar);
+  static bool s_solversDefined;
 #ifdef CH_USE_HDF5
   // ---------------------------------------------------
   // HDF5 routines for plotting and writing checkpoints.
   // ---------------------------------------------------
  
   static int s_NewPlotFile;
-  static bool s_solversDefined;
   virtual void writePlotHeaderOld    (HDF5Handle& a_handle) const;
   virtual void writePlotLevelOld     (HDF5Handle& a_handle) const;
   virtual void writePlotHeader       (HDF5Handle& a_handle) const;
@@ -327,8 +326,9 @@ public:
 #endif
 
 protected:
-
-  void defineFactories(bool a_atHalfTime);
+  void getProcMap(Vector<int>& a_proc_map, 
+                  Vector<Box>& a_m_level_grids) const;
+  void defineFactories();
 
   void implicitReflux();
 
@@ -357,6 +357,17 @@ protected:
   LevelData<EBCellFAB>         m_rhoUDotDele;
   LevelData<EBCellFAB>         m_pDivU;
   LevelData<EBCellFAB>         m_gradU;
+  LevelData<EBCellFAB>         m_UStar;
+  LevelData<EBCellFAB>         m_divSigma;
+  LevelData<EBCellFAB>         m_divSigmaU;
+  LevelData<EBCellFAB>         m_divKGradT;
+
+  LevelData<EBCellFAB>         m_veloOld;
+  LevelData<EBCellFAB>         m_veloNew;
+  LevelData<EBCellFAB>         m_rhsVelo;
+  LevelData<EBCellFAB>         m_rhsTemp;
+  LevelData<EBCellFAB>         m_tempOld;
+  LevelData<EBCellFAB>         m_tempNew;
 
   LevelData<EBCellFAB>         m_redisRHS;
   LevelData<BaseIVFAB<Real> >  m_massDiff;
@@ -385,9 +396,6 @@ protected:
   EBLevelCNS                                                    m_ebLevelGodunov;
   EBLevelRedist                                                 m_ebLevelRedist;
 
-  //! Initial conditions function.
-  RefCountedPtr<EBSpaceTimeFunction>                            m_ICs;
-
   //! Initial values of conserved quantities.
   Real m_originalMass;
   RealVect m_originalMomentum;
@@ -402,14 +410,16 @@ protected:
   //! End-of-step A coefficient for the viscous diffusion equation.
   RefCountedPtr<LevelData<EBCellFAB> >                          m_acoVelo;
 
-  RefCountedPtr<LevelData<EBFluxFAB> >                          m_eta;
+  RefCountedPtr<LevelData<EBFluxFAB> >                          m_mu;
   RefCountedPtr<LevelData<EBFluxFAB> >                          m_bcoTemp;
   RefCountedPtr<LevelData<EBFluxFAB> >                          m_lambda;
-  RefCountedPtr<LevelData<BaseIVFAB<Real> > >                   m_etaIrreg;
+  RefCountedPtr<LevelData<BaseIVFAB<Real> > >                   m_muIrreg;
   RefCountedPtr<LevelData<BaseIVFAB<Real> > >                   m_bcoTempIrreg;
   RefCountedPtr<LevelData<BaseIVFAB<Real> > >                   m_lambdaIrreg;
   RefCountedPtr<EBQuadCFInterp>                                 m_quadCFI;
-
+  RefCountedPtr<EBNormalizeByVolumeFraction>                    m_normalizor;
+  RefCountedPtr<CellCenterToFaceCentroidTransform>              m_coeffTransform;
+  
   static RefCountedPtr<AMRLevelOpFactory<LevelData<EBCellFAB> > >  s_tempFactory;
   static RefCountedPtr<AMRLevelOpFactory<LevelData<EBCellFAB> > >  s_veloFactory;
   static RefCountedPtr<AMRMultiGrid<     LevelData<EBCellFAB> > >  s_tempSolver;
@@ -422,7 +432,13 @@ protected:
 
   static RefCountedPtr<MomentumTGA > s_veloIntegratorTGA;
   static RefCountedPtr< EBLevelTGA > s_tempIntegratorTGA;
+
+  static RefCountedPtr<MomentumCrankNicolson > s_veloIntegratorCN;
+  static RefCountedPtr< EBLevelCrankNicolson > s_tempIntegratorCN;
+
   void fillCoefficients(const LevelData<EBCellFAB>& a_state);
+  void fillConstantCoefficients(const LevelData<EBCellFAB>& a_state);
+  void fillVariableCoefficients(const LevelData<EBCellFAB>& a_state);
   void     clearSolvers();
 
   //(rho I - dt Lv) delta = dt*Dr(Fm)

@@ -85,7 +85,15 @@ sub ChfAutoixProc::procChfAutoixMacros
         {
             if($idir < $SpaceDim)
             {
-                $printstring .= "$newstring$idir";
+            ###    $printstring .= "$newstring$idir";
+                if(@dimarg eq 1)
+                  {
+                    $printstring .= "$newstring$idir";
+                  }
+                else
+                  {
+                    $printstring .= "$dimarg[1]($dimarg[0]$idir)";
+                  }
             }
             if($idir < $SpaceDim-1)
             {

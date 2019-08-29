@@ -14,6 +14,7 @@
 #include "VoFIterator.H"
 #include "EBIndexSpace.H"
 #include "CH_Timer.H"
+#include "CH_OpenMP.H"
 #include "NamespaceHeader.H"
 /***********************/
 /***********************/
@@ -76,13 +77,16 @@ define(const DisjointBoxLayout& a_dbl,
   //grid grown by the redistribution radius
   m_sets.define(m_grids);
   int redistRad = m_stencil.getRedistRadius();
-  for (DataIterator dit = m_grids.dataIterator();
-      dit.ok(); ++dit)
+
+  DataIterator dit = m_grids.dataIterator(); 
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      Box thisBox = m_grids.get(dit());
+      Box thisBox = m_grids.get(dit[mybox]);
       thisBox.grow(redistRad);
       thisBox &= m_domain;
-      m_sets[dit()] = m_ebisl[dit()].getIrregIVS(thisBox);
+      m_sets[dit[mybox]] = m_ebisl[dit[mybox]].getIrregIVS(thisBox);
     }
   BaseIVFactory<Real> factory(m_ebisl, m_sets);
   IntVect ivghost = redistRad*IntVect::Unit;
@@ -96,10 +100,12 @@ EBLevelRedist::setToZero()
 {
   CH_TIME("EBLevelRedist::setToZero");
   CH_assert(isDefined());
-  for (DataIterator dit = m_grids.dataIterator();
-      dit.ok(); ++dit)
+  DataIterator dit = m_grids.dataIterator(); 
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      m_buffer[dit()].setVal(0.0);
+      m_buffer[dit[mybox]].setVal(0.0);
     }
 }
 /***********************/
@@ -162,17 +168,19 @@ redistribute(LevelData<EBCellFAB>& a_solution,
   m_buffer.exchange(wholeInterv);
   //pout() << "redistribute 1" << endl;
   //loop over grids.
-  for (DataIterator dit = m_grids.dataIterator();
-      dit.ok(); ++dit)
+  DataIterator dit = m_grids.dataIterator(); 
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      const BaseIVFAB<Real>& bufFAB = m_buffer[dit()];
-      const BaseIVFAB<VoFStencil>& stenFAB = m_stencil[dit()];
-      const Box& grid = m_grids.get(dit());
-      EBCellFAB& solFAB = a_solution[dit()];
+      const BaseIVFAB<Real>& bufFAB = m_buffer[dit[mybox]];
+      const BaseIVFAB<VoFStencil>& stenFAB = m_stencil[dit[mybox]];
+      const Box& grid = m_grids.get(dit[mybox]);
+      EBCellFAB& solFAB = a_solution[dit[mybox]];
 
       //pout() << "redistribute 2" << endl;
       //loop over the irregular vofs in the grown box.
-      for (VoFIterator vofit(m_sets[dit()], m_ebisl[dit()].getEBGraph());
+      for (VoFIterator vofit(m_sets[dit[mybox]], m_ebisl[dit[mybox]].getEBGraph());
           vofit.ok(); ++vofit)
         {
           const VolIndex& srcVoF = vofit();
@@ -196,6 +204,7 @@ redistribute(LevelData<EBCellFAB>& a_solution,
                       const Real& solu = solFAB(dstVoF, idst);
                       solFAB(dstVoF, idst) = mass*weight + solu;
                     }
+                  //ch_flops()+=a_srcVar.size()*2; 
                 } //end check if adding to valid soltuion
             } //end loop over vof stencil
         } //end loop over irregular vofs in grown box
@@ -213,19 +222,21 @@ fixExplicitLap(const LevelData<EBCellFAB>& a_kappaLap,
   CH_assert(isDefined());
 
   //loop over grids.
-  for (DataIterator dit = m_grids.dataIterator();
-      dit.ok(); ++dit)
+  DataIterator dit = m_grids.dataIterator(); 
+  int nbox=dit.size();
+#pragma omp parallel for 
+  for (int mybox=0;mybox<nbox; mybox++)
     {
-      const BaseIVFAB<VoFStencil>& stenFAB = m_stencil[dit()];
-      const Box& grid = m_grids.get(dit());
-      EBCellFAB& solFAB = a_solution[dit()];
-      const EBCellFAB& kappaLapFAB = a_kappaLap[dit()];
+      const BaseIVFAB<VoFStencil>& stenFAB = m_stencil[dit[mybox]];
+      const Box& grid = m_grids.get(dit[mybox]);
+      EBCellFAB& solFAB = a_solution[dit[mybox]];
+      const EBCellFAB& kappaLapFAB = a_kappaLap[dit[mybox]];
 
       //loop over the irregular vofs in the grown box.
-      for (VoFIterator vofit(m_sets[dit()], m_ebisl[dit()].getEBGraph());
+      for (VoFIterator vofit(m_sets[dit[mybox]], m_ebisl[dit[mybox]].getEBGraph());
           vofit.ok(); ++vofit)
         {
-          const EBISBox& ebisBox = m_ebisl[dit()];
+          const EBISBox& ebisBox = m_ebisl[dit[mybox]];
           const VolIndex& solnVoF = vofit();
           const VoFStencil& vofsten = stenFAB(solnVoF, 0);
           const Real& kappa = ebisBox.volFrac(solnVoF);

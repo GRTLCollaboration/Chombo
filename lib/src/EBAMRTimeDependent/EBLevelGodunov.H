@@ -17,7 +17,7 @@
 #include "DisjointBoxLayout.H"
 #include "LevelData.H"
 #include "PiecewiseLinearFillPatch.H"
-#include "EBPWLFillPatch.H"
+#include "AggEBPWLFillPatch.H"
 #include "EBFluxRegister.H"
 #include "ProblemDomain.H"
 #include "EBPatchGodunovFactory.H"
@@ -52,6 +52,10 @@ public:
      (coding standards).  a_nRefine is the refinement ratio between
      this level and the next coarser level.  a_numGhosts is the number
      of ghost cells in each direction.
+     forceNoEBCF = true promises that the embedded boundary 
+     will not cross the coarse-fine interface.   This will save you  
+     a  lot of compute time if you are certain you are tagging all irregulkar cells.
+     ivghost is the number of ghost cells being sent in on the data
   */
   void define(const DisjointBoxLayout&           a_thisDBL,
               const DisjointBoxLayout&           a_coarDBL,
@@ -66,7 +70,10 @@ public:
               const bool&                        a_hasSourceTerm,
               const EBPatchGodunovFactory* const a_patchGodunov,
               const bool&                        a_hasCoarser,
-              const bool&                        a_hasFiner);
+              const bool&                        a_hasFiner,
+              const IntVect  &                   a_ivGhost,
+              const bool&                        a_forceNoEBCF = false
+              );
 
   ///
   void floorConserved(LevelData<EBCellFAB>&         a_consState,
@@ -148,14 +155,16 @@ protected:
   EBISLayout        m_thisEBISL;
   EBISLayout        m_coarEBISL;
   bool              m_isDefined;
-  EBPatchGodunov*   m_ebPatchGodunov;
+  LayoutData<EBPatchGodunov*>   m_ebPatchGodunov;
+  //just for num fluxes and such
+  EBPatchGodunov*   m_ebPatchGodunovSP;
   RealVect          m_dx;
   ProblemDomain     m_domain;
   int               m_refRatCrse;
   int               m_nCons;
   int               m_nFlux;
   int               m_nGhost;
-  EBPWLFillPatch    m_patcher;
+  AggEBPWLFillPatch m_patcher;
   bool              m_useMassRedist;
   EBLevelRedist     m_ebLevelRedist;
   static int        s_timestep;
@@ -163,6 +172,8 @@ protected:
   bool m_doRZCoords;
   bool m_hasSourceTerm;
   LevelData<EBCellFAB> m_flattening;
+  bool m_forceNoEBCF;
+  IntVect m_ivGhost;
 private:
   //disallowed for all the usual reasons
   void operator=(const EBLevelGodunov& a_input)

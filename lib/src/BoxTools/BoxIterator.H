@@ -114,6 +114,10 @@ public:
   */
   bool ok();
 
+  unsigned long long size() const;
+
+  IntVect at(unsigned long long pt) const;
+
 protected:
   IntVect m_current;
   IntVect m_boxLo;
@@ -201,6 +205,68 @@ void BoxIterator::next()
 #endif
     }
 #endif
+}
+
+inline
+unsigned long long BoxIterator::size() const
+{
+  unsigned long long rtn = (m_boxHi[0]-m_boxLo[0]+1);
+#if CH_SPACEDIM >= 2
+  rtn *= (m_boxHi[1]-m_boxLo[1]+1);
+#if CH_SPACEDIM >= 3
+   rtn *= (m_boxHi[2]-m_boxLo[2]+1);
+#if CH_SPACEDIM >= 4
+    rtn *= (m_boxHi[3]-m_boxLo[3]+1);
+#if CH_SPACEDIM >= 5
+     rtn *= (m_boxHi[4]-m_boxLo[4]+1);
+#if CH_SPACEDIM == 6
+      rtn *= (m_boxHi[5]-m_boxLo[5]+1);
+#elif CH_SPACEDIM > 6
+        SPACEDIM > 6 undefined!;
+#endif
+ 
+#endif
+ 
+#endif
+ 
+#endif
+ 
+#endif
+        return rtn;
+}
+
+inline
+IntVect BoxIterator::at(unsigned long long int pt) const
+{
+  IntVect rtn;
+  rtn[0]=m_boxLo[0]+ pt%(m_boxHi[0]-m_boxLo[0]+1);
+#if CH_SPACEDIM >= 2
+  pt/=(m_boxHi[0]-m_boxLo[0]+1);
+  rtn[1]=m_boxLo[1]+ pt%(m_boxHi[1]-m_boxLo[1]+1);
+#if CH_SPACEDIM >= 3
+  pt/=(m_boxHi[1]-m_boxLo[1]+1);
+  rtn[2]=m_boxLo[2]+ pt%(m_boxHi[2]-m_boxLo[2]+1);
+#if CH_SPACEDIM >= 4
+  pt/=(m_boxHi[2]-m_boxLo[2]+1);
+  rtn[3]=m_boxLo[3]+ pt%(m_boxHi[3]-m_boxLo[3]+1);
+#if CH_SPACEDIM >= 5
+  pt/=(m_boxHi[3]-m_boxLo[3]+1);
+  rtn[4]=m_boxLo[4]+ pt%(m_boxHi[4]-m_boxLo[4]+1);
+#if CH_SPACEDIM == 6
+  pt/=(m_boxHi[4]-m_boxLo[4]+1);
+  rtn[5]=m_boxLo[5]+ pt%(m_boxHi[5]-m_boxLo[5]+1);
+#elif CH_SPACEDIM > 6
+        SPACEDIM > 6 undefined!;
+#endif
+ 
+#endif
+ 
+#endif
+ 
+#endif
+ 
+#endif
+        return rtn;
 }
 
 inline

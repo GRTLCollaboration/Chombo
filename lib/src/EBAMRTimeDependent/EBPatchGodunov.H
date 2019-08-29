@@ -445,6 +445,11 @@ virtual  void
     define(a_domain, dxVect);
   }
 
+  virtual void setTimeAndDt(const Real& a_time, const Real& a_dt)
+  {
+    m_time = a_time;
+    m_dt = a_dt;
+  }
   ///
   /**
      needs coarse-fine IVS to know where to drop order for interpolation

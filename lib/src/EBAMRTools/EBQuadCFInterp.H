@@ -196,8 +196,30 @@ protected:
   LayoutData<IntVectSet> m_ebcfivsLo[SpaceDim];
   LayoutData<IntVectSet> m_ebcfivsHi[SpaceDim];
 
+  int
+  getPhiStarStencil(VoFStencil&     a_stencil,
+                    const VolIndex& a_ghostVoFFine,
+                    const VolIndex& a_ghostVoFCoar,
+                    const EBISBox&  a_ebisBoxCoar,
+                    int a_idir, Side::LoHiSide a_sd,
+                    int a_refRat);
+
+  int
+  getStencils(VoFStencil&     a_fineStencil,
+              VoFStencil&     a_coarStencil,
+              const VolIndex& a_ghostVoFFine,
+              const VolIndex& a_ghostVoFCoar,
+              const EBISBox&  a_ebisBoxFine,
+              const EBISBox&  a_ebisBoxCoar,
+              int a_idir, Side::LoHiSide a_sd,
+              int a_refRat);
+
+
   // Copier object to handle corner cells
   CornerCopier m_cornerCopier;
+
+  //cannot use cells under finer grids
+  IntVectSet m_excludeIVSCoar;
 
   bool m_doEBCFCrossing;
   int m_refRat;

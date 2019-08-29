@@ -287,7 +287,6 @@ protected:
   int                             m_numPreCondIters;
   int                             m_relaxType;
 
-  Copier                          m_exchangeCopier;
 
   //stencils for operator evaluation
   LayoutData<RefCountedPtr<EBStencil> >  m_opEBStencil;

@@ -1,6 +1,4 @@
-# -*- Mode: Makefile; Modified: "Thu 06 Apr 2006 14:17:29 by dbs"; -*-
-
-## Chombo version 1.5
+## Chombo version 3.2
 
 ## Define default values for the user-visible variables.
 ##

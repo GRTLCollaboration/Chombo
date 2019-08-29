@@ -113,17 +113,17 @@ public:
                              const RealVect&      a_dx,
                              const IntVectSet&    a_cfivs);
 
-  void applyEBFluxPoint(const VolIndex&               a_vof,
-                        EBCellFAB&                    a_lphi,
-                        const EBCellFAB&              a_phi,
-                        VoFIterator&                  a_vofit,
-                        const LayoutData<IntVectSet>& a_cfivs,
-                        const DataIndex&              a_dit,
-                        const RealVect&               a_probLo,
-                        const RealVect&               a_dx,
-                        const Real&                   a_factor,
-                        const bool&                   a_useHomogeneous,
-                        const Real&                   a_time)          ;
+  virtual void applyEBFluxPoint(const VolIndex&               a_vof,
+                                EBCellFAB&                    a_lphi,
+                                const EBCellFAB&              a_phi,
+                                VoFIterator&                  a_vofit,
+                                const LayoutData<IntVectSet>& a_cfivs,
+                                const DataIndex&              a_dit,
+                                const RealVect&               a_probLo,
+                                const RealVect&               a_dx,
+                                const Real&                   a_factor,
+                                const bool&                   a_useHomogeneous,
+                                const Real&                   a_time)          ;
 
 
   //hack to let component of velocity get set
@@ -132,7 +132,7 @@ public:
   static bool s_areaFracWeighted;
   static bool s_useQuadrantBasedStencil;
 
-protected:
+  //protected:
   virtual void getFirstOrderStencil(VoFStencil&     a_stencil,
                                     Real&           a_weight,
                                     const VolIndex& a_vof,
@@ -145,8 +145,6 @@ protected:
                                      const EBISBox&  a_ebisBox,
                                      const RealVect& a_dx,
                                      const IntVectSet& a_cfivs);
-
-private:
 
 public:
   bool m_isDefined;
@@ -228,6 +226,8 @@ protected:
   Real m_value;
   RefCountedPtr<BaseBCValue> m_func;
 
+  RefCountedPtr<LevelData<BaseIVFAB<Real> > >  m_data;
+  bool m_dataBased;
 };
 
 #include "NamespaceFooter.H"

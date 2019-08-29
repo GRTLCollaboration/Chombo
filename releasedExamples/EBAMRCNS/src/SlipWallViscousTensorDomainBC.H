@@ -1,20 +1,20 @@
 #ifdef CH_LANG_CC
 /*
-*      _______              __
-*     / ___/ /  ___  __ _  / /  ___
-*    / /__/ _ \/ _ \/  V \/ _ \/ _ \
-*    \___/_//_/\___/_/_/_/_.__/\___/
-*    Please refer to Copyright.txt, in Chombo's root directory.
-*/
+ *      _______              __
+ *     / ___/ /  ___  __ _  / /  ___
+ *    / /__/ _ \/ _ \/  V \/ _ \/ _ \
+ *    \___/_//_/\___/_/_/_/_.__/\___/
+ *    Please refer to Copyright.txt, in Chombo's root directory.
+ */
 #endif
 
 #ifndef _SLIPWALLVISCOUSTENSORDOMAINBC_H_
 #define _SLIPWALLVISCOUSTENSORDOMAINBC_H_
 
 #include "RefCountedPtr.H"
-#include "BaseDomainBC.H"
+#include "ViscousBaseDomainBC.H"
 #include "BaseBCFuncEval.H"
-
+#include "BCFunc.H"
 #include "NamespaceHeader.H"
 
 ///
@@ -62,6 +62,41 @@ public:
                            const DataIndex&      a_dit,
                            const Real&           a_time,
                            const bool&           a_useHomogeneous);
+
+
+  virtual void 
+  fillVelGhost(FArrayBox&     a_state,
+               const Box&     a_valid,
+               const Box&     a_domain,
+               Real           a_dx,
+               bool           a_homogeneous)
+  {
+    Box valid = a_valid;
+    for (int i=0; i<CH_SPACEDIM; ++i)
+      {
+        Box ghostBoxLo = adjCellBox(valid, i, Side::Lo, 1);
+        Box ghostBoxHi = adjCellBox(valid, i, Side::Hi, 1);
+        if (!a_domain.contains(ghostBoxLo))
+          {
+            ReflectiveVectorBC(a_state,
+                               valid,
+                               a_dx,
+                               i,
+                               Side::Lo, 1);
+          }
+        
+        if (!a_domain.contains(ghostBoxHi))
+          {
+            ReflectiveVectorBC(a_state,
+                               valid,
+                               a_dx,
+                               i,
+                               Side::Hi, 1);
+          }
+        //grow so we hit corners
+        valid.grow(i,1);
+      }
+  }
 
 private:
   void getDivergenceAndGradient(Real&                 a_divergence,

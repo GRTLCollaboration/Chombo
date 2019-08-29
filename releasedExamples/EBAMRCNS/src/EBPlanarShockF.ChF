@@ -6,8 +6,8 @@ C    Please refer to Copyright.txt, in Chombo's root directory.
 
 #include "CONSTANTS.H"
 #include "EBLGIntegrator.H"
-cccccccccccccccccccc
-cccccccccccccccccccc
+ccccccccccccccccccccc
+ccccccccccccccccccccc
         subroutine getpostshockvel(
      &    chf_real[aupostshockvel])
 #include "EBPlanarShockCommon.fh"
@@ -29,7 +29,7 @@ cccccccccccccccccccc
         return
         end
 
-cccccccccccccccccccccccccccccc
+ccccccccccccccccccccccccccccccc
 cccccccccccccccccccccccccccccc
       subroutine getshocklocx(
      $     chf_const_real[aushockloc],
@@ -47,45 +47,67 @@ cccccccccccccccccccccccccccccc
       end
 
         subroutine setplanarshock(
-     &    chf_const_real[aupostshocktemp],
+     &    chf_const_real[aucv],
      &    chf_const_real[augamma],
      &    chf_const_real[aums],
      &    chf_const_real[aucenter],
      &    chf_const_real[aupreshockpress],
      &    chf_const_real[aupreshockdense],
+     &    chf_const_real[aubackpressure],
      &    chf_const_int[aushocknorm],
      &    chf_const_int[aushockback])
 
 #include "EBPlanarShockCommon.fh"
 #include "EBEOSCommon.fh"
 
-        real_t ww, pdiff
+        real_t  preshockc, preshocktemp,tdenom, tnumer, postshockmac
+        real_t p0,r0,p,r,umag,ke,ms, internal, cvtemp, specificheat
 
+        cvps = aucv
+        specificheat = cvps
         gamma = augamma
         shockms = aums
         shockcenter = aucenter
         shocknorm   = aushocknorm
 
-c     largely pirated from RampF.ChF
-        preshockpress = one
-        preshockdense  = gamma
 
-        ww = shockms*preshockdense
+        preshockpress  = aupreshockpress
+        preshockdense  = aupreshockdense
+        backpressure = aubackpressure
+        preshockc = sqrt(gamma*preshockpress/preshockdense)
+        preshocktemp = gamma*preshockpress/preshockdense
 
-        postshockpress =preshockpress*
-     &       ((shockms**2 - one)*(two*gamma)/(gamma + one) + one)
+        tnumer = ((2*gamma*(shockms**2)) - (gamma-1))*((gamma-1)*(shockms**2) + 2)
+        tdenom = ((gamma+1)**2)
+        postshocktemp = preshocktemp*tnumer/tdenom
 
-        pdiff = postshockpress - preshockpress
-        postshockdense =
-     &       one/(one/preshockdense - pdiff/ww**2)
+        tnumer = (2.*gamma*(shockms**2) - (gamma-one))
+        tdenom = gamma+1
+        postshockpress =preshockpress*tnumer/tdenom
+
+        
+        tnumer =  ((gamma+1)*shockms**2)
+        tdenom = ((gamma-1)*shockms**2 + 2)
+        postshockdense = preshockdense*tnumer/tdenom
+
+        postshockdense = preshockdense*tnumer/tdenom
+
+
+        postshockvel = shockms*preshockc*(1. - preshockdense/postshockdense)
 
         shockbackward = (aushockback.eq.1)
-        postshockvel = pdiff/ww
+
         if(shockbackward) then
            postshockvel = -postshockvel
         endif
 
-        postshocktemp   = aupostshocktemp
+        internal = preshockpress/((gamma-one)*preshockdense)
+        cvtemp = internal
+        preshocktemp = internal/specificheat
+
+        internal = postshockpress/((gamma-one)*postshockdense)
+        cvtemp = internal
+        postshocktemp = internal/specificheat
 
 c     set levels of smallnitude
         small = 1.0e-8

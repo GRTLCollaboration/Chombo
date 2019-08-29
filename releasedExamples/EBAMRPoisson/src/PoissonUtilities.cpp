@@ -18,6 +18,7 @@
 #include "EBCellFactory.H"
 #include "BRMeshRefine.H"
 #include "EBEllipticLoadBalance.H"
+#include "LoadBalance.H"
 #include "EBArith.H"
 
 #include "AllRegularService.H"
@@ -304,6 +305,22 @@ void getConductivityBCFactories(RefCountedPtr<BaseDomainBCFactory>&             
 }
 /**/
 void
+defineNWOConductivitySolver( AMRMultiGrid<LevelData<EBCellFAB> >&         a_solver,
+                             const Vector<DisjointBoxLayout>&             a_grids,
+                             const Vector<EBISLayout>&                    a_ebisl,
+                             LinearSolver<LevelData<EBCellFAB> >&         a_bottomSolver,
+                             const PoissonParameters&                     a_params)
+{
+  Vector<RefCountedPtr<LevelData<EBCellFAB> > >           aco;
+  Vector<RefCountedPtr<LevelData<EBFluxFAB> > >           bco;
+  Vector<RefCountedPtr<LevelData<BaseIVFAB<Real> > > >    bcoIrreg;
+  RefCountedPtr<NWOEBConductivityOpFactory> opFactory;
+  defineNWOConductivitySolver(a_solver, a_grids, a_ebisl, a_bottomSolver, a_params,
+                              aco, bco, bcoIrreg, opFactory);
+}
+
+/**/
+void
 defineConductivitySolver( AMRMultiGrid<LevelData<EBCellFAB> >&         a_solver,
                           const Vector<DisjointBoxLayout>&             a_grids,
                           const Vector<EBISLayout>&                    a_ebisl,
@@ -315,6 +332,20 @@ defineConductivitySolver( AMRMultiGrid<LevelData<EBCellFAB> >&         a_solver,
   Vector<RefCountedPtr<LevelData<BaseIVFAB<Real> > > >    bcoIrreg;
   RefCountedPtr<EBConductivityOpFactory> opFactory;
   defineConductivitySolver(a_solver, a_grids, a_ebisl, a_bottomSolver, a_params,
+                           aco, bco, bcoIrreg, opFactory);
+}
+void
+defineSlowConductivitySolver( AMRMultiGrid<LevelData<EBCellFAB> >&         a_solver,
+                              const Vector<DisjointBoxLayout>&             a_grids,
+                              const Vector<EBISLayout>&                    a_ebisl,
+                              LinearSolver<LevelData<EBCellFAB> >&         a_bottomSolver,
+                              const PoissonParameters&                     a_params)
+{
+  Vector<RefCountedPtr<LevelData<EBCellFAB> > >           aco;
+  Vector<RefCountedPtr<LevelData<EBFluxFAB> > >           bco;
+  Vector<RefCountedPtr<LevelData<BaseIVFAB<Real> > > >    bcoIrreg;
+  RefCountedPtr<slowEBCOFactory> opFactory;
+  defineSlowConductivitySolver(a_solver, a_grids, a_ebisl, a_bottomSolver, a_params,
                            aco, bco, bcoIrreg, opFactory);
 }
 
@@ -331,6 +362,42 @@ defineConductivitySolver( AMRMultiGrid<LevelData<EBCellFAB> >&                  
 {
   defineConductivityCoef(           aco, bco, bcoIrreg, a_grids, a_ebisl, a_params);
   getConductivityFactory(opFactory, aco, bco, bcoIrreg, a_grids, a_ebisl, a_params);
+
+  ProblemDomain coarsestDomain(a_params.coarsestDomain);
+  a_solver.define(coarsestDomain, *opFactory,  &a_bottomSolver, a_params.numLevels);
+
+  int numSmooth, numMG, maxIter;
+  Real eps, hang;
+  ParmParse pp2;
+  pp2.get("num_smooth", numSmooth);
+  pp2.get("num_mg",     numMG);
+  pp2.get("max_iterations", maxIter);
+  pp2.get("tolerance", eps);
+#ifdef CH_USE_FLOAT
+  eps = sqrt(eps);
+#endif
+  pp2.get("hang",      hang);
+  Real normThresh = 1.0e-30;
+  a_solver.setSolverParameters(numSmooth, numSmooth, numSmooth,
+                               numMG, maxIter, eps, hang, normThresh);
+  a_solver.m_verbosity = 5;
+
+}
+
+
+void
+defineNWOConductivitySolver( AMRMultiGrid<LevelData<EBCellFAB> >&                     a_solver,
+                             const Vector<DisjointBoxLayout>&                         a_grids,
+                             const Vector<EBISLayout>&                                a_ebisl,
+                             LinearSolver<LevelData<EBCellFAB> >&                     a_bottomSolver,
+                             const PoissonParameters&                                 a_params,
+                             Vector<RefCountedPtr<LevelData<EBCellFAB> > >&           aco,
+                             Vector<RefCountedPtr<LevelData<EBFluxFAB> > >&           bco,
+                             Vector<RefCountedPtr<LevelData<BaseIVFAB<Real> > > >&    bcoIrreg,
+                             RefCountedPtr<NWOEBConductivityOpFactory>&               opFactory)
+{
+  defineConductivityCoef(           aco, bco, bcoIrreg, a_grids, a_ebisl, a_params);
+  getNWOConductivityFactory(opFactory, aco, bco, bcoIrreg, a_grids, a_ebisl, a_params);
 
   ProblemDomain coarsestDomain(a_params.coarsestDomain);
   a_solver.define(coarsestDomain, *opFactory,  &a_bottomSolver, a_params.numLevels);
@@ -579,6 +646,79 @@ getConductivityFactory(RefCountedPtr<EBConductivityOpFactory>   &               
                                  a_params.ghostPhi, a_params.ghostRHS, relaxType));
 }
 
+
+void
+getNWOConductivityFactory(RefCountedPtr<NWOEBConductivityOpFactory>   &                     a_factory,
+                          const Vector<RefCountedPtr<LevelData<EBCellFAB> > >&           a_aco,
+                          const Vector<RefCountedPtr<LevelData<EBFluxFAB> > >&           a_bco,
+                          const Vector<RefCountedPtr<LevelData<BaseIVFAB<Real> > > >&    a_bcoIrreg,
+                          const Vector<DisjointBoxLayout>&                               a_grids,
+                          const Vector<EBISLayout>&                                      a_ebisl,
+                          const PoissonParameters&                                       a_params)
+{
+  CH_TIME("PoissonUtilities::getEBVTOFactory");
+  ParmParse pp2;
+  Real alpha, beta;
+  pp2.get("alpha", alpha);
+  pp2.get("beta", beta);
+
+  Vector<RefCountedPtr<NWOEBQuadCFInterp> > quadCFI(a_grids.size());
+  ProblemDomain levDom =  a_params.coarsestDomain;
+  ProblemDomain coarDom;
+  Vector<EBLevelGrid> eblg(a_grids.size());
+  ProblemDomain domLev = a_params.coarsestDomain;
+  for (int ilev = 0; ilev < a_grids.size(); ilev++)
+    {
+      eblg[ilev] = EBLevelGrid(a_grids[ilev], a_ebisl[ilev], domLev);
+      domLev.refine(a_params.refRatio[ilev]);
+    }
+  Real fineDx = a_params.coarsestDx[0];
+  for (int ilev = 0; ilev < a_grids.size(); ilev++)
+    {
+      if (ilev > 0)
+        {
+          int nref = a_params.refRatio[ilev-1];
+          fineDx *= nref;
+          int nvar = 1;
+          quadCFI[ilev] = RefCountedPtr<NWOEBQuadCFInterp>(new NWOEBQuadCFInterp(a_grids[ilev],
+                                                                                 a_grids[ilev-1],
+                                                                                 a_ebisl[ilev],
+                                                                                 a_ebisl[ilev-1],
+                                                                                 coarDom,
+                                                                                 nref, nvar, 
+                                                                                 fineDx,a_params.ghostPhi,
+                                                                                 *eblg[ilev].getCFIVS()));
+          coarDom.refine(a_params.refRatio[ilev]);
+        }
+      coarDom = levDom;
+      levDom.refine(a_params.refRatio[ilev]);
+    }
+
+  RefCountedPtr<BaseDomainBCFactory>      domBC;
+  RefCountedPtr<BaseEBBCFactory>          ebBC;
+  getConductivityBCFactories(domBC, ebBC, a_bco, a_grids, a_ebisl, a_params);
+
+  int relaxType = 1;
+  ParmParse pp;
+  pp.query("relax_type", relaxType);
+  if (relaxType == 1)
+    {
+      pout() << "using multicolor gauss-seidel relaxation" << endl;
+    }
+  else if (relaxType == 2)
+    {
+      pout() << "using gauss-seidel relaxation with red-black ordering" << endl;
+    }
+  else
+    {
+      MayDay::Error("invalid relaxation type");
+    }
+  a_factory = RefCountedPtr<NWOEBConductivityOpFactory>
+    (new NWOEBConductivityOpFactory(eblg, quadCFI, alpha, beta, a_aco, a_bco, a_bcoIrreg,
+                                    a_params.coarsestDx[0],  a_params.refRatio, domBC, ebBC,
+                                    a_params.ghostPhi, a_params.ghostRHS, relaxType));
+}
+
 /**/
 void
 getSlowConductivityFactory(RefCountedPtr<slowEBCOFactory>           &                     a_factory,
@@ -628,9 +768,9 @@ getSlowConductivityFactory(RefCountedPtr<slowEBCOFactory>           &           
   RefCountedPtr<BaseEBBCFactory>          ebBC;
   getConductivityBCFactories(domBC, ebBC, a_bco, a_grids, a_ebisl, a_params);
 
-  int relaxType;
+  int relaxType=1;
   ParmParse pp;
-  pp.get("mg_relax_type", relaxType);
+  pp.query("mg_relax_type", relaxType);
   a_factory = RefCountedPtr<slowEBCOFactory>
     (new slowEBCOFactory(eblg, quadCFI, alpha, beta, a_aco, a_bco, a_bcoIrreg,
                          a_params.coarsestDx[0],  a_params.refRatio, domBC, ebBC,
@@ -1299,8 +1439,8 @@ defineSolver(AMRMultiGrid<LevelData<EBCellFAB> >&         a_solver,
   ParmParse pp;
   int numPreCondIters = 40;
   pp.get("num_pre_cond_iters",numPreCondIters);
-  int relaxtype;
-  pp.get("mg_relax_type", relaxtype);
+  int relaxtype=1;
+  pp.query("mg_relax_type", relaxtype);
   if (relaxtype == 0)
     {
       pout() << "Using levelJacobi" << endl;
@@ -1388,8 +1528,8 @@ defineMGBCGSolver(BiCGStabSolver<Vector<LevelData<EBCellFAB>* > >& a_solver,
   ParmParse pp;
   int numPreCondIters = 40;
   pp.get("num_pre_cond_iters",numPreCondIters);
-  int relaxtype;
-  pp.get("mg_relax_type", relaxtype);
+  int relaxtype =1;
+  pp.query("mg_relax_type", relaxtype);
   if (relaxtype == 0)
     {
       pout() << "Using levelJacobi" << endl;
@@ -2486,8 +2626,8 @@ RefCountedPtr<AMRTGA<LevelData<EBCellFAB> > > newTGASolver(const Vector<Disjoint
   ParmParse pp;
   int numPreCondIters = 40;
   pp.get("num_pre_cond_iters",numPreCondIters);
-  int relaxType;
-  pp.get("mg_relax_type", relaxType);
+  int relaxType =1;
+  pp.query("mg_relax_type", relaxType);
   if (relaxType == 0)
     {
       pout() << "Using levelJacobi" << endl;
@@ -3724,6 +3864,181 @@ void definePoissonGeometry(const PoissonParameters&  a_params)
           ebisPtr->define(finestDomain, origin, fineDx[0], workshop, ebMaxSize, ebMaxCoarsen);
 
         }
+      else if (whichgeom == 88)
+        {
+          pout() << "parabolic mirror geometry with sphere" << endl;
+          Real amplitude;
+          RealVect center;
+          vector<Real> centervec;
+          int updir;
+          pp.get("mirror_updir", updir);
+          pp.get("mirror_amplitude", amplitude);
+          pp.getarr("mirror_center",centervec, 0, SpaceDim);
+          for (int idir = 0; idir < SpaceDim; idir++)
+            {
+              center[idir] = centervec[idir];
+            }
+
+          Vector<PolyTerm> poly;
+
+          PolyTerm mono;
+          Real coef;
+          IntVect powers;
+          if (updir != 0)
+          {
+            // x^2 term
+            coef = amplitude;
+            powers = IntVect::Zero;
+            powers[0] = 2;
+
+            mono.coef   = coef;
+            mono.powers = powers;
+
+            poly.push_back(mono);
+
+            // x term
+            coef = -2.0*amplitude*center[0];
+            powers = IntVect::Zero;
+            powers[0] = 1;
+
+            mono.coef   = coef;
+            mono.powers = powers;
+
+            poly.push_back(mono);
+
+#if CH_SPACEDIM==3
+            // z^2 term
+            coef = amplitude;
+            powers = IntVect::Zero;
+            powers[2] = 2;
+
+            mono.coef   = coef;
+            mono.powers = powers;
+
+            poly.push_back(mono);
+
+            // z term
+            coef = -2.0*amplitude*center[2];
+            powers = IntVect::Zero;
+            powers[2] = 1;
+
+            mono.coef   = coef;
+            mono.powers = powers;
+
+            poly.push_back(mono);
+#endif
+            // y or z term
+            coef = -1.0;
+            powers = IntVect::Zero;
+            powers[updir] = 1;
+
+            mono.coef   = coef;
+            mono.powers = powers;
+
+            poly.push_back(mono);
+
+            // constant
+            coef = amplitude*center[0]*center[0] + center[updir];
+            powers = IntVect::Zero;
+#if CH_SPACEDIM==3
+            coef += amplitude*center[2]*center[2];
+#endif
+
+            mono.coef   = coef;
+            mono.powers = powers;
+
+            poly.push_back(mono);
+          }
+          else
+          {
+            // y^2 term
+            coef = amplitude;
+            powers = IntVect::Zero;
+            powers[1] = 2;
+
+            mono.coef   = coef;
+            mono.powers = powers;
+
+            poly.push_back(mono);
+
+            // y term
+            coef = -2.0*amplitude*center[1];
+            powers = IntVect::Zero;
+            powers[1] = 1;
+
+            mono.coef   = coef;
+            mono.powers = powers;
+
+            poly.push_back(mono);
+
+#if CH_SPACEDIM==3
+            // z^2 term
+            coef = amplitude;
+            powers = IntVect::Zero;
+            powers[2] = 2;
+
+            mono.coef   = coef;
+            mono.powers = powers;
+
+            poly.push_back(mono);
+
+            // z term
+            coef = -2.0*amplitude*center[2];
+            powers = IntVect::Zero;
+            powers[2] = 1;
+
+            mono.coef   = coef;
+            mono.powers = powers;
+
+            poly.push_back(mono);
+#endif
+            // x term
+            coef = -1.0;
+            powers = IntVect::Zero;
+            powers[updir] = 1;
+
+            mono.coef   = coef;
+            mono.powers = powers;
+
+            poly.push_back(mono);
+
+            // constant
+            coef = amplitude*center[1]*center[1] + center[updir];
+#if CH_SPACEDIM==3
+            coef += amplitude*center[2]*center[2];
+#endif
+            powers = IntVect::Zero;
+
+            mono.coef   = coef;
+            mono.powers = powers;
+
+            poly.push_back(mono);
+          }
+
+
+          
+          bool inside = (amplitude >= 0);
+
+          PolynomialIF mirror(poly,inside);
+          vector<Real> sphere_center(SpaceDim);
+          pp.getarr("sphere_center",sphere_center, 0, SpaceDim);
+          RealVect sphereCenter;
+          for (int idir = 0; idir < SpaceDim; idir++)
+            {
+              sphereCenter[idir] = sphere_center[idir];
+            }
+          Real sphereRadius;
+          pp.get("sphere_radius", sphereRadius);
+
+          bool insideRegular = false;
+          pp.query("inside",insideRegular);
+
+          SphereIF sphere(sphereRadius,sphereCenter,insideRegular);
+
+          IntersectionIF ends(sphere, mirror);
+          GeometryShop workshop(ends,verbosity,fineDx);
+          ebisPtr->define(finestDomain, origin, fineDx[0], workshop, ebMaxSize, ebMaxCoarsen);
+        }
       else if (whichgeom == 22)
         {
           pout() << "Channel with Spheres" << endl;
@@ -4580,12 +4895,43 @@ void getAllIrregRefinedLayouts(Vector<DisjointBoxLayout>& a_grids,
         however because then one might violate proper nesting constraints.  There be dragons.
       */
 
+      bool useMortonOrdering =  true;
+      bool useEllipticLoadBalance = true;
+      pp.query("use_morton_ordering", useMortonOrdering);
+      pp.query("use_timed_load_balance", useEllipticLoadBalance);
       Vector<Vector<int> > newProcs(a_params.numLevels);
       ProblemDomain domLevel = a_params.coarsestDomain;
+      if(useMortonOrdering)
+        {
+          pout() << "using morton ordering for boxes" << endl;
+        }
+      else
+        {
+          pout() << "NOT using morton ordering for boxes" << endl;
+        }
+      if(useEllipticLoadBalance)
+        {
+          pout() << "using timed load balance" << endl;
+        }
+      else
+        {
+          pout() << "using standard load balance" << endl;
+        }
+
       for (int ilev = 0; ilev < a_params.numLevels; ilev++)
         {
-          mortonOrdering(newMeshes[ilev]);
-          EBEllipticLoadBalance(newProcs[ilev], newMeshes[ilev], domLevel);
+          if(useMortonOrdering)
+            {
+              mortonOrdering(newMeshes[ilev]);
+            }
+          if(useEllipticLoadBalance)
+            {
+              EBEllipticLoadBalance(newProcs[ilev], newMeshes[ilev], domLevel);
+            }
+          else
+            {
+              LoadBalance(newProcs[ilev], newMeshes[ilev]);
+            }
           domLevel.refine(a_params.refRatio[ilev]);
         }
 

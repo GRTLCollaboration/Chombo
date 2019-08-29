@@ -28,14 +28,10 @@ MollifyIF::MollifyIF(const BaseIF& a_impFunc,
   m_numPts = a_numPts;
 
   // Spacing of the sample points
-  if (m_numPts > 1)
-  {
-    m_dx = (m_max - m_min) / (m_numPts - 1);
-  }
-  else
-  {
-    m_dx = 0.0;
-  }
+  m_dx = (m_max - m_min) / m_numPts;
+
+  // Volume of a sample
+  m_vol = pow(m_dx,SpaceDim);
 
   // Box for the sampled mollifier
   m_sampleBox.define(IntVect::Zero, (m_numPts-1) * IntVect::Unit);
@@ -54,12 +50,14 @@ MollifyIF::MollifyIF(const BaseIF& a_impFunc,
     IntVect iv = bit();
     RealVect point;
 
+    // Reverse coordinates for evaluation -> convolution
     for (int idir = 0; idir < SpaceDim; idir++)
     {
-      point[idir] = m_max - iv[idir] * m_dx;
+      point[idir] = m_max - (iv[idir]+0.5) * m_dx;
     }
 
-    Real value = m_mollifier->value(point);
+    // The mollifier includes the volume of a sample
+    Real value = m_mollifier->value(point) * m_vol;
 
     m_mollifierSum += value;
     m_sampledMollifier(iv,0) = value;
@@ -96,8 +94,11 @@ MollifyIF::MollifyIF(const MollifyIF& a_inputIF)
   m_numPts = a_inputIF.m_numPts;
 
   m_dx     = a_inputIF.m_dx;
+  m_vol    = a_inputIF.m_vol;
 
   m_sampleBox = a_inputIF.m_sampleBox;
+
+  m_mollifierSum = a_inputIF.m_mollifierSum;
 
   m_sampledMollifier.define(a_inputIF.m_sampledMollifier.box(),
                             a_inputIF.m_sampledMollifier.nComp());
@@ -130,9 +131,11 @@ Real MollifyIF::value(const RealVect& a_point) const
 
     for (int idir = 0; idir < SpaceDim; idir++)
     {
-      point[idir] += m_min + iv[idir] * m_dx;
+      point[idir] += m_min + (iv[idir]+0.5) * m_dx;
     }
 
+    // The mollifier has been coordinate reversed, normalized, and includes
+    // the volume of a sample, so this is a normalized convolution
     retval += m_sampledMollifier(iv,0) * m_impFunc->value(point);
   }
 
@@ -148,6 +151,48 @@ Real MollifyIF::value(const IndexTM<Real,GLOBALDIM>& a_point) const
     }
 
   return value(point);
+}
+
+Real MollifyIF::value(const IndexTM<int,GLOBALDIM> & a_partialDerivative,
+                      const IndexTM<Real,GLOBALDIM>& a_point) const
+{
+  Real retval = LARGEREALVAL;
+
+  if (a_partialDerivative == IndexTM<int,GLOBALDIM>::Zero)
+  {
+    // Call the simple "value" function (it's more efficient as the mollifier
+    // samples are cached)
+    retval = value(a_point);
+  }
+  else
+  {
+    // Apply the partial derivative of the mollifier to the function at the
+    // current point (a_point)
+    retval = 0.0;
+
+    for (BoxIterator bit(m_sampleBox); bit.ok(); ++bit)
+    {
+      IntVect iv = bit();
+      IndexTM<Real,GLOBALDIM> mpoint(IndexTM<Real,GLOBALDIM>::Zero);
+      IndexTM<Real,GLOBALDIM> fpoint(a_point);
+
+      for (int idir = 0; idir < SpaceDim; idir++)
+      {
+        mpoint[idir]  = m_max - (iv[idir]+0.5) * m_dx;
+        fpoint[idir] += m_min + (iv[idir]+0.5) * m_dx;
+      }
+
+      // The partial derivative of the mollifier has been coordinate reversed
+      // but not scaled by the volume of a sample or normalized
+      retval += m_mollifier->value(a_partialDerivative,mpoint)
+              * m_impFunc  ->value(fpoint);
+    }
+
+    // Scale of the volume of a sample and normalize
+    retval *= m_vol/m_mollifierSum;
+  }
+
+  return retval;
 }
 
 BaseIF* MollifyIF::newImplicitFunction() const

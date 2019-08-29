@@ -92,11 +92,15 @@ public:
   {
     return m_dataBased;
   }
+
+  virtual void setType( RefCountedPtr<LevelData<BaseIVFAB<int> > >& a_type)
+  {
+  }
+
 protected:
 
   RefCountedPtr<LevelData<BaseIVFAB<Real> > >  m_data;
   bool m_dataBased;
-
 };
 
 ///

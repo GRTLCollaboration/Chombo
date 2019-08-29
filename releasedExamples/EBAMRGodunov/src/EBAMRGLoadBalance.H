@@ -23,25 +23,38 @@ class DisjointBoxLayout;
 ///
 /**
    Load balance a Vector of Boxes.
-   We  make the loads bases on a few ad hoc ideas.
-   we shall make fully covered boxes = constant load = covered load
-   we shall say that irregular points get irregular factor more load than
-   regular points.
+   this one balances based on time
 */
 extern int
-EBAMRGLoadBalance(Vector<int>& a_proc,
+EBAMRGLoadBalanceTime(Vector<int>& a_proc,
                   const Vector<Box>& a_boxes,
                   const ProblemDomain& a_domain,
                   bool a_verbose = false);
 
+
 ///
 /**
+   Load balance a Vector of Boxes.
+   this one balances based on peak memory
+*/
+extern int
+EBAMRGLoadBalancePeak(Vector<int>& a_proc,
+                      const Vector<Box>& a_boxes,
+                      const ProblemDomain& a_domain,
+                      bool a_verbose = false);
+
+///
+/**
+   use time = true uses time
+   use time = false uses memory
  */
 extern void
 getEBAMRGLoadsAndBoxes(Vector<unsigned long long>&    a_loads,
                        Vector<Box> &                  a_boxes,
                        const DisjointBoxLayout&       a_dblOrig,
-                       const ProblemDomain&           a_domain);
+                       const ProblemDomain&           a_domain,
+                       bool a_useTime);
+
 
 #include "NamespaceFooter.H"
 #endif

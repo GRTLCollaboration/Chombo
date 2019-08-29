@@ -23,7 +23,17 @@
 #include "EBIndexSpace.H"
 #include "EBCellFAB.H"
 #include "EBCellFactory.H"
+///only use the non-aggregated for testing
+#define USE_NONAGG 0
+
+#if USE_NONAGG==1
+#define EBSTENCIL_T NonAggregatedEBStencil
+#else
+#define EBSTENCIL_T EBStencil
+#endif
+
 #include "EBStencil.H"
+#include "NonAggregatedEBStencil.H"
 
 #include "EBLevelDataOps.H"
 #include "BaseEBBC.H"
@@ -67,6 +77,7 @@ class EBAMRPoissonOp: public LevelTGAHelmOp<LevelData<EBCellFAB>, EBFluxFAB >
 {
 public:
 
+#ifdef CH_USE_HDF5
   ///
   virtual void dumpAMR(Vector<LevelData<EBCellFAB>*>& a_data, string name)
   {
@@ -77,7 +88,30 @@ public:
   {
     writeEBLevelname(&a_data, name.c_str());
   }
+#endif
 
+#ifdef CH_USE_PETSC
+  ///Fill a_petsc_mat with a matrix that describes the operator stencil
+  int getPetscMatrix(Mat& a_petsc_mat);
+
+  ///put the real components into comp 0, the imaginary ones into comp 1
+  int getLevelDataFromPetscVector(LevelData<EBCellFAB>& a_data, const Vec& a_petsc_vec_real, const Vec& a_petsc_vec_imag );
+
+  ///
+  /**
+     get the matrix indicies associated with every point on the level
+     Not really going to work if level does not cover the domain
+  */
+  static int getMatrixIndexingLD(LevelData<BaseEBCellFAB<int> >&  a_gids, int & a_data,
+                                 const EBLevelGrid&               a_eblg,
+                                 const IntVect    &               a_ghostCellsPhi,
+                                 const bool       &               a_hasCoar);
+#endif
+  static void
+  getAggregatedLayout(DisjointBoxLayout           & a_dblCoar,
+                      const ProblemDomain         & a_domainCoar,
+                      const EBIndexSpace * const    a_ebisPtr,
+                      const int                   & a_maxBoxSize);
 
   ///
   /**
@@ -148,12 +182,11 @@ public:
     StencilIndex& operator= (const StencilIndex& a_sin)
     {
       m_vof   =a_sin.m_vof;
-      m_phase = a_sin.m_phase;      
+      m_phase = a_sin.m_phase;
       return *this;
     }
 
-    VolIndex vof() 
-const
+    VolIndex vof() const
     {
       return m_vof;
     }
@@ -459,6 +492,19 @@ EBAMRPoissonOp(const EBLevelGrid &                  a_eblgFine,
                            const int&                  a_icolor,
                            const bool&                 a_homogeneousPhysBC);
 
+  ///apply domainflux in multivariable mode
+  void
+  mvApplyDomainFlux(BaseFab<Real> & a_phiFAB,
+                    const Box&       a_grid,
+                    const DataIndex& a_dit);
+  /***/
+  ///for taking the multi-variable laplacian (think source term in viscous flow)
+  /// evaluates beta*laplacian (with inhomogeneous bcs).
+  /***/
+  void 
+  mvBetaLaplacianGrid(EBCellFAB         &              a_lph,
+                      const EBCellFAB   &              a_phi,
+                      const DataIndex   &              a_dit);
   ///
   /**
      this is the linearop function.  CFBC is set to homogeneous.  phic is null
@@ -489,6 +535,15 @@ EBAMRPoissonOp(const EBLevelGrid &                  a_eblgFine,
                                const LevelData<EBCellFAB>& a_rhs,
                                const int&                  a_refRat);
 
+  virtual void buildCopier(Copier                    & a_copier, 
+                           const LevelData<EBCellFAB>& a_lhs, 
+                           const LevelData<EBCellFAB>& a_rhs);
+
+
+  virtual void assignCopier(LevelData<EBCellFAB>      & a_lhs, 
+                            const LevelData<EBCellFAB>& a_rhs, 
+                            const Copier              & a_copier);
+
   Real
   AMRNorm(const LevelData<EBCellFAB>& a_coarResid,
           const LevelData<EBCellFAB>& a_fineResid,
@@ -500,6 +555,12 @@ EBAMRPoissonOp(const EBLevelGrid &                  a_eblgFine,
    */
   virtual void assign(LevelData<EBCellFAB>&       a_lhs,
                       const LevelData<EBCellFAB>& a_rhs);
+
+  ///copier definition was killing us.
+  virtual void 
+  assignLocal(LevelData<EBCellFAB>&       a_lhs,
+              const LevelData<EBCellFAB>& a_rhs);
+
 
   ///
   /**
@@ -677,6 +738,10 @@ EBAMRPoissonOp(const EBLevelGrid &                  a_eblgFine,
   void levelSlowRelax(LevelData<EBCellFAB>&       a_phi,
                       const LevelData<EBCellFAB>& a_rhs);
 
+  void levelJacobi(LevelData<EBCellFAB>&       a_phi,
+                   const LevelData<EBCellFAB>& a_rhs,
+                   int                         a_iterations);
+
   void levelMultiColorGS(LevelData<EBCellFAB>&       a_phi,
                          const LevelData<EBCellFAB>& a_rhs);
 
@@ -791,6 +856,7 @@ EBAMRPoissonOp(const EBLevelGrid &                  a_eblgFine,
 
 protected:
 
+  LevelData<EBCellFAB> m_resThisLevel;
   void defineMGObjects(const EBLevelGrid& a_eblgCoarMG);
   void defineWithCoarser(const EBLevelGrid& a_eblgCoar, const int& a_refToCoar);
   void defineWithFiner(const EBLevelGrid& a_eblgFine,
@@ -854,14 +920,13 @@ protected:
 
   //stencils for operator evaluation
   LayoutData<BaseIVFAB<VoFStencil> > m_opStencil;
-  LayoutData<RefCountedPtr<EBStencil> >  m_opEBStencil;
-  LayoutData<RefCountedPtr<EBStencil> >  m_opEBStencilInhomDomLo[SpaceDim];
-  LayoutData<RefCountedPtr<EBStencil> >  m_opEBStencilInhomDomHi[SpaceDim];
-  //stencils for operator evaluation on gauss-seidel colors
-  LayoutData<RefCountedPtr<EBStencil> >  m_colorEBStencil[EBAMRPO_NUMSTEN];
-  LayoutData<RefCountedPtr<EBStencil> >  m_colorEBStencilDomLo[EBAMRPO_NUMSTEN][SpaceDim];
-  LayoutData<RefCountedPtr<EBStencil> >  m_colorEBStencilDomHi[EBAMRPO_NUMSTEN][SpaceDim];
-  LayoutData<RefCountedPtr<EBStencil> >  m_invDiagEBStencil;
+  LayoutData<RefCountedPtr<EBSTENCIL_T> >  m_opEBStencil;
+  LayoutData<RefCountedPtr<EBSTENCIL_T> >  m_opEBStencilInhomDomLo[SpaceDim];
+  LayoutData<RefCountedPtr<EBSTENCIL_T> >  m_opEBStencilInhomDomHi[SpaceDim];
+  LayoutData<RefCountedPtr<EBSTENCIL_T> >  m_colorEBStencil[EBAMRPO_NUMSTEN];
+  LayoutData<RefCountedPtr<EBSTENCIL_T> >  m_colorEBStencilDomLo[EBAMRPO_NUMSTEN][SpaceDim];
+  LayoutData<RefCountedPtr<EBSTENCIL_T> >  m_colorEBStencilDomHi[EBAMRPO_NUMSTEN][SpaceDim];
+  LayoutData<RefCountedPtr<EBSTENCIL_T> >  m_invDiagEBStencil;
   //weights that get multiplied by alpha
   LayoutData<BaseIVFAB<Real> >       m_alphaDiagWeight;
   //weights that get multiplied by beta

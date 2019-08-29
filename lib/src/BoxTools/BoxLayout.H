@@ -502,6 +502,18 @@ public:
 
   ///
   /**
+     shift each box by a_iv
+   */
+  void shift(const IntVect& a_iv);
+
+  ///
+  /**
+     shift each box by a_iv
+   */
+  void shiftHalf(const IntVect& a_iv);
+
+  ///
+  /**
      set each box to the appropriate adjCellSide call
      if a_sd == side::lo, do adjCellLo, else do adjCellhi with the other arguments.
    */
@@ -623,6 +635,10 @@ public:
 
   inline unsigned int indexI(const LayoutIndex&) const;
 
+  const Vector<Entry>* rawPtr() const
+  {
+    return m_boxes;
+  }
 protected:
 
   void buildDataIndex();
@@ -675,7 +691,14 @@ BoxLayout::operator[](const LayoutIndex& a_layoutIndex) const
 inline bool
 BoxLayout::operator==(const BoxLayout& rhs) const
 {
-  return m_boxes == rhs.m_boxes;
+  bool firstcomp = (m_layout == rhs.m_layout);
+  bool secondcomp = true;
+  if((m_boxes->size() >0) && (rhs.m_boxes->size() > 0))  
+    {
+      secondcomp = (m_boxes->operator[](0).box == rhs.m_boxes->operator[](0).box);
+    }
+
+  return (firstcomp && secondcomp);
 }
 
 inline bool

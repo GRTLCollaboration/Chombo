@@ -8,12 +8,12 @@
  */
 #endif
 
-#ifndef _EBPlanarShockTemperatureBC_H_
-#define _EBPlanarShockTemperatureBC_H_
+#ifndef _EBPLANARSHOCKTEMPERATUREBC_H_
+#define _EBPLANARSHOCKTEMPERATUREBC_H_
 
 #include "RefCountedPtr.H"
-#include "BaseDomainBC.H"
-
+#include "ConductivityBaseDomainBC.H"
+#include "NeumannConductivityDomainBC.H"
 #include "NamespaceHeader.H"
 
 ///
@@ -104,6 +104,18 @@ public:
     m_slipWall      = a_slipWall;
   }
 
+  virtual void 
+  fillPhiGhost(FArrayBox&     a_state,
+               const Box&     a_valid,
+               const Box&     a_domain,
+               Real           a_dx,
+               bool           a_homogeneous)
+  {
+    NeumannConductivityDomainBC neumannBC;
+    neumannBC.setCoef(m_eblg, m_beta, m_bcoef);
+    neumannBC.setValue(0.0);
+    neumannBC.fillPhiGhost(a_state, a_valid, a_domain, a_dx, a_homogeneous);
+  }
 private:
   void
   whereAMI(bool& a_atInflow, 

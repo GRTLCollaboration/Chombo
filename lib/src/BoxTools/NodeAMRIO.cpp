@@ -705,7 +705,7 @@ viewNFAB(const NodeFArrayBox* a_dataPtr)
 {
   if (a_dataPtr == NULL) return;
 
-  const char* fname = tempnam(NULL,NULL);
+  const char* fname = "nodedata.hdf5";
   writeNFABname(a_dataPtr, fname);
   VisualizeFile(fname);
 }
@@ -784,7 +784,7 @@ viewNodeLevel(const LevelData<NodeFArrayBox>* a_dataPtr)
 {
   if (a_dataPtr == NULL) return;
 
-  const char* fname = tempnam(NULL,NULL);
+  const char* fname = "nodedata.hdf5";
   writeNodeLevelname(a_dataPtr, fname);
   VisualizeFile(fname);
 }

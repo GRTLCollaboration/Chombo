@@ -24,7 +24,7 @@ using std::cout;
 
 // Write a text file per call to LoadBalance()
 //#define PRINT_EXTRA_LB_FILE
-#ifdef PRINT_EXTRA_LB_FILE
+#ifndef CH_NTIMER
 #include <fstream>
 using std::fstream;
 #endif
@@ -164,6 +164,54 @@ int LoadBalance(Vector<int>&             a_procAssignments,
 // Boxes are also included, but only used if SWAP_SAME_SIZES_BOXES
 // is enabled
 ///
+
+static unsigned int mylog2 (unsigned int val) {
+    if (val == 0) return std::numeric_limits<unsigned int>::max();
+    if (val == 1) return 0;
+    unsigned int ret = 0;
+    while (val > 1) {
+        val >>= 1;
+        ret++;
+    }
+    return ret;
+}
+
+void split_load(Vector<int>& procs, Vector<long long>& loads,
+                Vector<long long>& sum, int p0, int p1, int start, int end)
+{
+  if(p0==(p1-1))
+    {
+      for(int i=start; i<end; i++){
+        procs[i]=p0;
+      }
+      loads[p0] = sum[end-1]-sum[start];
+      return;
+    }
+  if(p1-p0 == end-start)
+    {
+      int p=p0;
+      for(int i=start; i<end; i++,p++)
+        {
+          procs[i]=p;
+          if(i>0)loads[p]=sum[i]-sum[i-1];
+          else loads[p]=sum[0];
+        }
+      return;
+    }
+  if(start == end-1) MayDay::Error(" we should not arrive at this terminal case in LoadBalance \n");
+  long long base = 0;
+  if(start!=0) base=sum[start-1]; 
+  long long half = (sum[end-1]-base)/2+base;
+  int scan=start;
+  while(sum[scan]<half) scan++;
+  scan++;
+  int p = (p0+p1+1)/2;
+  while(p-p0>scan-start)scan++;
+  while(p1-p>end-scan) scan--;
+  split_load(procs, loads, sum, p0,   p,  start,  scan);
+  split_load(procs, loads, sum, p ,   p1, scan,    end);
+}
+  
 int LoadBalance(Vector<int>&             a_procAssignments,
                 const Vector<long long>& a_computeLoads,
                 const Vector<Box>&       a_boxes,
@@ -186,6 +234,26 @@ int LoadBalance(Vector<int>&             a_procAssignments,
     return 0;
   }
 
+  //  first, add another simple bail out if there are fewer boxes than there are LBnumProc
+  if(a_LBnumProc >= a_boxes.size())
+    {
+      for(int i=0; i<a_procAssignments.size(); i++) a_procAssignments[i]=i;
+      return 0;
+    }
+
+ 
+  Vector<long long> loads(a_LBnumProc, 0);
+  /*
+  //still serial version based on prefix sum   (bvs)
+  Vector<long long> sum(a_computeLoads.size());
+  sum[0]=a_computeLoads[0];
+  for(int i=1; i<sum.size(); i++) sum[i]=sum[i-1]+a_computeLoads[i];
+  // recursive function calls for splitting
+  split_load(a_procAssignments, loads, sum, 0, a_LBnumProc, 0, sum.size());
+
+  double totalLoad = sum.back();
+
+  */ 
   // first, compute 'total load'
   double totalLoad = 0;
   for (int ibox = 0; ibox < Nboxes; ++ibox)
@@ -221,7 +289,7 @@ int LoadBalance(Vector<int>&             a_procAssignments,
   // number of boxes to be farmed out is not much larger than the total number
   // of processors doing the work.  (ndk)
 
-  Vector<long long> loads(a_LBnumProc, 0);
+ 
   int bin = 0;
   double remainingLoad = totalLoad;
   double dynamicGoal = goal;
@@ -299,18 +367,16 @@ int LoadBalance(Vector<int>&             a_procAssignments,
       //  ibox, localLoad, a_computeLoads[ibox], remainingLoad, dynamicGoal, a_procAssignments[ibox]);
       //pout() << ctmp;
     }
-
-#ifdef PRINT_EXTRA_LB_FILE
+  
+#ifndef CH_NTIMER
   // Write a file per call to LoadBalance
-  static int NglobalLBcall=0;
-  if (procID() == 0)
-  {
-    char temp[1024];
-    sprintf(temp, "LB%03d.txt", NglobalLBcall);
-    NglobalLBcall++;
-    fstream FILE(temp, ios::out);
 
-    FILE << "  LoadBalance  sizes: a_computeLoads=" << a_computeLoads.size()
+  if (procID() == 0 && CH_TIMERS_ON())
+  {
+
+    if(!LBFILE.is_open()) LBFILE.open("LB.txt",ios_base::out);
+
+    LBFILE << "  LoadBalance  sizes: a_computeLoads=" << a_computeLoads.size()
          << " a_boxes=" << a_boxes.size()
          << " a_LBnumProc=" << a_LBnumProc  << "\n";
 
@@ -335,14 +401,13 @@ int LoadBalance(Vector<int>&             a_procAssignments,
         rankmin=i;
       }
     }
-    sprintf(temp, " minload=%12lld on rank%4d   maxload=%12lld on rank%4d\n",
-            minload, rankmin, maxload, rankmax);
-    FILE << temp;
+    LBFILE<<"minload="<<minload<<" on rank:"<<rankmin<<"  maxload="<<maxload<<" on rank:"<<rankmax<<"\n";
 
     //parallel inefficiency: sum of idle time of processors waiting for max load processor
     // dividedd by total load
     double eff = 1 - ((double)(maxload*a_LBnumProc - totalLoad))/totalLoad;
-    FILE << "loadbalance efficiency = " << eff << "  Nboxes=" << Nboxes << std::endl;
+    LBFILE << "loadbalance efficiency = " << eff << "  Nboxes=" << Nboxes << "\n";
+    LBFILE << "average number of boxes per proc = " << (double)Nboxes/(double)a_LBnumProc << "\n";
 
     // only print if there's something interesting to see...
     if (Nboxes > NminNumberBoxesToDiagPrint)
@@ -378,32 +443,31 @@ int LoadBalance(Vector<int>&             a_procAssignments,
         if (allSameSize)
         {
           // don't print
-          FILE << NboxCount << "  boxes of same size" << Nboxes << std::endl;
+          LBFILE << NboxCount << "  boxes of same size" << Nboxes << "\n";
         }
         else
         {
-          char tempstring2[1024];
-          sprintf(tempstring2, "rank%04d load=%-11lld boxes(%4d) [%6d] ",
-                  i, loads[i], NboxCount, bigbox);
-          FILE << tempstring2;
-          //pout() << "rank" << i << "  load=" << (long)loads[i] << " boxes("
-          //     << NboxCount << ")=";
+
+ 
+  
+          LBFILE << "rank" << i << "  load=" << (long)loads[i] << " boxes("
+               << NboxCount << ")=";
           if (printEveryBox)
           {
             for (int jbox=0; jbox < Nboxes; jbox++)
             {
               if (a_procAssignments[jbox] == i)
               {
-                FILE << a_computeLoads[jbox] << " ";
+                LBFILE << a_computeLoads[jbox] << " ";
               }
             }
           }
-          FILE << std::endl;
+ 
         }
       }
     }
-    FILE.close();
-
+ 
+    LBFILE<<"\n\n";
   }
 #endif
 
@@ -806,6 +870,35 @@ int LoadBalance(Vector<int>& a_procAssignments,
   return status;
 }
 
+int basicLoadBalance(Vector<int>& a_procAssignments, int a_numBoxes, int a_numProc)
+{
+  CH_TIME("basicLoadBalance");
+  a_procAssignments.resize(a_numBoxes);
+#pragma omp parallel
+  {
+    if(a_numProc == 1)
+      {
+#pragma omp for
+        for(int i=0; i<a_numBoxes; i++) a_procAssignments[i]=0;
+      }
+    else if(a_numBoxes<=a_numProc)
+      {
+#pragma omp for
+        for(int i=0; i<a_numBoxes; i++) a_procAssignments[i]=i;
+      }
+    else
+      {
+        float factor = (float)a_numProc/a_numBoxes;
+#pragma omp for
+        for(int i=0; i<a_numBoxes; i++)
+          {
+            a_procAssignments[i] = i*factor;
+          }
+      }
+  }
+  return 0;
+}
+      
 ////////////////////////////////////////////////////////////////
 //                utility functions                           //
 ////////////////////////////////////////////////////////////////

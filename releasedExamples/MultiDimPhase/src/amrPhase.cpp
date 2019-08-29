@@ -629,7 +629,9 @@ amrPHASE::timeStep(Real a_dt)
 
   pout () << "amrPHASE::timestep "
           << ",      end time = "
-         // << setiosflags(ios::fixed) << setprecision(6) << setw(12) 
+    // << std::fixed
+    //<< setprecision(6) 
+    //   << setw(12) 
           << m_time
           << ", dt = "
         //  << setiosflags(ios::fixed) << setprecision(6) << setw(12) 
@@ -948,7 +950,6 @@ amrPHASE::advectScalar(Vector<LevelData<FArrayBox>* >& a_new_scal,
         }
 #endif
 
-      FArrayBox srcFab;
       // now trace scalars to edges at time n+1/2
       for (dit.reset(); dit.ok(); ++dit)
         {
@@ -970,7 +971,7 @@ amrPHASE::advectScalar(Vector<LevelData<FArrayBox>* >& a_new_scal,
 
           FArrayBox& thisOldScal = oldScal[dit()];
 
-          srcFab.resize(thisGrownBox, nScal);
+          FArrayBox srcFab(thisGrownBox, nScal);
           srcFab.setVal(0.0);
 
           // new OldPatchGodunov-based approach to advection

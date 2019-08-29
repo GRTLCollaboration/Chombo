@@ -27,7 +27,9 @@ using std::sqrt;
 #include "Misc.H"
 #include "FArrayBox.H"
 #include "MayDay.H"
+#include "CH_Timer.H"
 #include "NamespaceHeader.H"
+
 
 FArrayBox::FArrayBox()
   :
@@ -44,8 +46,17 @@ FArrayBox::FArrayBox(const Box& a_box,
   // Note: All work is done in BaseFab<Real> constructor
 }
 
+FArrayBox::FArrayBox(const Box& a_box,
+                     int        a_n)
+  :
+  BaseFab<Real>(a_box,a_n)
+{
+
+}
+
 FArrayBox::~FArrayBox()
 {
+
 }
 
 Real FArrayBox::norm(const Box& a_subbox,
@@ -61,7 +72,7 @@ Real FArrayBox::norm(const Box& a_subbox,
   Real* tmp = 0;
   int tmplen = 0;
   Real nrm = 0;
-
+  unsigned long long int np=a_subbox.numPts()*a_numcomp;
   if (a_p == 0)
     {
       // here begins a normed fab function piece
@@ -91,6 +102,9 @@ Real FArrayBox::norm(const Box& a_subbox,
         {
           nrm = Max(nrm, tmp[i]);
         }
+#ifdef CH_COUNT_FLOPS      
+      ch_flops()+=np*a_numcomp;
+#endif
       // here it ends
     }
   else if (a_p == 1)
@@ -116,13 +130,16 @@ Real FArrayBox::norm(const Box& a_subbox,
                 }
             }
         } EndForPencil
-
+            
       nrm = tmp[0];
       for (int i = 1; i < tmplen; i++)
         {
           nrm += tmp[i];
         }
       // here it ends
+#ifdef CH_COUNT_FLOPS            
+      ch_flops()+=np*a_numcomp;
+#endif
     }
   else if (a_p == 2)
     {
@@ -224,6 +241,9 @@ Real FArrayBox::sumPow(const Box& a_subbox,
   }
 
   delete [] tmp;
+#ifdef CH_COUNT_FLOPS      
+  ch_flops()+=a_subbox.numPts()*a_p*a_numcomp;
+#endif
 
   return sum;
 }
@@ -241,18 +261,21 @@ Real FArrayBox::dotProduct(const FArrayBox& a_fab2, const Box& a_box) const
 {
   Real dot = 0.0;
   const FArrayBox& fab1 = *this;
-
+  
   int startcomp = 0;
   int endcomp = fab1.nComp()-1;
   int numcomp = endcomp+1;
-
+  
   CH_assert(fab1.nComp() == a_fab2.nComp());
-
+  
   ForAllThisCBNNXC(Real, a_box, startcomp, numcomp, a_fab2, startcomp)
     {
       dot += thisR * a_fab2R;
     } EndForTX
 
+#ifdef CH_COUNT_FLOPS           
+  ch_flops()+=a_box.numPts()*2*numcomp;
+#endif
   return dot;
 }
 
@@ -510,7 +533,7 @@ int FArrayBox::maskLT(BaseFab<int>& a_mask,
                       Real          a_val,
                       int           a_comp) const
 {
-  a_mask.resize(m_domain,1);
+  a_mask.define(m_domain,1);
   a_mask.setVal(0);
 
   int *mptr = a_mask.dataPtr();
@@ -538,7 +561,7 @@ int FArrayBox::maskLE(BaseFab<int>& a_mask,
                       Real          a_val,
                       int           a_comp) const
 {
-  a_mask.resize(m_domain,1);
+  a_mask.define(m_domain,1);
   a_mask.setVal(0);
 
   int *mptr = a_mask.dataPtr();
@@ -566,7 +589,7 @@ int FArrayBox::maskEQ(BaseFab<int>& a_mask,
                       Real          a_val,
                       int           a_comp) const
 {
-  a_mask.resize(m_domain,1);
+  a_mask.define(m_domain,1);
   a_mask.setVal(0);
 
   int *mptr = a_mask.dataPtr();
@@ -594,7 +617,7 @@ int FArrayBox::maskGT(BaseFab<int>& a_mask,
                       Real          a_val,
                       int           a_comp) const
 {
-  a_mask.resize(m_domain,1);
+  a_mask.define(m_domain,1);
   a_mask.setVal(0);
 
   int *mptr = a_mask.dataPtr();
@@ -623,7 +646,7 @@ int FArrayBox::maskGE(BaseFab<int>& a_mask,
                       Real          a_val,
                       int           a_comp) const
 {
-  a_mask.resize(m_domain,1);
+  a_mask.define(m_domain,1);
   a_mask.setVal(0);
 
   int *mptr = a_mask.dataPtr();
@@ -718,7 +741,9 @@ Real FArrayBox::sum(int a_comp,
   }
 
   delete [] _sum_row;
-
+#ifdef CH_COUNT_FLOPS        
+  ch_flops()+=m_domain.numPts()*a_numcomp;
+#endif
   return _sum;
 }
 
@@ -759,7 +784,9 @@ Real FArrayBox::sum(const Box& a_subbox,
   }
 
   delete [] _sum_row;
-
+#ifdef CH_COUNT_FLOPS        
+  ch_flops()+=a_subbox.numPts()*a_numcomp;
+#endif
   return _sum;
 }
 
@@ -770,6 +797,9 @@ FArrayBox& FArrayBox::invert(Real a_r)
     thisR = a_r / thisR;
   } EndFor
 
+#ifdef CH_COUNT_FLOPS            
+      ch_flops()+=m_domain.numPts()*nComp();
+#endif
   return *this;
 }
 
@@ -782,6 +812,9 @@ FArrayBox& FArrayBox::invert(Real a_r,
     thisR = a_r / thisR;
   } EndFor
 
+#ifdef CH_COUNT_FLOPS            
+      ch_flops()+=m_domain.numPts()*a_numcomp;
+#endif
   return *this;
 }
 
@@ -795,6 +828,9 @@ FArrayBox& FArrayBox::invert(Real       a_r,
     thisR = a_r / thisR;
   } EndFor
 
+#ifdef CH_COUNT_FLOPS            
+      ch_flops()+=a_subbox.numPts()*a_numcomp;
+#endif
   return *this;
 }
 
@@ -806,7 +842,9 @@ FArrayBox& FArrayBox::negate(const Box& a_subbox,
   {
     thisR = - thisR;
   } EndFor
-
+#ifdef CH_COUNT_FLOPS            
+     ch_flops()+=a_subbox.numPts()*a_numcomp;
+#endif
   return *this;
 }
 
@@ -817,7 +855,9 @@ FArrayBox& FArrayBox::negate(int a_comp,
   {
     thisR = - thisR;
   } EndFor
-
+#ifdef CH_COUNT_FLOPS            
+    ch_flops()+=m_domain.numPts()*a_numcomp;
+#endif
   return *this;
 }
 
@@ -827,7 +867,9 @@ FArrayBox& FArrayBox::negate()
   {
     thisR = - thisR;
   } EndFor
-
+#ifdef CH_COUNT_FLOPS            
+      ch_flops()+=m_domain.numPts()*nComp();
+#endif
   return *this;
 }
 
@@ -840,7 +882,9 @@ FArrayBox& FArrayBox::plus(Real       a_r,
   {
     thisR += a_r;
   } EndFor
-
+#ifdef CH_COUNT_FLOPS            
+     ch_flops()+=a_subbox.numPts()*a_numcomp;
+#endif
   return *this;
 }
 
@@ -852,7 +896,9 @@ FArrayBox& FArrayBox::plus(Real a_r,
   {
     thisR += a_r;
   } EndFor
-
+#ifdef CH_COUNT_FLOPS            
+   ch_flops()+=m_domain.numPts()*a_numcomp;
+#endif
   return *this;
 }
 
@@ -862,7 +908,9 @@ FArrayBox& FArrayBox::operator += (Real a_r)
   {
     thisR += a_r;
   } EndFor
-
+#ifdef CH_COUNT_FLOPS            
+    ch_flops()+=m_domain.numPts()*nComp();
+#endif
   return *this;
 }
 
@@ -872,7 +920,9 @@ FArrayBox& FArrayBox::operator += (const FArrayBox& a_x)
   {
     thisR += a_xR;
   } EndForTX
-
+#ifdef CH_COUNT_FLOPS            
+    ch_flops()+=m_domain.numPts()*nComp();
+#endif
   return *this;
 }
 
@@ -894,7 +944,9 @@ FArrayBox& FArrayBox::plus(const FArrayBox& a_src,
   {
     thisR += a_srcR * a_scale;
   } EndForTX
-
+#ifdef CH_COUNT_FLOPS            
+    ch_flops()+=m_domain.numPts()*nComp()*2;
+#endif
   return *this;
 }
 
@@ -908,7 +960,9 @@ FArrayBox& FArrayBox::plus(const FArrayBox& a_src,
   {
     thisR += a_srcR * a_scale;
   } EndForTX
-
+#ifdef CH_COUNT_FLOPS
+   ch_flops()+=m_domain.numPts()*a_numcomp*2;
+#endif
   return *this;
 }
 
@@ -921,7 +975,9 @@ FArrayBox& FArrayBox::plus(const FArrayBox& a_src,
   {
     thisR += a_srcR;
   } EndForTX
-
+#ifdef CH_COUNT_FLOPS      
+  ch_flops()+=m_domain.numPts()*a_numcomp;
+#endif
   return *this;
 }
 
@@ -937,7 +993,9 @@ FArrayBox& FArrayBox::plus(const FArrayBox& a_src,
   {
     thisR += a_srcR;
   } EndForTX
-
+#ifdef CH_COUNT_FLOPS      
+  ch_flops()+=a_subbox.numPts()*a_numcomp;
+#endif
   return *this;
 }
 
@@ -952,7 +1010,9 @@ FArrayBox& FArrayBox::plus(const FArrayBox& a_src,
   {
     thisR += a_srcR;
   } EndForTX
-
+#ifdef CH_COUNT_FLOPS      
+  ch_flops()+=a_srcbox.numPts()*a_numcomp;
+#endif
   return *this;
 }
 
@@ -968,7 +1028,9 @@ FArrayBox& FArrayBox::plus(const FArrayBox& a_src,
   {
     thisR += a_srcR * a_scale;
   } EndForTX
-
+#ifdef CH_COUNT_FLOPS      
+  ch_flops()+=a_srcbox.numPts()*a_numcomp*2;
+#endif
   return *this;
 }
 
@@ -983,7 +1045,9 @@ FArrayBox& FArrayBox::operator -= (const FArrayBox& a_x)
   {
     thisR -= a_xR;
   } EndForTX
-
+#ifdef CH_COUNT_FLOPS      
+      ch_flops()+=m_domain.numPts()*nComp();
+#endif
   return *this;
 }
 
@@ -1001,7 +1065,9 @@ FArrayBox& FArrayBox::minus(const FArrayBox& a_src,
   {
     thisR -= a_srcR;
   } EndForTX
-
+#ifdef CH_COUNT_FLOPS      
+     ch_flops()+=m_domain.numPts()*a_numcomp;
+#endif
   return *this;
 }
 
@@ -1017,7 +1083,9 @@ FArrayBox& FArrayBox::minus(const FArrayBox& a_src,
   {
     thisR -= a_srcR;
   } EndForTX
-
+#ifdef CH_COUNT_FLOPS      
+      ch_flops()+=a_subbox.numPts()*a_numcomp;
+#endif
   return *this;
 }
 
@@ -1032,7 +1100,9 @@ FArrayBox& FArrayBox::minus(const FArrayBox& a_src,
   {
     thisR -= a_srcR;
   } EndForTX
-
+#ifdef CH_COUNT_FLOPS      
+     ch_flops()+=a_srcbox.numPts()*a_numcomp;
+#endif
   return *this;
 }
 
@@ -1042,7 +1112,9 @@ FArrayBox& FArrayBox::operator *= (Real a_r)
   {
     thisR *= a_r;
   } EndFor
-
+#ifdef CH_COUNT_FLOPS      
+     ch_flops()+=m_domain.numPts()*nComp();
+#endif
   return *this;
 }
 
@@ -1059,7 +1131,9 @@ FArrayBox& FArrayBox::mult(Real a_r,
   {
     thisR *= a_r;
   } EndFor
-
+#ifdef CH_COUNT_FLOPS      
+     ch_flops()+=m_domain.numPts()*a_numcomp;
+#endif
   return *this;
 }
 
@@ -1072,7 +1146,9 @@ FArrayBox& FArrayBox::mult(Real       a_r,
   {
     thisR *= a_r;
   } EndFor
-
+#ifdef CH_COUNT_FLOPS      
+    ch_flops()+=a_subbox.numPts()*a_numcomp;
+#endif
   return *this;
 }
 
@@ -1082,7 +1158,9 @@ FArrayBox& FArrayBox::operator *= (const FArrayBox &a_x)
   {
     thisR *= a_xR;
   } EndForTX
-
+#ifdef CH_COUNT_FLOPS      
+      ch_flops()+=m_domain.numPts()*nComp();
+#endif
   return *this;
 }
 
@@ -1100,7 +1178,9 @@ FArrayBox& FArrayBox::mult(const FArrayBox& a_src,
   {
     thisR *= a_srcR;
   } EndForTX
-
+#ifdef CH_COUNT_FLOPS      
+    ch_flops()+=m_domain.numPts()*a_numcomp;
+#endif
   return *this;
 }
 
@@ -1116,7 +1196,9 @@ FArrayBox& FArrayBox::mult(const FArrayBox& a_src,
   {
     thisR *= a_srcR;
   } EndForTX
-
+#ifdef CH_COUNT_FLOPS      
+   ch_flops()+=a_subbox.numPts()*a_numcomp;
+#endif
   return *this;
 }
 
@@ -1131,7 +1213,9 @@ FArrayBox& FArrayBox::mult(const FArrayBox& a_src,
   {
     thisR *= a_srcR;
   } EndForTX
-
+#ifdef CH_COUNT_FLOPS      
+  ch_flops()+=a_srcbox.numPts()*a_numcomp;
+#endif
   return *this;
 }
 
@@ -1141,7 +1225,9 @@ FArrayBox& FArrayBox::operator /= (Real a_r)
   {
     thisR /= a_r;
   } EndFor
-
+#ifdef CH_COUNT_FLOPS      
+      ch_flops()+=m_domain.numPts()*nComp();
+#endif
   return *this;
 }
 
@@ -1158,7 +1244,9 @@ FArrayBox& FArrayBox::divide(Real a_r,
   {
     thisR /= a_r;
   } EndFor
-
+#ifdef CH_COUNT_FLOPS      
+   ch_flops()+=m_domain.numPts()*a_numcomp;
+#endif
   return *this;
 }
 
@@ -1171,7 +1259,9 @@ FArrayBox& FArrayBox::divide(Real       a_r,
   {
     thisR /= a_r;
   } EndFor
-
+#ifdef CH_COUNT_FLOPS      
+   ch_flops()+=a_subbox.numPts()*a_numcomp;
+#endif
   return *this;
 }
 
@@ -1181,7 +1271,9 @@ FArrayBox& FArrayBox::operator /= (const FArrayBox &a_x)
   {
     thisR /= a_xR;
   } EndForTX
-
+#ifdef CH_COUNT_FLOPS      
+     ch_flops()+=m_domain.numPts()*nComp();
+#endif
   return *this;
 }
 
@@ -1199,7 +1291,9 @@ FArrayBox& FArrayBox::divide(const FArrayBox& a_src,
   {
     thisR /= a_srcR;
   } EndForTX
-
+#ifdef CH_COUNT_FLOPS      
+     ch_flops()+=m_domain.numPts()*a_numcomp;
+#endif
   return *this;
 }
 
@@ -1214,7 +1308,9 @@ FArrayBox& FArrayBox::divide(const FArrayBox& a_src,
   {
     thisR /= a_srcR;
   } EndForTX
-
+#ifdef CH_COUNT_FLOPS      
+   ch_flops()+=a_subbox.numPts()*a_numcomp;
+#endif
   return *this;
 }
 
@@ -1229,7 +1325,9 @@ FArrayBox& FArrayBox::divide(const FArrayBox& a_src,
   {
     thisR /= a_srcR;
   } EndForTX
-
+#ifdef CH_COUNT_FLOPS      
+  ch_flops()+=a_srcbox.numPts()*a_numcomp;
+#endif
   return *this;
 }
 
@@ -1244,7 +1342,9 @@ axby(const FArrayBox& a_X, const FArrayBox& a_Y,
   {
     thisR = a_A * a_XR + a_B * a_YR;
   } EndForTX
-
+#ifdef CH_COUNT_FLOPS      
+      ch_flops()+=m_domain.numPts()*nComp()*3;
+#endif
   return *this;
 }
 //-----------------------------------------------------------------------
@@ -1261,7 +1361,9 @@ axby(const FArrayBox& a_X, const FArrayBox& a_Y,
   {
     thisR = a_A * a_XR + a_B * a_YR;
   } EndForTX
-
+#ifdef CH_COUNT_FLOPS      
+      ch_flops()+=m_domain.numPts()*nComp()*3;  // can't remember this function right.  bvs
+#endif
   return *this;
 }
 //-----------------------------------------------------------------------

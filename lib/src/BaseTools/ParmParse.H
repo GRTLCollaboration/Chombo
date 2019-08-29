@@ -2882,6 +2882,10 @@ public:
   */
   /*explicit*/ ParmParse (const char* prefix = 0);
 
+  ///got sick of typing c_str()
+  ParmParse(const std::string& a_string);
+
+
   /** The destructor.  The internal static table will only be deleted
     if there are no other ParmParse objects in existence.
   */
@@ -3677,6 +3681,7 @@ protected:
                 void*        ptr,
                 int          ival,
                 int          k=-1) const;
+public:
   //
   // Get an array of values.
   //
@@ -3698,6 +3703,7 @@ protected:
                 int          num_val,
                 int          k=-1) const;
 
+private:
   bool isInteger (const PP_String& str, int&    val) const;
   bool isUnsigned(const PP_String& str, unsigned long& val) const;
   int  isDouble  (const PP_String& str, double& val) const;

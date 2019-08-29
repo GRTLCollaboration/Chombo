@@ -25,8 +25,7 @@ enforceFaceVel(LevelData<EBFluxFAB>&    a_velocity,
                const ProblemDomain&     a_domain,
                const RealVect&          a_dx,
                const Real&              a_time,
-               const RealVect&          a_origin,
-               const bool&              a_doDivFreeOutflow)
+               const RealVect&          a_origin)
 {
   for (DataIterator dit = a_grids.dataIterator(); dit.ok(); ++dit)
     {
@@ -59,7 +58,7 @@ enforceFaceVel(LevelData<EBFluxFAB>&    a_velocity,
                   for (faceit.reset(); faceit.ok(); ++faceit)
                     {
                       Real boundaryVel = 0.0;
-                      getFaceVel(boundaryVel, faceit(), fluxVel, a_origin, a_dx, idir, 0, a_time,sit(),a_doDivFreeOutflow);
+                      getFaceVel(boundaryVel, faceit(), fluxVel, a_origin, a_dx, idir, 0, a_time,sit());
                       fluxVel[idir](faceit(), 0) = boundaryVel;
                     }
                 }
@@ -78,7 +77,6 @@ enforceFaceVel(LevelData<EBFluxFAB>&    a_velocity,
                const RealVect&          a_dx,
                const Real&              a_time,
                const RealVect&          a_origin,
-               const bool&              a_doDivFreeOutflow,
                const int&               a_comp)
 {
   DirichletPoissonEBBC::s_velComp = a_comp;
@@ -111,7 +109,7 @@ enforceFaceVel(LevelData<EBFluxFAB>&    a_velocity,
                   for (faceit.reset(); faceit.ok(); ++faceit)
                     {
                       Real boundaryVel = 0.0;
-                      getFaceVel(boundaryVel, faceit(), fluxVel, a_origin, a_dx, idir, 0, a_time,sit(),a_doDivFreeOutflow);
+                      getFaceVel(boundaryVel, faceit(), fluxVel, a_origin, a_dx, idir, 0, a_time,sit());
                       fluxVel[idir](faceit(), 0) = boundaryVel;
                     }
                 }
@@ -121,31 +119,5 @@ enforceFaceVel(LevelData<EBFluxFAB>&    a_velocity,
   a_velocity.exchange();
 }
 
-void
-ViscousBaseDomainBC::
-getFluxFromGrad(BaseFab<Real>&   a_flux,
-                const FArrayBox& a_grad,
-                const DataIndex& a_dit,
-                const int&       a_idir)
-{
-  FArrayBox& fluxFAB = (FArrayBox&) a_flux;
-  FArrayBox faceDiv(a_flux.box(), 1);
-  faceDiv.setVal(0.);
-  //compute the derivs as the sum of the appropriate grads
-  for (int divDir = 0; divDir < SpaceDim; divDir++)
-    {
-      int gradComp = TensorCFInterp::gradIndex(divDir,divDir);
-      int srccomp = gradComp;
-      int dstcomp = 0;
-      faceDiv.plus(a_grad, srccomp, dstcomp, 1);
-    }
-
-  //need to do this because there is an increment later
-  const Box& faceBox = fluxFAB.box();
-  fluxFAB.setVal(0.);
-  const FArrayBox& lamFace = (const FArrayBox&)((*m_lambda)[a_dit][a_idir].getSingleValuedFAB());
-  const FArrayBox& etaFace = (const FArrayBox&)((*m_eta   )[a_dit][a_idir].getSingleValuedFAB());
-  ViscousTensorOp::getFluxFromDivAndGrad(fluxFAB, faceDiv, a_grad, etaFace, lamFace, faceBox, a_idir);
-}
 
 #include "NamespaceFooter.H"

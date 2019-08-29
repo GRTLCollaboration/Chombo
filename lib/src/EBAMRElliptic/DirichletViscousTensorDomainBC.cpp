@@ -177,7 +177,7 @@ getDivergenceAndGradient(Real&                 a_divergence,
   //get divergence and gradient
   const EBISBox& ebisBox = a_phi.getEBISBox();
   const RealVect  point = EBArith::getFaceLocation(a_bndryFace,a_dx,a_probLo);
-  const RealVect normal = EBArith::getDomainNormal(a_idir,a_side);
+  //  const RealVect normal = EBArith::getDomainNormal(a_idir,a_side);
   //get gradient stencil and replace normal derivatives
   //with something that takes into account the boundary condition
   for (int icomp = 0; icomp < SpaceDim; icomp++)
@@ -294,7 +294,11 @@ create(const ProblemDomain& a_domain,
        const RealVect&      a_dx)
 {
   DirichletViscousTensorDomainBC* newBC = new DirichletViscousTensorDomainBC();
-  if (m_isFunctional)
+  if(m_onlyHomogeneous)
+    {
+      newBC->setValue(0.);
+    }
+  else if (m_isFunctional)
     {
       newBC->setFunction(m_func);
     }

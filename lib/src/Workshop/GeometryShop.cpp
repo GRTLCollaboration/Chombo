@@ -69,6 +69,20 @@ GeometryShop::~GeometryShop()
   delete(m_implicitFunction);
 }
 
+void GeometryShop::makeGrids( const ProblemDomain&      a_domain,
+                              DisjointBoxLayout&        a_grids,
+                              const int&                a_maxGridSize,
+                              const int&                a_maxIrregGridSize )
+{
+
+  if(m_implicitFunction==NULL) MayDay::Error("GeometryShop needs an implicit function to check makeGrids");
+
+  // it is OK if m_implicitFunction ignores maxGridSize and a_maxIrregGridSize. They are settings
+  // used to help control how EBIndexSpace decides on it's own guess for grids.  They are passed in here
+  // if a user wants to control these parameters through their ParmParse file and their IF knows what
+  // to do with that suggestion.  The conditions are not enforced anywhere.
+  m_implicitFunction->makeGrids(a_domain, a_grids, a_maxGridSize, a_maxIrregGridSize);
+}
 bool GeometryShop::twoEdgeIntersections(edgeMo a_edges[4])const
 {
   bool retval;
@@ -559,7 +573,8 @@ GeometryShop::fillGraph(BaseFab<int>        & a_regIrregCovered,
                         const Box           & a_ghostRegion,
                         const ProblemDomain & a_domain,
                         const RealVect      & a_origin,
-                        const Real          & a_dx) const
+                        const Real          & a_dx,
+                        const DataIndex     & a_di) const
 {
   CH_TIMERS("GeometryShop::fillGraph");
   CH_TIMER("part1",p1);
@@ -570,7 +585,7 @@ GeometryShop::fillGraph(BaseFab<int>        & a_regIrregCovered,
   CH_START(p1);
   CH_assert(a_domain.contains(a_ghostRegion));
   RealVect vectDx;
-  Real thrshd = m_thrshdVoF;
+
   // if (thrshd > 0)
   //   pout() << "GeometryShop:: Using thrshd: " << thrshd << endl;
   if (m_vectDx == RealVect::Zero)
@@ -582,16 +597,26 @@ GeometryShop::fillGraph(BaseFab<int>        & a_regIrregCovered,
       vectDx = m_vectDx;
     }
 
+  Real thrshd = m_thrshdVoF;
   PolyGeom::setVectDx(vectDx);
   IntVectSet ivsirreg = IntVectSet(DenseIntVectSet(a_ghostRegion, false));
   IntVectSet ivsdrop  = IntVectSet(DenseIntVectSet(a_ghostRegion, false));// CP
   long int numCovered=0, numReg=0, numIrreg=0;
   CH_STOP(p1);
 
+  IntVect ivdeblo(D_DECL(62,510,0));
+  IntVect ivdebhi(D_DECL(63,513,0));
+  Box debbox(ivdeblo, ivdebhi);
   CH_START(p2);
   for (BoxIterator bit(a_ghostRegion); bit.ok(); ++bit)
     {
       const IntVect iv =bit();
+      int istop = 0;
+      if(debbox.contains(iv))
+        {
+          istop = 1;
+        }
+
       Box miniBox(iv, iv);
       GeometryService::InOut inout = InsideOutside(miniBox, a_domain, a_origin, a_dx);
 
@@ -618,6 +643,22 @@ GeometryShop::fillGraph(BaseFab<int>        & a_regIrregCovered,
             }
         }
     }
+
+  //if a regular is next to a  covered, change to irregular with correct arcs and so on.
+  for (BoxIterator bit(a_ghostRegion); bit.ok(); ++bit)
+    {
+      const IntVect iv =bit();
+      int istop = 0;
+      if(debbox.contains(iv))
+        {
+          istop = 1;
+        }
+
+      if(a_regIrregCovered(iv, 0) == -1)
+        {
+          fixRegularCellsNextToCovered(a_nodes, a_regIrregCovered, a_validRegion, a_domain, iv, a_dx);
+        }
+    }
   // pout()<< "GeometryShop:: Counting cells:  " << numCovered<< "  "<< numReg<< "  "<< numIrreg  <<endl;
   CH_STOP(p2);
 
@@ -625,7 +666,14 @@ GeometryShop::fillGraph(BaseFab<int>        & a_regIrregCovered,
   // now loop through irregular cells and make nodes for each  one.
   for (IVSIterator ivsit(ivsirreg); ivsit.ok(); ++ivsit)
     {
-      VolIndex vof(ivsit(), 0);
+      const IntVect iv = ivsit();
+      VolIndex vof(iv, 0);
+      int istop = 0;
+      if(debbox.contains(iv))
+        {
+          istop = 1;
+        }
+
       Real     volFrac, bndryArea;
       RealVect normal, volCentroid, bndryCentroid;
       Vector<int> loArc[SpaceDim];
@@ -645,6 +693,7 @@ GeometryShop::fillGraph(BaseFab<int>        & a_regIrregCovered,
                           bndryCentroid,
                           loFaceCentroid,
                           hiFaceCentroid,
+                          a_regIrregCovered,
                           ivsirreg,
                           vof,
                           a_domain,
@@ -654,129 +703,39 @@ GeometryShop::fillGraph(BaseFab<int>        & a_regIrregCovered,
                           ivsit());
 
 
+      if (thrshd > 0. && volFrac < thrshd)
+        {
+          ivsdrop |= ivsit();
+          a_regIrregCovered(ivsit(), 0) = -1;
+          if (m_verbosity > 2)
+            {
+              pout() << "Removing vof " << vof << " with volFrac " << volFrac << endl;
+            }
+        }//CP record these nodes to be removed
+      else
+        {
           IrregNode newNode;
           newNode.m_cell          = ivsit();
           newNode.m_volFrac       = volFrac;
           newNode.m_cellIndex     = 0;
           newNode.m_volCentroid   = volCentroid;
           newNode.m_bndryCentroid = bndryCentroid;
-          // if (thrshd == 0.)//begin treb
-          //   {
-          //     //this piece of code successfully removes volFrac=1 cells where EB cuts the vertex
-          //     //this piece of code cannot be used with CP's small volFrac removal below
-          //     //this piece of code does not work for removal of volFrac << 1 because of regular next to covered
-          //     bool isIrregNode;
-          //     if ((volFrac < -thrshd || volFrac > thrshd) && (volFrac < 1.-thrshd || volFrac > 1.+thrshd))
-          //       // if (volFrac < 1.)
-          //       {
-          //         isIrregNode = true;
-          //       }
-          //     else
-          //       {
-          //         isIrregNode = false;
-          //       }
-      
-          //     for (int faceDir = 0; faceDir < SpaceDim; faceDir++)
-          //       {
-          //         int loNodeInd = newNode.index(faceDir, Side::Lo);
-          //         int hiNodeInd = newNode.index(faceDir, Side::Hi);
-          //         newNode.m_arc[loNodeInd]          = loArc[faceDir];
-          //         newNode.m_arc[hiNodeInd]          = hiArc[faceDir];
-          //         newNode.m_areaFrac[loNodeInd]     = loAreaFrac[faceDir];
-          //         newNode.m_areaFrac[hiNodeInd]     = hiAreaFrac[faceDir];
-          //         newNode.m_faceCentroid[loNodeInd] = loFaceCentroid[faceDir];
-          //         newNode.m_faceCentroid[hiNodeInd] = hiFaceCentroid[faceDir];
-          //         if (!isIrregNode)//only go through this logic if a covered or regular cell has chance of being irregular????
-          //           {
-          //             //covered cell with no arcs in all directions
-          //             if ((volFrac == 0.) && (loArc[faceDir].size() == 0) && (hiArc[faceDir].size() == 0))
-          //               {
-          //                 isIrregNode = false;
-          //               }
-          //             //regular cell with exactly one arc one lo and hi sides in all directions
-          //             else if ((volFrac > 1.-thrshd && volFrac < 1.+thrshd) && (loArc[faceDir].size() == 1) && (hiArc[faceDir].size() == 1))
-          //               // else if (volFrac == 1. && (loArc[faceDir].size() == 1) && (hiArc[faceDir].size() == 1))
-          //               {
-          //                 for (int numFace = 0; numFace < loAreaFrac[faceDir].size(); numFace++)
-          //                   {
-          //                     if (loAreaFrac[faceDir][numFace] > 1.-thrshd && loAreaFrac[faceDir][numFace] < 1.+thrshd)
-          //                       {
-          //                         isIrregNode = false;
-          //                       }
-          //                     else
-          //                       {
-          //                         isIrregNode = true;
-          //                       }
-          //                   }
-          //                 for (int numFace = 0; numFace < hiAreaFrac[faceDir].size(); numFace++)
-          //                   {
-          //                     if (hiAreaFrac[faceDir][numFace] > 1.-thrshd && hiAreaFrac[faceDir][numFace] < 1.+thrshd)
-          //                       {
-          //                         isIrregNode = false;
-          //                       }
-          //                     else
-          //                       {
-          //                         isIrregNode = true;
-          //                       }
-          //                   }
-          //               }
-          //             //if none of those fit for all directions, then irregular, and don't come back through this logic
-          //             else
-          //               {
-          //                 isIrregNode = true;
-          //               }
-          //           }
-          //       }
 
-          //     if (isIrregNode)
-          //       {
-          //         a_nodes.push_back(newNode);
-          //       }
-          //     else
-          //       {
-          //         if ((volFrac > 1.-thrshd && volFrac < 1.+thrshd))
-          //           // if (volFrac == 1.)
-          //           {
-          //             a_regIrregCovered(ivsit(), 0) =  1;
-          //             pout() << "Removing regular vof " << vof << " from irreg node list" << endl;
-          //           }
-          //       }
-          //   }//end treb
-          // else//begin CP
-          //   {
-              if (thrshd > 0. && volFrac < thrshd)
-                {
-                  ivsdrop |= ivsit();
-                  a_regIrregCovered(ivsit(), 0) = -1;
-                  if (m_verbosity > 2)
-                    {
-                      pout() << "Removing vof " << vof << " with volFrac " << volFrac << endl;
-                    }
-                }//CP record these nodes to be removed
-              else
-                {
-                  IrregNode newNode;
-                  newNode.m_cell          = ivsit();
-                  newNode.m_volFrac       = volFrac;
-                  newNode.m_cellIndex     = 0;
-                  newNode.m_volCentroid   = volCentroid;
-                  newNode.m_bndryCentroid = bndryCentroid;
-                  
-                  for (int faceDir = 0; faceDir < SpaceDim; faceDir++)
-                    {
-                      int loNodeInd = newNode.index(faceDir, Side::Lo);
-                      int hiNodeInd = newNode.index(faceDir, Side::Hi);
-                      newNode.m_arc[loNodeInd]          = loArc[faceDir];
-                      newNode.m_arc[hiNodeInd]          = hiArc[faceDir];
-                      newNode.m_areaFrac[loNodeInd]     = loAreaFrac[faceDir];
-                      newNode.m_areaFrac[hiNodeInd]     = hiAreaFrac[faceDir];
-                      newNode.m_faceCentroid[loNodeInd] = loFaceCentroid[faceDir];
-                      newNode.m_faceCentroid[hiNodeInd] = hiFaceCentroid[faceDir];
-                    }
-                  a_nodes.push_back(newNode);
-                }
-            // }//end CP
-    } // end loop over cells in the box
+          for (int faceDir = 0; faceDir < SpaceDim; faceDir++)
+            {
+              int loNodeInd = newNode.index(faceDir, Side::Lo);
+              int hiNodeInd = newNode.index(faceDir, Side::Hi);
+              newNode.m_arc[loNodeInd]          = loArc[faceDir];
+              newNode.m_arc[hiNodeInd]          = hiArc[faceDir];
+              newNode.m_areaFrac[loNodeInd]     = loAreaFrac[faceDir];
+              newNode.m_areaFrac[hiNodeInd]     = hiAreaFrac[faceDir];
+              newNode.m_faceCentroid[loNodeInd] = loFaceCentroid[faceDir];
+              newNode.m_faceCentroid[hiNodeInd] = hiFaceCentroid[faceDir];
+            }
+          a_nodes.push_back(newNode);
+        }
+
+    } // end loop over cut cells in the box
   CH_STOP(p3);
 
   CH_START(p4);
@@ -785,16 +744,6 @@ GeometryShop::fillGraph(BaseFab<int>        & a_regIrregCovered,
     {
       VolIndex vof(ivsit(), 0);
       IntVect iv = vof.gridIndex();
-
-      // multiple nodes in a gridcell location?
-      // where is this guy in a_nodes?--search in m_cell?
-      // how to access this guy's neighbor?
-
-      // newNode.m_cell          = ivsit();
-      // newNode.m_volFrac       = volFrac;
-      // newNode.m_cellIndex     = 0;
-      // newNode.m_volCentroid   = volCentroid;
-      // newNode.m_bndryCentroid = bndryCentroid;
       for (int faceDir = 0; faceDir < SpaceDim; faceDir++)
         {
           for (SideIterator sit; sit.ok(); ++sit)
@@ -831,75 +780,158 @@ GeometryShop::fillGraph(BaseFab<int>        & a_regIrregCovered,
                           a_nodes[inode].m_faceCentroid[arcindex].resize(0);
                         }
                     }
-                  else if (a_regIrregCovered(otherIV,0) == 1)
-                    // CP This is a very peculiar case which has so far
-                    // not happened. A irregular cell with tiny cell volFrac
-                    // is connected to a regular cell
-                    // may not work well. Need to be debugged before it is used
-
-                    {
-                      // MayDay::Error("need to be debugged before this branch is used!!!");
-                      VolIndex vof(otherIV, 0);
-                      Real     volFrac, bndryArea;
-                      RealVect normal, volCentroid, bndryCentroid;
-                      Vector<int> loArc[SpaceDim];
-                      Vector<int> hiArc[SpaceDim];
-                      Vector<Real> loAreaFrac[SpaceDim];
-                      Vector<Real> hiAreaFrac[SpaceDim];
-                      Vector<RealVect> loFaceCentroid[SpaceDim];
-                      Vector<RealVect> hiFaceCentroid[SpaceDim];
-                      computeVoFInternals(volFrac,
-                                          loArc,
-                                          hiArc,
-                                          loAreaFrac,
-                                          hiAreaFrac,
-                                          bndryArea,
-                                          normal,
-                                          volCentroid,
-                                          bndryCentroid,
-                                          loFaceCentroid,
-                                          hiFaceCentroid,
-                                          ivsirreg, // CP this one????
-                                          vof,
-                                          a_domain,
-                                          a_origin,
-                                          a_dx,
-                                          vectDx,
-                                          otherIV); // CP
-                      IrregNode newNode;
-                      // case where neighbor is regular.  need to make
-                      // a new node with IrregNode newNode;
-
-                      newNode.m_cell          = otherIV;
-                      newNode.m_volFrac       = volFrac;
-                      newNode.m_cellIndex     = 0;
-                      newNode.m_volCentroid   = volCentroid;
-                      newNode.m_bndryCentroid = bndryCentroid;
-
-                      for (int faceDir = 0; faceDir < SpaceDim; faceDir++)
-                        {
-                          int loNodeInd = newNode.index(faceDir, Side::Lo);
-                          int hiNodeInd = newNode.index(faceDir, Side::Hi);
-                          newNode.m_arc[loNodeInd]          = loArc[faceDir];
-                          newNode.m_arc[hiNodeInd]          = hiArc[faceDir];
-                          newNode.m_areaFrac[loNodeInd]     = loAreaFrac[faceDir];
-                          newNode.m_areaFrac[hiNodeInd]     = hiAreaFrac[faceDir];
-                          newNode.m_faceCentroid[loNodeInd] = loFaceCentroid[faceDir];
-                          newNode.m_faceCentroid[hiNodeInd] = hiFaceCentroid[faceDir];
-                        }
-
-                      a_nodes.push_back(newNode);
-                      a_regIrregCovered(otherIV,0) = 0;
-
-                    }//else if
                 }//valid region
             }//sit
-        }//facedir
+        }//facedir                             
+      //also need to fix regular cells next to new covered cell
+      fixRegularCellsNextToCovered(a_nodes, a_regIrregCovered, a_validRegion, a_domain, iv, a_dx);
     }//ivsdrop
   CH_STOP(p4);
+
 }
 
 /**********************************************/
+void
+GeometryShop::
+fixRegularCellsNextToCovered(Vector<IrregNode>    & a_nodes, 
+                             BaseFab<int>         & a_regIrregCovered,
+                             const Box            & a_validRegion,
+                             const ProblemDomain  & a_domain,
+                             const IntVect        & a_iv,
+                             const Real           & a_dx) const
+
+{
+  Box grownBox(a_iv, a_iv);
+  grownBox.grow(1);
+  grownBox  &= a_domain;
+  IntVectSet ivstocheck(grownBox);
+  ivstocheck -= a_iv;
+  Box ghostRegion = a_regIrregCovered.box();
+  //first check neighbors in each direction.  
+  //If any of these are regular, they are replaced 
+  //by irregular cells with a boundary face facing the covered cell.
+  for(int idir = 0; idir < SpaceDim; idir++)
+    {
+      for(SideIterator sit; sit.ok(); ++sit)
+        {
+          int ishift = sign(sit());
+          IntVect ivshift = a_iv + ishift*BASISV(idir);
+          ivstocheck -= ivshift;
+          int bfvalshift = -1;
+          if(ghostRegion.contains(ivshift))
+            {
+              bfvalshift = a_regIrregCovered(ivshift, 0);
+            }
+          if(bfvalshift  == 1)
+            {
+              a_regIrregCovered(ivshift, 0) =  0;
+
+              if(a_validRegion.contains(ivshift))
+                {
+                  IrregNode newNode;
+                  getFullNodeWithCoveredFace(newNode, 
+                                             a_regIrregCovered,
+                                             ivshift, 
+                                             a_domain);
+                  a_nodes.push_back(newNode);
+                }
+
+            }
+        }
+    }
+  //next we loop through the remaining cells (corner cells in 2d, corner and edge cells in 3D)
+  //if any of these are regular, we change them to irregular 
+  for(IVSIterator ivsit(ivstocheck); ivsit.ok(); ++ivsit)
+    {
+      const IntVect& iv = ivsit();
+      if(ghostRegion.contains(iv))
+        {
+          if(a_regIrregCovered(iv, 0) == 1)
+            {
+              a_regIrregCovered(iv, 0) = 0;
+              if(a_validRegion.contains(iv))
+              {
+                IrregNode newNode;
+                newNode.makeRegular(iv, a_dx, a_domain);
+                a_nodes.push_back(newNode);
+              }
+            }
+        }
+    }
+}
+/**********************************************/
+void
+GeometryShop::
+getFullNodeWithCoveredFace(IrregNode            & a_newNode, 
+                           const BaseFab<int>   & a_regIrregCovered,
+                           const IntVect        & a_iv,
+                           const ProblemDomain  & a_domain) const
+{
+
+  a_newNode.m_cell          = a_iv;
+  a_newNode.m_volFrac       = 1.0;
+  a_newNode.m_cellIndex     = 0;
+  a_newNode.m_volCentroid   = RealVect::Zero;
+  //set regular cell values then fix up
+  a_newNode.m_bndryCentroid = RealVect::Zero;
+  int coveredDir;
+  Side::LoHiSide coveredSide;
+  bool found = false;
+
+  for (int faceDir = 0; faceDir < SpaceDim; faceDir++)
+    {
+      for(SideIterator sit; sit.ok(); ++sit)
+        {
+          int ishift = sign(sit());
+          IntVect ivshift = a_iv + ishift*BASISV(faceDir);
+          Vector<int> arc;
+          Vector<Real> areaFrac;
+          Vector<RealVect> faceCentroid;
+          if(!a_domain.contains(ivshift))
+            {
+              // boundary arcs always -1
+              arc.resize(1,-1);
+              areaFrac.resize(1, 1.0);
+              faceCentroid.resize(1, RealVect::Zero);
+            }
+          else if (a_regIrregCovered(ivshift, 0) >= 0)
+            {
+              //irregular cell or regular cell
+              //compute vof internals returns something special if 
+              //connected to a regular cell but EBGraph treats both the  same.
+              //it just  knows that the cell index of a regular cell is 0
+              arc.resize(1,0);
+              areaFrac.resize(1, 1.0);
+              faceCentroid.resize(1, RealVect::Zero);
+            }
+          else if (a_regIrregCovered(ivshift, 0) < 0)
+            {
+              found = true;
+              coveredDir= faceDir;
+              coveredSide = sit();
+              // covered face!
+              arc.resize(0);
+              areaFrac.resize(0);
+              faceCentroid.resize(0);
+            }
+          else
+            {
+              MayDay::Error("logic error");
+            }
+          
+          int nodeInd = a_newNode.index(faceDir, sit());
+          a_newNode.m_arc[nodeInd]          = arc;
+          a_newNode.m_areaFrac[nodeInd]     = areaFrac;
+          a_newNode.m_faceCentroid[nodeInd] = faceCentroid;
+        }
+    }
+  //fix boundary centroid
+  if(found)
+    {
+      int centsign = sign(coveredSide);
+      a_newNode.m_bndryCentroid[coveredDir] =  centsign*0.5;
+    }
+}
 /*********************************************/
 void
 GeometryShop::computeVoFInternals(Real&               a_volFrac,
@@ -913,6 +945,7 @@ GeometryShop::computeVoFInternals(Real&               a_volFrac,
                                   RealVect&           a_bndryCentroid,
                                   Vector<RealVect>    a_loFaceCentroid[SpaceDim],
                                   Vector<RealVect>    a_hiFaceCentroid[SpaceDim],
+                                  const BaseFab<int>& a_regIrregCovered,
                                   const IntVectSet&   a_ivsIrreg,
                                   const VolIndex&     a_vof,
                                   const ProblemDomain&a_domain,
@@ -937,6 +970,7 @@ GeometryShop::computeVoFInternals(Real&               a_volFrac,
 
   if (SpaceDim == 2)
     {
+      CH_TIME("GeometryShop::computeVoFInternals-2D");
       // In 2D a vof is a faceMo = edgeMo[4],boundary length and normal vector
       faceMo Face;
       edgeMo edges[4];
@@ -1039,6 +1073,12 @@ GeometryShop::computeVoFInternals(Real&               a_volFrac,
         {
           // loside
           bool coveredLo = edges[edgeNormal*2].isCovered();
+          IntVect loiv = a_iv;
+          loiv[edgeNormal] -= 1;
+          if(a_domain.contains(loiv))
+            {
+              coveredLo= coveredLo || (a_regIrregCovered(loiv) < 0);
+            }
           if (coveredLo)
             {
               a_loArc[edgeNormal].resize(0);
@@ -1077,6 +1117,12 @@ GeometryShop::computeVoFInternals(Real&               a_volFrac,
 
           // hiside
           bool coveredHi = edges[edgeNormal*2+1].isCovered();
+          IntVect hiiv = a_iv;
+          hiiv[edgeNormal] += 1;
+          if(a_domain.contains(hiiv))
+            {
+              coveredHi = coveredHi || (a_regIrregCovered(hiiv, 0) < 0);
+            }
           if (coveredHi)
             {
               a_hiArc[edgeNormal].resize(0);
@@ -1119,6 +1165,7 @@ GeometryShop::computeVoFInternals(Real&               a_volFrac,
 
   if (SpaceDim==3)
     {
+      CH_TIME("GeometryShop::computeVoFInternals-3D");
       // 1) using the intvect, build up the classes in Moments: edgeMO,
       //    faceMo and finally vofMo
       // 2) check for covered or regular faces
@@ -1129,1037 +1176,1063 @@ GeometryShop::computeVoFInternals(Real&               a_volFrac,
       faceMo Faces[6];
       int index = -1;
 
-      for (int faceNormal = 0;faceNormal < SpaceDim;++faceNormal)
-        {
-          for (int hiLoFace = 0;hiLoFace < 2;++hiLoFace)
-            {
-              index += 1;
-              edgeMo edges[4];
-              bool faceCovered;
-              bool faceRegular;
-              bool faceDontKnow;
-              edgeData3D(edges,
-                         faceCovered,
-                         faceRegular,
-                         faceDontKnow,
-                         hiLoFace,
-                         faceNormal,
-                         a_dx,
-                         a_vectDx,
-                         a_iv,
-                         a_domain,
-                         a_origin);
-
-              CH_assert(faceRegular || faceCovered || faceDontKnow);
-              CH_assert((!(faceRegular && faceCovered)) && (!(faceRegular && faceDontKnow)) && (!(faceDontKnow && faceCovered)));
-              Faces[index].define(edges,faceNormal,faceCovered,faceRegular,faceDontKnow);
-
-              // if the face is covered we will deal with it later
-              if (!Faces[index].isCovered())
-                {
-                  Moments geom;
-                  // answer0 and answer1 have all the geometric facts
-                  Vector<Real> answer0;
-                  Vector<Real> answer1;
-
-                  int order = 0;
-                  answer0 = geom.momentCalc2D(order,Faces[index]);
-
-                  // area of this face
-                  Real area=answer0[0];
-
-                  order = 1;
-                  answer1 = geom.momentCalc2D(order,Faces[index]);
-
-                  // first we get the centroid of the face
-                  RealVect faceCentroid;
-                  for (int idir = 0; idir<SpaceDim;++idir)
-                    {
-                      faceCentroid[idir] = answer1[SpaceDim-1-idir];
-                    }
-
-                  if (area > 0.0)
-                    {
-                      faceCentroid /= area;
-                    }
-                  else
-                    {
-                      faceCentroid = RealVect::Zero;
-                    }
-
-                  // record these facts in member data
-                  Faces[index].setFaceCentroid(faceCentroid);
-                  Faces[index].setFaceArea(area);
-                }
-
-              else if (Faces[index].isCovered())
-                {
-                  RealVect faceCentroid = RealVect::Zero;
-                  Faces[index].setFaceCentroid(faceCentroid);
-                  Real area = 0.0;
-                  Faces[index].setFaceArea(area);
-                }
-            }
-        }
-#if 1
-      // iterate over faces recalculating face area
-      // face order is xLo,xHi,yLo,yHi,zLo,zHi
-      for (int iFace = 0; iFace < 2*SpaceDim; ++iFace)
-        {
-          // recalculate face area
-          faceMo& face = Faces[iFace];
-
-          // collect exactly two irregular edges or mayday.
-          Vector<RealVect> crossingPt;
-
-          Vector<int> cPtHiLo;
-          Vector<int> edgeHiLo;
-          Vector<int> edgeDir;
-
-          if (!(face.isCovered()) && !(face.isRegular()))
-            {
-              for ( int iEdge = 0; iEdge < 4; ++iEdge)
-                {
-                  const edgeMo& curEdge = face.retrieveEdge(iEdge);
-
-                  if (curEdge.dontKnow())
-                    {
-                      // loPt of edge
-                      RealVect loPt = curEdge.getLo();
-
-                      // hiPt of edge
-                      RealVect hiPt = curEdge.getHi();
-
-                      // direction that varies over edge
-                      int direction = curEdge.direction();
-                      bool intersectLo = curEdge.getIntersectLo();
-
-                      // for irregular or regular edges at most one pt away from corner
-                      if (intersectLo)
-                        {
-                          crossingPt.push_back(loPt);
-                          cPtHiLo.push_back(-1);
-
-                          int hilo = iEdge % 2;
-                          edgeHiLo.push_back(hilo);
-
-                          edgeDir.push_back(direction);
-                        }
-                      else // forced by dontknow
-                        {
-                          crossingPt.push_back(hiPt);
-                          cPtHiLo.push_back(1);
-
-                          int hilo = iEdge % 2;
-                          edgeHiLo.push_back(hilo);
-
-                          edgeDir.push_back(direction);
-                        }
-                    }
-                }
-            }
-
-          if (crossingPt.size() == 2)
-            {
-              // get midpoint of line connecting intersection points
-              RealVect midPt = crossingPt[0];
-              midPt += crossingPt[1];
-              midPt *= 0.5;
-
-              // faceNormal
-              int faceNormal = Faces[iFace].getFaceNormal();
-
-              // directions over which the face varies
-              int dir1 = (faceNormal + 1) % SpaceDim;
-              int dir2 = (faceNormal + 2) % SpaceDim;
-
-              // find max of (deltaDir1,deltaDir2)
-              Real deltaDir1 = Abs(crossingPt[0][dir1] - crossingPt[1][dir1]);
-              Real deltaDir2 = Abs(crossingPt[0][dir2] - crossingPt[1][dir2]);
-
-              // maxDir will be the direction of integration (independent variable)
-              // minDir will the direction in which the integrand varies(dependent variable)
-              int maxDir;
-              int minDir;
-              if (deltaDir1 > deltaDir2)
-                {
-                  maxDir = dir1;
-                  minDir = dir2;
-                }
-              else
-                {
-                  maxDir = dir2;
-                  minDir = dir1;
-                }
-              // flip area?
-              bool complementArea;
-
-              CH_assert (cPtHiLo.size() == 2);
-
-              // loEdge-loEdge
-              if (edgeHiLo[0] == 0 && edgeHiLo[1] == 0)
-                {
-                  // both crossingPts must be Hi or both must be Lo
-                  CH_assert((cPtHiLo[0] == 1 && cPtHiLo[1] == 1) ||
-                         (cPtHiLo[0] == -1 && cPtHiLo[1] == -1));
-
-                  // prismArea gives triangle
-
-                  // if the cPtHiLo[0]= hiPt then one wants triangle
-                  if (cPtHiLo[0] == 1)
-                    {
-                      complementArea = false;
-                    }
-                  else
-                    {
-                      complementArea = true;
-                    }
-                }
-
-              // hiEdge-hiEdge
-              else if (edgeHiLo[0] == 1 && edgeHiLo[1] == 1)
-                {
-                  // both crossingPts must be Hi or both must be Lo
-                  CH_assert((cPtHiLo[0] == 1 && cPtHiLo[1] == 1) ||
-                         (cPtHiLo[0] == -1 && cPtHiLo[1] == -1));
-                  // prismArea gives the trapezoid
-
-                  // cPtHiLo[0] == Lo => one wants the triangle area
-                  if (cPtHiLo[0] == -1)
-                    {
-                      complementArea = true;
-                    }
-                  else
-                    {
-                      complementArea = false;
-                    }
-                }
-
-              // hiEdge-loEdge
-              else if (edgeHiLo[0] == 1 && edgeHiLo[1] == 0)
-                {
-                  // cpPtHiLo must be the same or the opposite of edgeHiLo
-                  CH_assert((cPtHiLo[0] == 1 && cPtHiLo[1] == -1) ||
-                         (cPtHiLo[0] == -1 && cPtHiLo[1] == 1));
-                  // maxDir > minDir =>prismArea gives trapezoid
-                  // maxDir < minDir =>prismArea gives triangle
-
-                  // (cPtHiLo[1] == 1) => one wants trapezoid
-                  if (cPtHiLo[1] == 1)
-                    {
-                      if (maxDir < minDir)
-                        {
-                          complementArea = true;
-                        }
-                      else
-                        {
-                          complementArea = false;
-                        }
-                    }
-                  else
-                    // (cPtHiLo[1] == -1) => one wants triangle
-                    {
-                      if (maxDir < minDir)
-                        {
-                          complementArea = false;
-                        }
-                      else
-                        {
-                          complementArea = true;
-                        }
-                    }
-                }
-
-              // loEdge-hiEdge
-              else if (edgeHiLo[0] == 0 && edgeHiLo[1] == 1)
-                {
-                  // triangle + triangle complement or two trapezoids comprise this case
-
-                  // two trapezoids
-                  if (cPtHiLo[1] == 1 && cPtHiLo[0] == 1)
-                    {
-                      CH_assert(edgeDir[0] == edgeDir[1]);
-                      complementArea = false;
-                    }
-                  else if (cPtHiLo[1] == -1 && cPtHiLo[0] == -1)
-                    {
-                      CH_assert(edgeDir[0] == edgeDir[1]);
-                      complementArea = true;
-                    }
-                  // triangle + triangle complement
-                  // if the cPtHiLo[0]= loPt then one wants triangle
-                  else if (cPtHiLo[0] == -1 && cPtHiLo[1] == 1 )
-                    {
-                      CH_assert(edgeDir[0] != edgeDir[1]);
-                      // if maxDir < minDir prismArea gives trapezoid
-                      // if maxDir > minDir prismArea gives triangle
-                      if (maxDir < minDir)
-                        {
-                          complementArea = true;
-                        }
-                      else
-                        {
-                          complementArea = false;
-                        }
-                    }
-
-                  // cPtHiLo[0]= hiPt => one wants trapezoid
-                  else if (cPtHiLo[0] == 1 && cPtHiLo[1] == -1)
-                    {
-                      if (maxDir < minDir)
-                        {
-                          complementArea = false;
-                        }
-                      else
-                        {
-                          complementArea = true;
-                        }
-                    }
-                }
-
-              else
-                {
-                  MayDay::Abort("cPtDir or mindir or maxDir not set correctly");
-                }
-
-              // segLo is the lo end of segment within face[iEdge] for Brent Rootfinder
-              RealVect segLo = midPt;
-              segLo[minDir] = -0.5;
-
-              // segHi is the hi end of segment within face[iEdge] for Brent Rootfinder
-              RealVect segHi = midPt;
-              segHi[minDir] = 0.5;
-
-              // put segLo and segHi in physical coordinates
-              RealVect physSegLo;
-              RealVect physSegHi;
-              RealVect physMidPt;
-              for (int idir = 0; idir < SpaceDim; ++idir)
-                {
-                  physSegLo[idir] = a_vectDx[idir]*(segLo[idir] + a_iv[idir] + 0.5) + a_origin[idir];
-                  physSegHi[idir] = a_vectDx[idir]*(segHi[idir] + a_iv[idir] + 0.5) + a_origin[idir];
-                  physMidPt[idir] = a_vectDx[idir]*(midPt[idir] + a_iv[idir] + 0.5) + a_origin[idir];
-                }
-
-              // find upDir
-              pair<int,Side::LoHiSide> upDir;
-
-              // physIntercept is along the segment[physSegLo,physSegHi]
-              // this segment passes through midPt with direction minDir
-              Real physIntercept;
-              bool dropOrder = false;
-
-
-              if (m_stlIF == NULL)
+      {
+        CH_TIME("GeometryShop::computeVoFInternals-3D-part1");
+        for (int faceNormal = 0;faceNormal < SpaceDim;++faceNormal)
+          {
+            for (int hiLoFace = 0;hiLoFace < 2;++hiLoFace)
               {
-                Real fLo = m_implicitFunction->value(physSegLo);
-                Real fHi = m_implicitFunction->value(physSegHi);
+                index += 1;
+                edgeMo edges[4];
+                bool faceCovered;
+                bool faceRegular;
+                bool faceDontKnow;
+                edgeData3D(edges,
+                           faceCovered,
+                           faceRegular,
+                           faceDontKnow,
+                           hiLoFace,
+                           faceNormal,
+                           a_dx,
+                           a_vectDx,
+                           a_iv,
+                           a_domain,
+                           a_origin);
 
-                // This guards against the "root must be bracketed" error
-                // by dropping order
-                if (fLo*fHi > 0.0)
+                CH_assert(faceRegular || faceCovered || faceDontKnow);
+                CH_assert((!(faceRegular && faceCovered)) && (!(faceRegular && faceDontKnow)) && (!(faceDontKnow && faceCovered)));
+                Faces[index].define(edges,faceNormal,faceCovered,faceRegular,faceDontKnow);
+
+                // if the face is covered we will deal with it later
+                if (!Faces[index].isCovered())
                   {
-                    dropOrder = true;
+                    Moments geom;
+                    // answer0 and answer1 have all the geometric facts
+                    Vector<Real> answer0;
+                    Vector<Real> answer1;
+
+                    int order = 0;
+                    answer0 = geom.momentCalc2D(order,Faces[index]);
+
+                    // area of this face
+                    Real area=answer0[0];
+
+                    order = 1;
+                    answer1 = geom.momentCalc2D(order,Faces[index]);
+
+                    // first we get the centroid of the face
+                    RealVect faceCentroid;
+                    for (int idir = 0; idir<SpaceDim;++idir)
+                      {
+                        faceCentroid[idir] = answer1[SpaceDim-1-idir];
+                      }
+
+                    if (area > 0.0)
+                      {
+                        faceCentroid /= area;
+                      }
+                    else
+                      {
+                        faceCentroid = RealVect::Zero;
+                      }
+
+                    // record these facts in member data
+                    Faces[index].setFaceCentroid(faceCentroid);
+                    Faces[index].setFaceArea(area);
+                  }
+
+                else if (Faces[index].isCovered())
+                  {
+                    RealVect faceCentroid = RealVect::Zero;
+                    Faces[index].setFaceCentroid(faceCentroid);
+                    Real area = 0.0;
+                    Faces[index].setFaceArea(area);
+                  }
+              }
+          }
+      }
+#if 1
+      {
+        CH_TIME("GeometryShop::computeVoFInternals-3D-part2");
+        // iterate over faces recalculating face area
+        // face order is xLo,xHi,yLo,yHi,zLo,zHi
+        for (int iFace = 0; iFace < 2*SpaceDim; ++iFace)
+          {
+            // recalculate face area
+            faceMo& face = Faces[iFace];
+
+            // collect exactly two irregular edges or mayday.
+            Vector<RealVect> crossingPt;
+
+            Vector<int> cPtHiLo;
+            Vector<int> edgeHiLo;
+            Vector<int> edgeDir;
+
+            if (!(face.isCovered()) && !(face.isRegular()))
+              {
+                for ( int iEdge = 0; iEdge < 4; ++iEdge)
+                  {
+                    const edgeMo& curEdge = face.retrieveEdge(iEdge);
+
+                    if (curEdge.dontKnow())
+                      {
+                        // loPt of edge
+                        RealVect loPt = curEdge.getLo();
+
+                        // hiPt of edge
+                        RealVect hiPt = curEdge.getHi();
+
+                        // direction that varies over edge
+                        int direction = curEdge.direction();
+                        bool intersectLo = curEdge.getIntersectLo();
+
+                        // for irregular or regular edges at most one pt away from corner
+                        if (intersectLo)
+                          {
+                            crossingPt.push_back(loPt);
+                            cPtHiLo.push_back(-1);
+
+                            int hilo = iEdge % 2;
+                            edgeHiLo.push_back(hilo);
+
+                            edgeDir.push_back(direction);
+                          }
+                        else // forced by dontknow
+                          {
+                            crossingPt.push_back(hiPt);
+                            cPtHiLo.push_back(1);
+
+                            int hilo = iEdge % 2;
+                            edgeHiLo.push_back(hilo);
+
+                            edgeDir.push_back(direction);
+                          }
+                      }
+                  }
+              }
+
+            if (crossingPt.size() == 2)
+              {
+                // get midpoint of line connecting intersection points
+                RealVect midPt = crossingPt[0];
+                midPt += crossingPt[1];
+                midPt *= 0.5;
+
+                // faceNormal
+                int faceNormal = Faces[iFace].getFaceNormal();
+
+                // directions over which the face varies
+                int dir1 = (faceNormal + 1) % SpaceDim;
+                int dir2 = (faceNormal + 2) % SpaceDim;
+
+                // find max of (deltaDir1,deltaDir2)
+                Real deltaDir1 = Abs(crossingPt[0][dir1] - crossingPt[1][dir1]);
+                Real deltaDir2 = Abs(crossingPt[0][dir2] - crossingPt[1][dir2]);
+
+                // maxDir will be the direction of integration (independent variable)
+                // minDir will the direction in which the integrand varies(dependent variable)
+                int maxDir;
+                int minDir;
+                if (deltaDir1 > deltaDir2)
+                  {
+                    maxDir = dir1;
+                    minDir = dir2;
                   }
                 else
                   {
-                    physIntercept = BrentRootFinder(physSegLo, physSegHi, minDir);
+                    maxDir = dir2;
+                    minDir = dir1;
                   }
-              }
-              else
-              {
-                dropOrder = true;
-              }
+                // flip area?
+                bool complementArea;
 
-              if (!dropOrder)
-                {
-                  // put physIntercept into relative coordinates
-                  Real intercept = physIntercept - a_origin[minDir];
-                  intercept  /= a_vectDx[minDir];
-                  intercept -= (a_iv[minDir]+0.5);
+                CH_assert (cPtHiLo.size() == 2);
 
-                  // push_back third pt onto crossingPt
-                  crossingPt.push_back(midPt);
-                  crossingPt[2][minDir] = intercept;
-
-                  // integrate w.r.t xVec using Prismoidal Rule
-                  RealVect xVec;
-                  RealVect yVec;
-
-                  // the order of (xVec,yVec) will be sorted out in PrismoidalAreaCalc
-                  xVec[0] = crossingPt[0][maxDir];
-                  xVec[1] = crossingPt[2][maxDir];
-                  xVec[2] = crossingPt[1][maxDir];
-
-                  yVec[0] = crossingPt[0][minDir];
-                  yVec[1] = crossingPt[2][minDir];
-                  yVec[2] = crossingPt[1][minDir];
-
-                  // Prismoidal's rule
-                  Real area = PrismoidalAreaCalc(xVec,yVec);
-
-                  // Only use area if it is valid
-                  if (area >= 0.0 && area <= 1.0)
+                // loEdge-loEdge
+                if (edgeHiLo[0] == 0 && edgeHiLo[1] == 0)
                   {
-                    // assign area to this value or (1 - this value)
-                    if (complementArea)
+                    // both crossingPts must be Hi or both must be Lo
+                    CH_assert((cPtHiLo[0] == 1 && cPtHiLo[1] == 1) ||
+                           (cPtHiLo[0] == -1 && cPtHiLo[1] == -1));
+
+                    // prismArea gives triangle
+
+                    // if the cPtHiLo[0]= hiPt then one wants triangle
+                    if (cPtHiLo[0] == 1)
                       {
-                        area = 1.0 - area;
+                        complementArea = false;
+                      }
+                    else
+                      {
+                        complementArea = true;
+                      }
+                  }
+
+                // hiEdge-hiEdge
+                else if (edgeHiLo[0] == 1 && edgeHiLo[1] == 1)
+                  {
+                    // both crossingPts must be Hi or both must be Lo
+                    CH_assert((cPtHiLo[0] == 1 && cPtHiLo[1] == 1) ||
+                           (cPtHiLo[0] == -1 && cPtHiLo[1] == -1));
+                    // prismArea gives the trapezoid
+
+                    // cPtHiLo[0] == Lo => one wants the triangle area
+                    if (cPtHiLo[0] == -1)
+                      {
+                        complementArea = true;
+                      }
+                    else
+                      {
+                        complementArea = false;
+                      }
+                  }
+
+                // hiEdge-loEdge
+                else if (edgeHiLo[0] == 1 && edgeHiLo[1] == 0)
+                  {
+                    // cpPtHiLo must be the same or the opposite of edgeHiLo
+                    CH_assert((cPtHiLo[0] == 1 && cPtHiLo[1] == -1) ||
+                           (cPtHiLo[0] == -1 && cPtHiLo[1] == 1));
+                    // maxDir > minDir =>prismArea gives trapezoid
+                    // maxDir < minDir =>prismArea gives triangle
+
+                    // (cPtHiLo[1] == 1) => one wants trapezoid
+                    if (cPtHiLo[1] == 1)
+                      {
+                        if (maxDir < minDir)
+                          {
+                            complementArea = true;
+                          }
+                        else
+                          {
+                            complementArea = false;
+                          }
+                      }
+                    else
+                      // (cPtHiLo[1] == -1) => one wants triangle
+                      {
+                        if (maxDir < minDir)
+                          {
+                            complementArea = false;
+                          }
+                        else
+                          {
+                            complementArea = true;
+                          }
+                      }
+                  }
+
+                // loEdge-hiEdge
+                else if (edgeHiLo[0] == 0 && edgeHiLo[1] == 1)
+                  {
+                    // triangle + triangle complement or two trapezoids comprise this case
+
+                    // two trapezoids
+                    if (cPtHiLo[1] == 1 && cPtHiLo[0] == 1)
+                      {
+                        CH_assert(edgeDir[0] == edgeDir[1]);
+                        complementArea = false;
+                      }
+                    else if (cPtHiLo[1] == -1 && cPtHiLo[0] == -1)
+                      {
+                        CH_assert(edgeDir[0] == edgeDir[1]);
+                        complementArea = true;
+                      }
+                    // triangle + triangle complement
+                    // if the cPtHiLo[0]= loPt then one wants triangle
+                    else if (cPtHiLo[0] == -1 && cPtHiLo[1] == 1 )
+                      {
+                        CH_assert(edgeDir[0] != edgeDir[1]);
+                        // if maxDir < minDir prismArea gives trapezoid
+                        // if maxDir > minDir prismArea gives triangle
+                        if (maxDir < minDir)
+                          {
+                            complementArea = true;
+                          }
+                        else
+                          {
+                            complementArea = false;
+                          }
                       }
 
-                    Faces[iFace].setFaceArea(area);
+                    // cPtHiLo[0]= hiPt => one wants trapezoid
+                    else if (cPtHiLo[0] == 1 && cPtHiLo[1] == -1)
+                      {
+                        if (maxDir < minDir)
+                          {
+                            complementArea = false;
+                          }
+                        else
+                          {
+                            complementArea = true;
+                          }
+                      }
                   }
+
+                else
+                  {
+                    MayDay::Abort("cPtDir or mindir or maxDir not set correctly");
+                  }
+
+                // segLo is the lo end of segment within face[iEdge] for Brent Rootfinder
+                RealVect segLo = midPt;
+                segLo[minDir] = -0.5;
+
+                // segHi is the hi end of segment within face[iEdge] for Brent Rootfinder
+                RealVect segHi = midPt;
+                segHi[minDir] = 0.5;
+
+                // put segLo and segHi in physical coordinates
+                RealVect physSegLo;
+                RealVect physSegHi;
+                RealVect physMidPt;
+                for (int idir = 0; idir < SpaceDim; ++idir)
+                  {
+                    physSegLo[idir] = a_vectDx[idir]*(segLo[idir] + a_iv[idir] + 0.5) + a_origin[idir];
+                    physSegHi[idir] = a_vectDx[idir]*(segHi[idir] + a_iv[idir] + 0.5) + a_origin[idir];
+                    physMidPt[idir] = a_vectDx[idir]*(midPt[idir] + a_iv[idir] + 0.5) + a_origin[idir];
+                  }
+
+                // find upDir
+                pair<int,Side::LoHiSide> upDir;
+
+                // physIntercept is along the segment[physSegLo,physSegHi]
+                // this segment passes through midPt with direction minDir
+                Real physIntercept;
+                bool dropOrder = false;
+
+
+                if (m_stlIF == NULL)
+                {
+                  Real fLo = m_implicitFunction->value(physSegLo);
+                  Real fHi = m_implicitFunction->value(physSegHi);
+
+                  // This guards against the "root must be bracketed" error
+                  // by dropping order
+                  if (fLo*fHi > 0.0)
+                    {
+                      dropOrder = true;
+                    }
+                  else
+                    {
+                      physIntercept = BrentRootFinder(physSegLo, physSegHi, minDir);
+                    }
                 }
-            }
-        }
+                else
+                {
+                  dropOrder = true;
+                }
+
+                if (!dropOrder)
+                  {
+                    // put physIntercept into relative coordinates
+                    Real intercept = physIntercept - a_origin[minDir];
+                    intercept  /= a_vectDx[minDir];
+                    intercept -= (a_iv[minDir]+0.5);
+
+                    // push_back third pt onto crossingPt
+                    crossingPt.push_back(midPt);
+                    crossingPt[2][minDir] = intercept;
+
+                    // integrate w.r.t xVec using Prismoidal Rule
+                    RealVect xVec;
+                    RealVect yVec;
+
+                    // the order of (xVec,yVec) will be sorted out in PrismoidalAreaCalc
+                    xVec[0] = crossingPt[0][maxDir];
+                    xVec[1] = crossingPt[2][maxDir];
+                    xVec[2] = crossingPt[1][maxDir];
+
+                    yVec[0] = crossingPt[0][minDir];
+                    yVec[1] = crossingPt[2][minDir];
+                    yVec[2] = crossingPt[1][minDir];
+
+                    // Prismoidal's rule
+                    Real area = PrismoidalAreaCalc(xVec,yVec);
+
+                    // Only use area if it is valid
+                    if (area >= 0.0 && area <= 1.0)
+                    {
+                      // assign area to this value or (1 - this value)
+                      if (complementArea)
+                        {
+                          area = 1.0 - area;
+                        }
+
+                      Faces[iFace].setFaceArea(area);
+                    }
+                  }
+              }
+          }
+      }
 #endif
-      // fill in some arguments of computeVofInternals for the faces
-      for (int faceNormal = 0;faceNormal < SpaceDim;++faceNormal)
-        {
-          bool coveredLo = Faces[faceNormal*2].isCovered();
-          if (coveredLo)
-            {
-              a_loArc[faceNormal].resize(0);
-              a_loFaceCentroid[faceNormal].resize(0);
-              a_loAreaFrac[faceNormal].resize(0);
-            }
-          else if (!coveredLo)
-            {
-              a_loArc[faceNormal].resize(1);
-              a_loFaceCentroid[faceNormal].resize(1);
-              a_loAreaFrac[faceNormal].resize(1);
-              IntVect otherIV = a_iv;
-              otherIV[faceNormal] -= 1;
+      {
+        CH_TIME("GeometryShop::computeVoFInternals-3D-part3");
+        // fill in some arguments of computeVofInternals for the faces
+        for (int faceNormal = 0;faceNormal < SpaceDim;++faceNormal)
+          {
+            bool coveredLo = Faces[faceNormal*2].isCovered();
+            IntVect loiv = a_iv;
+            loiv[faceNormal] -= 1;
+            if(a_domain.contains(loiv))
+              {
+                coveredLo = coveredLo || (a_regIrregCovered(loiv) < 0);
+              }
+            if (coveredLo) 
+              {
+                a_loArc[faceNormal].resize(0);
+                a_loFaceCentroid[faceNormal].resize(0);
+                a_loAreaFrac[faceNormal].resize(0);
+              }
+            else if (!coveredLo)
+              {
+                a_loArc[faceNormal].resize(1);
+                a_loFaceCentroid[faceNormal].resize(1);
+                a_loAreaFrac[faceNormal].resize(1);
+                IntVect otherIV = a_iv;
+                otherIV[faceNormal] -= 1;
 
-              if (a_domain.contains(otherIV))
-                {
-                  int otherCellIndex;
-                  if (a_ivsIrreg.contains(otherIV))
-                    {
-                      otherCellIndex = 0;
-                    }
-                  else
-                    {
-                      // arc to regular cell
-                      otherCellIndex = -2;
-                    }
-                  a_loArc[faceNormal][0] = otherCellIndex;
-                }
-              else if (!a_domain.contains(otherIV))
-                {
-                  // boundary arcs always -1
-                  a_loArc[faceNormal][0] = -1;
-                }
+                if (a_domain.contains(otherIV))
+                  {
+                    int otherCellIndex;
+                    if (a_ivsIrreg.contains(otherIV))
+                      {
+                        otherCellIndex = 0;
+                      }
+                    else
+                      {
+                        // arc to regular cell
+                        otherCellIndex = -2;
+                      }
+                    a_loArc[faceNormal][0] = otherCellIndex;
+                  }
+                else if (!a_domain.contains(otherIV))
+                  {
+                    // boundary arcs always -1
+                    a_loArc[faceNormal][0] = -1;
+                  }
 
-              a_loFaceCentroid[faceNormal][0] = Faces[faceNormal*2].getFaceCentroid();
+                a_loFaceCentroid[faceNormal][0] = Faces[faceNormal*2].getFaceCentroid();
 
-              a_loAreaFrac[faceNormal][0] = Faces[faceNormal*2].getFaceArea();
+                a_loAreaFrac[faceNormal][0] = Faces[faceNormal*2].getFaceArea();
 
-            }
-          else
-            {
-              MayDay::Abort("is it coveredLo?");
-            }
-          bool coveredHi = Faces[faceNormal*2+1].isCovered();
-          if (coveredHi)
-            {
-              a_hiArc[faceNormal].resize(0);
-              a_hiFaceCentroid[faceNormal].resize(0);
-              a_hiAreaFrac[faceNormal].resize(0);
-            }
-          else if (!coveredHi)
-            {
-              a_hiArc[faceNormal].resize(1);
-              a_hiFaceCentroid[faceNormal].resize(1);
-              a_hiAreaFrac[faceNormal].resize(1);
-              IntVect otherIV = a_iv;
-              otherIV[faceNormal] += 1;
-              if (a_domain.contains(otherIV))
-                {
-                  int otherCellIndex;
-                  if (a_ivsIrreg.contains(otherIV))
-                    {
-                      otherCellIndex = 0;
-                    }
-                  else
-                    {
-                      // arc to regular cell
-                      otherCellIndex = -2;
-                    }
-                  a_hiArc[faceNormal][0] = otherCellIndex;
-                }
-              else if (!a_domain.contains(otherIV))
-                {
-                  // boundaryArcs always -1
-                  a_hiArc[faceNormal][0] = -1;
-                }
-              a_hiFaceCentroid[faceNormal][0] = Faces[faceNormal*2+1].getFaceCentroid();
-              a_hiAreaFrac[faceNormal][0] = Faces[faceNormal*2+1].getFaceArea();
-            }
-          else
-            {
-              MayDay::Abort("is it coveredHi?");
-            }
-        }
+              }
+            else
+              {
+                MayDay::Abort("is it coveredLo?");
+              }
+            bool coveredHi = Faces[faceNormal*2+1].isCovered();
+            IntVect hiiv = a_iv;
+            hiiv[faceNormal] += 1;
+            if(a_domain.contains(hiiv))
+              {
+                coveredHi = coveredHi ||  (a_regIrregCovered(hiiv, 0) < 0);
+              }
+            if (coveredHi)
+              {
+                a_hiArc[faceNormal].resize(0);
+                a_hiFaceCentroid[faceNormal].resize(0);
+                a_hiAreaFrac[faceNormal].resize(0);
+              }
+            else if (!coveredHi)
+              {
+                a_hiArc[faceNormal].resize(1);
+                a_hiFaceCentroid[faceNormal].resize(1);
+                a_hiAreaFrac[faceNormal].resize(1);
+                IntVect otherIV = a_iv;
+                otherIV[faceNormal] += 1;
+                if (a_domain.contains(otherIV))
+                  {
+                    int otherCellIndex;
+                    if (a_ivsIrreg.contains(otherIV))
+                      {
+                        otherCellIndex = 0;
+                      }
+                    else
+                      {
+                        // arc to regular cell
+                        otherCellIndex = -2;
+                      }
+                    a_hiArc[faceNormal][0] = otherCellIndex;
+                  }
+                else if (!a_domain.contains(otherIV))
+                  {
+                    // boundaryArcs always -1
+                    a_hiArc[faceNormal][0] = -1;
+                  }
+                a_hiFaceCentroid[faceNormal][0] = Faces[faceNormal*2+1].getFaceCentroid();
+                a_hiAreaFrac[faceNormal][0] = Faces[faceNormal*2+1].getFaceArea();
+              }
+            else
+              {
+                MayDay::Abort("is it coveredHi?");
+              }
+          }
+      }
+      {
+        CH_TIME("GeometryShop::computeVoFInternals-3D-part4");
+        // We have enough face data to construct the vof
+        vofMo Vof;
+        Vof.define(Faces);
 
-      // We have enough face data to construct the vof
-      vofMo Vof;
-      Vof.define(Faces);
+        Moments geom;
+        int order = 0;
+        Vector<Real> answer0;
+        answer0 = geom.momentCalc3D(order,Vof);
 
-      Moments geom;
-      int order = 0;
-      Vector<Real> answer0;
-      answer0 = geom.momentCalc3D(order,Vof);
+        a_volFrac = answer0[0];
 
-      a_volFrac = answer0[0];
+        Vector<Real> answer1;
+        order = 1;
+        answer1 = geom.momentCalc3D(order,Vof);
 
-      Vector<Real> answer1;
-      order = 1;
-      answer1 = geom.momentCalc3D(order,Vof);
+        for (int idir=0; idir<SpaceDim;++idir)
+          {
+            a_volCentroid[idir] = answer1[SpaceDim-1-idir];
+          }
 
-      for (int idir=0; idir<SpaceDim;++idir)
-        {
-          a_volCentroid[idir] = answer1[SpaceDim-1-idir];
-        }
+        if (a_volFrac == 0.0)
+          {
+            a_volCentroid = RealVect::Zero;
+          }
+        else
+          {
+            a_volCentroid /= a_volFrac;
 
-      if (a_volFrac == 0.0)
-        {
-          a_volCentroid = RealVect::Zero;
-        }
-      else
-        {
-          a_volCentroid /= a_volFrac;
+          }
 
-        }
+        Real normalVec[SpaceDim];
+        Vof.getNormal(normalVec);
+        for (int idir = 0;idir < SpaceDim;++idir)
+          {
+            a_normal[idir] = normalVec[idir];
+          }
 
-      Real normalVec[SpaceDim];
-      Vof.getNormal(normalVec);
-      for (int idir = 0;idir < SpaceDim;++idir)
-        {
-          a_normal[idir] = normalVec[idir];
-        }
+        for (int idir = 0;idir < SpaceDim;++idir)
+          {
+            // (nx,ny,nz)->(nxdydz,nydxdz,nzdxdy)
+            a_normal[idir] = normalVec[idir]*a_vectDx[((idir-1)*(idir-2))/2]*a_vectDx[2 - ((idir-1)*idir)/2];
+          }
+        Real anisBd = 0.0;
+        for (int idir = 0;idir < SpaceDim;++idir)
+          {
+            anisBd += a_normal[idir]*a_normal[idir];
+          }
+        anisBd = sqrt(anisBd);
+        if (anisBd !=0.0)
+          {
+            a_normal /= anisBd;
+          }
 
-      for (int idir = 0;idir < SpaceDim;++idir)
-        {
-          // (nx,ny,nz)->(nxdydz,nydxdz,nzdxdy)
-          a_normal[idir] = normalVec[idir]*a_vectDx[((idir-1)*(idir-2))/2]*a_vectDx[2 - ((idir-1)*idir)/2];
-        }
-      Real anisBd = 0.0;
-      for (int idir = 0;idir < SpaceDim;++idir)
-        {
-          anisBd += a_normal[idir]*a_normal[idir];
-        }
-      anisBd = sqrt(anisBd);
-      if (anisBd !=0.0)
-        {
-          a_normal /= anisBd;
-        }
-
-      a_bndryArea = Vof.getBdArea();
-      if (a_bndryArea > 0.0)
-        {
-          for (int idir = 0;idir < SpaceDim;++idir)
-            {
-              a_bndryCentroid[idir] = answer0[SpaceDim-idir]/a_bndryArea;
-            }
-          a_bndryArea *= anisBd;
-          a_bndryArea /= (maxDx*maxDx);
-        }
-      else
-        {
-          a_bndryCentroid = RealVect::Zero;
-          a_bndryArea = 0.0;
-        }
+        a_bndryArea = Vof.getBdArea();
+        if (a_bndryArea > 0.0)
+          {
+            for (int idir = 0;idir < SpaceDim;++idir)
+              {
+                a_bndryCentroid[idir] = answer0[SpaceDim-idir]/a_bndryArea;
+              }
+            a_bndryArea *= anisBd;
+            a_bndryArea /= (maxDx*maxDx);
+          }
+        else
+          {
+            a_bndryCentroid = RealVect::Zero;
+            a_bndryArea = 0.0;
+          }
+      }
     }
 
-  // clipping
-  // only report adjustments when discrepancy is above the threshold
-  bool thisVofClipped = false;
-  Real discrepancy = 0.0;
-  Real volDiscrepancy = 0.0;
-  // volFrac out of bounds
-  if (a_volFrac < 0.0)
-    {
-      volDiscrepancy = Abs(a_volFrac);
-      char message[1024];
-      if (SpaceDim ==2)
-        {
-          sprintf(message,"vol fraction (%e) out of bounds. Clipping: (%d,%d)",
-                  a_volFrac,a_iv[0],a_iv[1]);
-        }
-      else if (SpaceDim == 3)
-        {
-          sprintf(message,"vol frac (%e) out of bounds. Clipping: (%d,%d,%d)",
-                  a_volFrac,a_iv[0],a_iv[1],a_iv[2]);
-        }
-      else
-        {
-          sprintf(message,"SpaceDim not 2 or 3");
-        }
+  {
+    CH_TIME("GeometryShop::computeVoFInternals-clipping");
+    // clipping
+    // only report adjustments when discrepancy is above the threshold
+    bool thisVofClipped = false;
+    Real discrepancy = 0.0;
+    Real volDiscrepancy = 0.0;
+    // volFrac out of bounds
+    if (a_volFrac < 0.0)
+      {
+        volDiscrepancy = Abs(a_volFrac);
+        char message[1024];
+        if (SpaceDim ==2)
+          {
+            sprintf(message,"vol fraction (%e) out of bounds. Clipping: (%d,%d)",
+                    a_volFrac,a_iv[0],a_iv[1]);
+          }
+        else if (SpaceDim == 3)
+          {
+            sprintf(message,"vol frac (%e) out of bounds. Clipping: (%d,%d,%d)",
+                    a_volFrac,a_iv[0],a_iv[1],a_iv[2]);
+          }
+        else
+          {
+            sprintf(message,"SpaceDim not 2 or 3");
+          }
 
-      if (volDiscrepancy > m_threshold)
-        {
-          MayDay::Warning(message);
-        }
-      // do the clipping
-      thisVofClipped = true;
-      a_volFrac = 0.0;
-    }
+        if (volDiscrepancy > m_threshold)
+          {
+            MayDay::Warning(message);
+          }
+        // do the clipping
+        thisVofClipped = true;
+        a_volFrac = 0.0;
+      }
 
-  if (a_volFrac > 1.0)
-    {
-      volDiscrepancy = Abs(1.0 - a_volFrac);
-      char message[1024];
-      if (SpaceDim ==2)
-        {
-          sprintf(message,"vol fraction (%e) out of bounds. Clipping: (%d,%d)",
-                  a_volFrac,a_iv[0],a_iv[1]);
-        }
-      else if (SpaceDim == 3)
-        {
-          sprintf(message,"vol frac (%e) out of bounds. Clipping: (%d,%d,%d)",
-                  a_volFrac,a_iv[0],a_iv[1],a_iv[2]);
-        }
-      else
-        {
-          sprintf(message,"SpaceDim not 2 or 3");
-        }
-      if (volDiscrepancy>m_threshold)
-        {
-          MayDay::Warning(message);
-        }
-      // do the clipping
-      thisVofClipped = true;
-      a_volFrac = 1.0;
-    }
+    if (a_volFrac > 1.0)
+      {
+        volDiscrepancy = Abs(1.0 - a_volFrac);
+        char message[1024];
+        if (SpaceDim ==2)
+          {
+            sprintf(message,"vol fraction (%e) out of bounds. Clipping: (%d,%d)",
+                    a_volFrac,a_iv[0],a_iv[1]);
+          }
+        else if (SpaceDim == 3)
+          {
+            sprintf(message,"vol frac (%e) out of bounds. Clipping: (%d,%d,%d)",
+                    a_volFrac,a_iv[0],a_iv[1],a_iv[2]);
+          }
+        else
+          {
+            sprintf(message,"SpaceDim not 2 or 3");
+          }
+        if (volDiscrepancy>m_threshold)
+          {
+            MayDay::Warning(message);
+          }
+        // do the clipping
+        thisVofClipped = true;
+        a_volFrac = 1.0;
+      }
 
-  // area frac out of bounds
-  for (int idir = 0; idir<SpaceDim; ++idir)
-    {
-      for (int num = 0; num < a_loAreaFrac[idir].size();num ++)
-        {
-          // lo frac too high
-          if (a_loAreaFrac[idir][num] > 1.0)
-            {
-              discrepancy = Abs(1 - a_loAreaFrac[idir][num]);
-              char message[1024];
-              if (SpaceDim ==2)
-                {
-                  sprintf(message,"lo area fraction (%e) out of bounds. Clipping: (%d,%d)",
-                          a_loAreaFrac[idir][num],a_iv[0],a_iv[1]);
-                }
-              else if (SpaceDim == 3)
-                {
-                  sprintf(message,"lo area fraction (%e) out of bounds. Clipping: (%d,%d,%d)",
-                          a_loAreaFrac[idir][num],a_iv[0],a_iv[1],a_iv[2]);
-                }
-              else
-                {
-                  sprintf(message,"SpaceDim not 2 or 3");
-                }
-              if (discrepancy>m_threshold && volDiscrepancy>m_threshold)
-                {
-                  MayDay::Warning(message);
-                }
+    // area frac out of bounds
+    for (int idir = 0; idir<SpaceDim; ++idir)
+      {
+        for (int num = 0; num < a_loAreaFrac[idir].size();num ++)
+          {
+            // lo frac too high
+            if (a_loAreaFrac[idir][num] > 1.0)
+              {
+                discrepancy = Abs(1 - a_loAreaFrac[idir][num]);
+                char message[1024];
+                if (SpaceDim ==2)
+                  {
+                    sprintf(message,"lo area fraction (%e) out of bounds. Clipping: (%d,%d)",
+                            a_loAreaFrac[idir][num],a_iv[0],a_iv[1]);
+                  }
+                else if (SpaceDim == 3)
+                  {
+                    sprintf(message,"lo area fraction (%e) out of bounds. Clipping: (%d,%d,%d)",
+                            a_loAreaFrac[idir][num],a_iv[0],a_iv[1],a_iv[2]);
+                  }
+                else
+                  {
+                    sprintf(message,"SpaceDim not 2 or 3");
+                  }
+                if (discrepancy>m_threshold && volDiscrepancy>m_threshold)
+                  {
+                    MayDay::Warning(message);
+                  }
 
-              // do the clipping
-              thisVofClipped = true;
-              a_loAreaFrac[idir][num] = 1.0;
-            }
-          // lo frac too low
-          if (a_loAreaFrac[idir][num] < 0.0)
-            {
-              discrepancy = Abs(a_loAreaFrac[idir][num]);
-              char message[1024];
-              if (SpaceDim ==2)
-                {
-                  sprintf(message,"lo area fraction (%e) out of bounds. Clipping: (%d,%d)",
-                          a_loAreaFrac[idir][num],a_iv[0],a_iv[1]);
-                }
-              else if (SpaceDim == 3)
-                {
-                  sprintf(message,"lo area fraction (%e) out of bounds. Clipping: (%d,%d,%d)",
-                          a_loAreaFrac[idir][num],a_iv[0],a_iv[1],a_iv[2]);
-                }
-              else
-                {
-                  sprintf(message,"SpaceDim not 2 or 3");
-                }
-              if (discrepancy>m_threshold && volDiscrepancy>m_threshold)
-                {
-                  MayDay::Warning(message);
-                }
+                // do the clipping
+                thisVofClipped = true;
+                a_loAreaFrac[idir][num] = 1.0;
+              }
+            // lo frac too low
+            if (a_loAreaFrac[idir][num] < 0.0)
+              {
+                discrepancy = Abs(a_loAreaFrac[idir][num]);
+                char message[1024];
+                if (SpaceDim ==2)
+                  {
+                    sprintf(message,"lo area fraction (%e) out of bounds. Clipping: (%d,%d)",
+                            a_loAreaFrac[idir][num],a_iv[0],a_iv[1]);
+                  }
+                else if (SpaceDim == 3)
+                  {
+                    sprintf(message,"lo area fraction (%e) out of bounds. Clipping: (%d,%d,%d)",
+                            a_loAreaFrac[idir][num],a_iv[0],a_iv[1],a_iv[2]);
+                  }
+                else
+                  {
+                    sprintf(message,"SpaceDim not 2 or 3");
+                  }
+                if (discrepancy>m_threshold && volDiscrepancy>m_threshold)
+                  {
+                    MayDay::Warning(message);
+                  }
 
-              // do the clipping
-              thisVofClipped = true;
-              a_loAreaFrac[idir][num] = 0.0;
-            }
+                // do the clipping
+                thisVofClipped = true;
+                a_loAreaFrac[idir][num] = 0.0;
+              }
 
-        }
-    }
+          }
+      }
 
-  for (int idir = 0; idir<SpaceDim; ++idir)
-    {
-      for (int num = 0; num < a_hiAreaFrac[idir].size();num ++)
-        {
-          // hi frac too high
-          if (a_hiAreaFrac[idir][num] > 1.0)
-            {
-              discrepancy = Abs(1 - a_hiAreaFrac[idir][num]);
-              char message[1024];
-              if (SpaceDim ==2)
-                {
-                  sprintf(message,"hi area fraction (%e) out of bounds. Clipping: (%d,%d)",
-                          a_hiAreaFrac[idir][num],a_iv[0],a_iv[1]);
-                }
-              else if (SpaceDim == 3)
-                {
-                  sprintf(message,"hi area fraction (%e) out of bounds. Clipping: (%d,%d,%d)",
-                          a_hiAreaFrac[idir][num],a_iv[0],a_iv[1],a_iv[2]);
-                }
-              else
-                {
-                  sprintf(message,"SpaceDim not 2 or 3");
-                }
-              if (discrepancy>m_threshold && volDiscrepancy>m_threshold)
-                {
-                  MayDay::Warning(message);
-                }
+    for (int idir = 0; idir<SpaceDim; ++idir)
+      {
+        for (int num = 0; num < a_hiAreaFrac[idir].size();num ++)
+          {
+            // hi frac too high
+            if (a_hiAreaFrac[idir][num] > 1.0)
+              {
+                discrepancy = Abs(1 - a_hiAreaFrac[idir][num]);
+                char message[1024];
+                if (SpaceDim ==2)
+                  {
+                    sprintf(message,"hi area fraction (%e) out of bounds. Clipping: (%d,%d)",
+                            a_hiAreaFrac[idir][num],a_iv[0],a_iv[1]);
+                  }
+                else if (SpaceDim == 3)
+                  {
+                    sprintf(message,"hi area fraction (%e) out of bounds. Clipping: (%d,%d,%d)",
+                            a_hiAreaFrac[idir][num],a_iv[0],a_iv[1],a_iv[2]);
+                  }
+                else
+                  {
+                    sprintf(message,"SpaceDim not 2 or 3");
+                  }
+                if (discrepancy>m_threshold && volDiscrepancy>m_threshold)
+                  {
+                    MayDay::Warning(message);
+                  }
 
-              // do the clipping
-              thisVofClipped = true;
-              a_hiAreaFrac[idir][num] = 1.0;
-            }
-          // hi frac too low
-          if (a_hiAreaFrac[idir][num] < 0.0)
-            {
-              discrepancy = Abs(a_hiAreaFrac[idir][num]);
-              char message[1024];
-              if (SpaceDim ==2)
-                {
-                  sprintf(message,"hi area fraction (%e) out of bounds. Clipping: (%d,%d)",
-                          a_hiAreaFrac[idir][num],a_iv[0],a_iv[1]);
-                }
-              else if (SpaceDim == 3)
-                {
-                  sprintf(message,"hi area fraction (%e) out of bounds. Clipping: (%d,%d,%d)",
-                          a_hiAreaFrac[idir][num],a_iv[0],a_iv[1],a_iv[2]);
-                }
-              else
-                {
-                  sprintf(message,"SpaceDim not 2 or 3");
-                }
-              if (discrepancy>m_threshold && volDiscrepancy>m_threshold)
-                {
-                  MayDay::Warning(message);
-                }
+                // do the clipping
+                thisVofClipped = true;
+                a_hiAreaFrac[idir][num] = 1.0;
+              }
+            // hi frac too low
+            if (a_hiAreaFrac[idir][num] < 0.0)
+              {
+                discrepancy = Abs(a_hiAreaFrac[idir][num]);
+                char message[1024];
+                if (SpaceDim ==2)
+                  {
+                    sprintf(message,"hi area fraction (%e) out of bounds. Clipping: (%d,%d)",
+                            a_hiAreaFrac[idir][num],a_iv[0],a_iv[1]);
+                  }
+                else if (SpaceDim == 3)
+                  {
+                    sprintf(message,"hi area fraction (%e) out of bounds. Clipping: (%d,%d,%d)",
+                            a_hiAreaFrac[idir][num],a_iv[0],a_iv[1],a_iv[2]);
+                  }
+                else
+                  {
+                    sprintf(message,"SpaceDim not 2 or 3");
+                  }
+                if (discrepancy>m_threshold && volDiscrepancy>m_threshold)
+                  {
+                    MayDay::Warning(message);
+                  }
 
-              // do the clipping
-              thisVofClipped = true;
-              a_hiAreaFrac[idir][num] = 0.0;
-            }
+                // do the clipping
+                thisVofClipped = true;
+                a_hiAreaFrac[idir][num] = 0.0;
+              }
 
-        }
+          }
 
-    }
+      }
 
-  // bndry area out of bounds
-  if (a_bndryArea < 0.0)
-    {
-      discrepancy = Abs(a_bndryArea);
-      char message[1024];
-      if (SpaceDim ==2)
-        {
-          sprintf(message,"boundary area fraction (%e) out of bounds. Clipping: (%d,%d)",
-                  a_bndryArea,a_iv[0],a_iv[1]);
-        }
-      else if (SpaceDim == 3)
-        {
-          sprintf(message,"boundary area fraction (%e) out of bounds. Clipping: (%d,%d,%d)",
-                  a_bndryArea,a_iv[0],a_iv[1],a_iv[2]);
-        }
-      else
-        {
-          sprintf(message,"SpaceDim not 2 or 3");
-        }
-      if (discrepancy>m_threshold && volDiscrepancy>m_threshold)
-        {
-          MayDay::Warning(message);
-        }
+    // bndry area out of bounds
+    if (a_bndryArea < 0.0)
+      {
+        discrepancy = Abs(a_bndryArea);
+        char message[1024];
+        if (SpaceDim ==2)
+          {
+            sprintf(message,"boundary area fraction (%e) out of bounds. Clipping: (%d,%d)",
+                    a_bndryArea,a_iv[0],a_iv[1]);
+          }
+        else if (SpaceDim == 3)
+          {
+            sprintf(message,"boundary area fraction (%e) out of bounds. Clipping: (%d,%d,%d)",
+                    a_bndryArea,a_iv[0],a_iv[1],a_iv[2]);
+          }
+        else
+          {
+            sprintf(message,"SpaceDim not 2 or 3");
+          }
+        if (discrepancy>m_threshold && volDiscrepancy>m_threshold)
+          {
+            MayDay::Warning(message);
+          }
 
-      // do the clipping
-      thisVofClipped = true;
-      a_bndryArea = 0.0;
-    }
+        // do the clipping
+        thisVofClipped = true;
+        a_bndryArea = 0.0;
+      }
 
-  if (a_bndryArea > sqrt(2.0))
-    {
-      discrepancy = Abs(sqrt(2.0) - a_bndryArea);
-      char message[1024];
-      if (SpaceDim ==2)
-        {
-          sprintf(message,"boundary area fraction (%e) out of bounds. Clipping: (%d,%d)",
-                  a_bndryArea,a_iv[0],a_iv[1]);
-        }
-      else if (SpaceDim == 3)
-        {
-          sprintf(message,"boundary area fraction (%e) out of bounds. Clipping: (%d,%d,%d)",
-                  a_bndryArea,a_iv[0],a_iv[1],a_iv[2]);
-        }
-      else
-        {
-          sprintf(message,"SpaceDim not 2 or 3");
-        }
-      if (discrepancy>m_threshold && volDiscrepancy>m_threshold)
-        {
-          MayDay::Warning(message);
-        }
-      // do the clipping
-      thisVofClipped = true;
-      a_bndryArea = sqrt(2.0);
-    }
+    if (a_bndryArea > sqrt(2.0))
+      {
+        discrepancy = Abs(sqrt(2.0) - a_bndryArea);
+        char message[1024];
+        if (SpaceDim ==2)
+          {
+            sprintf(message,"boundary area fraction (%e) out of bounds. Clipping: (%d,%d)",
+                    a_bndryArea,a_iv[0],a_iv[1]);
+          }
+        else if (SpaceDim == 3)
+          {
+            sprintf(message,"boundary area fraction (%e) out of bounds. Clipping: (%d,%d,%d)",
+                    a_bndryArea,a_iv[0],a_iv[1],a_iv[2]);
+          }
+        else
+          {
+            sprintf(message,"SpaceDim not 2 or 3");
+          }
+        if (discrepancy>m_threshold && volDiscrepancy>m_threshold)
+          {
+            MayDay::Warning(message);
+          }
+        // do the clipping
+        thisVofClipped = true;
+        a_bndryArea = sqrt(2.0);
+      }
 
-  // volCentroid out of bounds
-  for (int idir =0;idir<SpaceDim;++idir)
-    {
-      if (a_volCentroid[idir] > 0.5)
-        {
-          discrepancy = Abs(0.5 - a_volCentroid[idir]);
-          char message[1024];
-          if (SpaceDim ==2)
-            {
-              sprintf(message,"volCentroid (%e) out of bounds. Clipping: (%d,%d)",
-                      a_volCentroid[idir],a_iv[0],a_iv[1]);
-            }
-          else if (SpaceDim == 3)
-            {
-              sprintf(message,"volCentroid(%e) out of bounds. Clipping: (%d,%d,%d)",
-                      a_volCentroid[idir],a_iv[0],a_iv[1],a_iv[2]);
-            }
-          else
-            {
-              sprintf(message,"SpaceDim not 2 or 3");
-            }
-          if (discrepancy>m_threshold && volDiscrepancy>m_threshold)
-            {
-              MayDay::Warning(message);
-            }
-          // do the clipping
-          thisVofClipped = true;
-          a_volCentroid[idir] = 0.5;
-        }
-      if (a_volCentroid[idir] < -0.5)
-        {
-          discrepancy = Abs(-0.5 - a_volCentroid[idir]);
-          char message[1024];
-          if (SpaceDim ==2)
-            {
-              sprintf(message,"volCentroid (%e) out of bounds. Clipping: (%d,%d)",
-                      a_volCentroid[idir],a_iv[0],a_iv[1]);
-            }
-          else if (SpaceDim == 3)
-            {
-              sprintf(message,"volCentroid (%e) out of bounds. Clipping: (%d,%d,%d)",
-                      a_volCentroid[idir],a_iv[0],a_iv[1],a_iv[2]);
-            }
-          else
-            {
-              sprintf(message,"SpaceDim not 2 or 3");
-            }
-          if (discrepancy > m_threshold&& volDiscrepancy>m_threshold)
-            {
-              MayDay::Warning(message);
-            }
-          // do the clipping
-          thisVofClipped = true;
-          a_volCentroid[idir] = -0.5;
-        }
+    // volCentroid out of bounds
+    for (int idir =0;idir<SpaceDim;++idir)
+      {
+        if (a_volCentroid[idir] > 0.5)
+          {
+            discrepancy = Abs(0.5 - a_volCentroid[idir]);
+            char message[1024];
+            if (SpaceDim ==2)
+              {
+                sprintf(message,"volCentroid (%e) out of bounds. Clipping: (%d,%d)",
+                        a_volCentroid[idir],a_iv[0],a_iv[1]);
+              }
+            else if (SpaceDim == 3)
+              {
+                sprintf(message,"volCentroid(%e) out of bounds. Clipping: (%d,%d,%d)",
+                        a_volCentroid[idir],a_iv[0],a_iv[1],a_iv[2]);
+              }
+            else
+              {
+                sprintf(message,"SpaceDim not 2 or 3");
+              }
+            if (discrepancy>m_threshold && volDiscrepancy>m_threshold)
+              {
+                MayDay::Warning(message);
+              }
+            // do the clipping
+            thisVofClipped = true;
+            a_volCentroid[idir] = 0.5;
+          }
+        if (a_volCentroid[idir] < -0.5)
+          {
+            discrepancy = Abs(-0.5 - a_volCentroid[idir]);
+            char message[1024];
+            if (SpaceDim ==2)
+              {
+                sprintf(message,"volCentroid (%e) out of bounds. Clipping: (%d,%d)",
+                        a_volCentroid[idir],a_iv[0],a_iv[1]);
+              }
+            else if (SpaceDim == 3)
+              {
+                sprintf(message,"volCentroid (%e) out of bounds. Clipping: (%d,%d,%d)",
+                        a_volCentroid[idir],a_iv[0],a_iv[1],a_iv[2]);
+              }
+            else
+              {
+                sprintf(message,"SpaceDim not 2 or 3");
+              }
+            if (discrepancy > m_threshold&& volDiscrepancy>m_threshold)
+              {
+                MayDay::Warning(message);
+              }
+            // do the clipping
+            thisVofClipped = true;
+            a_volCentroid[idir] = -0.5;
+          }
 
-      // boundary centroid out of bounds
-      if (a_bndryCentroid[idir] > 0.5)
-        {
-          discrepancy = Abs(0.5 - a_bndryCentroid[idir]);
-          char message[1024];
-          if (SpaceDim ==2)
-            {
-              sprintf(message,"bndryCentroid (%e) out of bounds. Clipping: (%d,%d)",
-                      a_bndryCentroid[idir],a_iv[0],a_iv[1]);
-            }
-          else if (SpaceDim == 3)
-            {
-              sprintf(message,"boundary Centroid (%e) out of bounds. Clipping: (%d,%d,%d)",
-                      a_bndryCentroid[idir],a_iv[0],a_iv[1],a_iv[2]);
-            }
-          else
-            {
-              sprintf(message,"SpaceDim not 2 or 3");
-            }
-          if (discrepancy>m_threshold && volDiscrepancy>m_threshold)
-            {
-              MayDay::Warning(message);
-            }
-          // do the clipping
-          thisVofClipped = true;
-          a_bndryCentroid[idir] = 0.5;
-        }
+        // boundary centroid out of bounds
+        if (a_bndryCentroid[idir] > 0.5)
+          {
+            discrepancy = Abs(0.5 - a_bndryCentroid[idir]);
+            char message[1024];
+            if (SpaceDim ==2)
+              {
+                sprintf(message,"bndryCentroid (%e) out of bounds. Clipping: (%d,%d)",
+                        a_bndryCentroid[idir],a_iv[0],a_iv[1]);
+              }
+            else if (SpaceDim == 3)
+              {
+                sprintf(message,"boundary Centroid (%e) out of bounds. Clipping: (%d,%d,%d)",
+                        a_bndryCentroid[idir],a_iv[0],a_iv[1],a_iv[2]);
+              }
+            else
+              {
+                sprintf(message,"SpaceDim not 2 or 3");
+              }
+            if (discrepancy>m_threshold && volDiscrepancy>m_threshold)
+              {
+                MayDay::Warning(message);
+              }
+            // do the clipping
+            thisVofClipped = true;
+            a_bndryCentroid[idir] = 0.5;
+          }
 
-      if (a_bndryCentroid[idir] < -0.5)
-        {
-          discrepancy = Abs(-0.5 - a_bndryCentroid[idir]);
-          char message[1024];
-          if (SpaceDim ==2)
-            {
-              sprintf(message,"bndryCentroid (%e) out of bounds. Clipping: (%d,%d)",
-                      a_bndryCentroid[idir],a_iv[0],a_iv[1]);
-            }
-          else if (SpaceDim == 3)
-            {
-              sprintf(message,"bndryCentroid (%e) out of bounds. Clipping: (%d,%d,%d)",
-                      a_bndryCentroid[idir],a_iv[0],a_iv[1],a_iv[2]);
-            }
-          else
-            {
-              sprintf(message,"SpaceDim not 2 or 3");
-            }
-          if (discrepancy > m_threshold && volDiscrepancy>m_threshold)
-            {
-              MayDay::Warning(message);
-            }
-          // do the clipping
-          thisVofClipped = true;
-          a_bndryCentroid[idir] = -0.5;
-        }
-    }
-  // loFaceCentroid out of bounds
-  for (int idir = 0; idir<SpaceDim; ++idir)
-    {
-      for (int num = 0; num < a_loFaceCentroid[idir].size();num ++)
-        {
-          for (int jdir = 0; jdir<SpaceDim; ++jdir)
-            {
-              if (a_loFaceCentroid[idir][num][jdir] > 0.5)
-                {
-                  discrepancy = Abs(0.5 - a_loFaceCentroid[idir][num][jdir]);
-                  char message[1024];
-                  if (SpaceDim ==2)
-                    {
-                      sprintf(message,"loFaceCentroid (%e) out of bounds. Clipping: (%d,%d)",
-                              a_loFaceCentroid[idir][num][jdir],a_iv[0],a_iv[1]);
-                    }
-                  else if (SpaceDim == 3)
-                    {
-                      sprintf(message,"loFaceCentroid (%e) out of bounds. Clipping: (%d,%d,%d)",
-                              a_loFaceCentroid[idir][num][jdir],a_iv[0],a_iv[1],a_iv[2]);
-                    }
-                  else
-                    {
-                      sprintf(message,"SpaceDim not 2 or 3");
-                    }
-                  if (discrepancy > m_threshold && volDiscrepancy>m_threshold)
-                    {
-                      MayDay::Warning(message);
-                    }
-                  // do the clipping
-                  thisVofClipped = true;
-                  a_loFaceCentroid[idir][num][jdir] = 0.5;
-                }
-              if (a_loFaceCentroid[idir][num][jdir] < -0.5)
-                {
-                  discrepancy = Abs(-0.5 - a_loFaceCentroid[idir][num][jdir]);
-                  char message[1024];
-                  if (SpaceDim ==2)
-                    {
-                      sprintf(message,"loFaceCentroid (%e) out of bounds. Clipping: (%d,%d)",
-                              a_loFaceCentroid[idir][num][jdir],a_iv[0],a_iv[1]);
-                    }
-                  else if (SpaceDim == 3)
-                    {
-                      sprintf(message,"loFaceCentroid (%e) out of bounds. Clipping: (%d,%d,%d)",
-                              a_loFaceCentroid[idir][num][jdir],a_iv[0],a_iv[1],a_iv[2]);
-                    }
-                  else
-                    {
-                      sprintf(message,"SpaceDim not 2 or 3");
-                    }
-                  if (discrepancy > m_threshold && volDiscrepancy>m_threshold)
-                    {
-                      MayDay::Warning(message);
-                    }
-                  // do the clipping
-                  thisVofClipped = true;
-                  a_loFaceCentroid[idir][num][jdir] = -0.5;
-                }
-            }
-        }
-    }
-  // hiFaceCentroid out of bounds
-  for (int idir = 0; idir<SpaceDim; ++idir)
-    {
-      for (int num = 0; num < a_hiFaceCentroid[idir].size();num ++)
-        {
-          for (int jdir = 0; jdir<SpaceDim; ++jdir)
-            {
-              if (a_hiFaceCentroid[idir][num][jdir] > 0.5)
-                {
-                  discrepancy = Abs(0.5 - a_hiFaceCentroid[idir][num][jdir]);
-                  char message[1024];
-                  if (SpaceDim ==2)
-                    {
-                      sprintf(message,"hiFaceCentroid (%e) out of bounds. Clipping: (%d,%d)",
-                              a_hiFaceCentroid[idir][num][jdir],a_iv[0],a_iv[1]);
-                    }
-                  else if (SpaceDim == 3)
-                    {
-                      sprintf(message,"hiFaceCentroid (%e) out of bounds. Clipping: (%d,%d,%d)",
-                              a_hiFaceCentroid[idir][num][jdir],a_iv[0],a_iv[1],a_iv[2]);
-                    }
-                  else
-                    {
-                      sprintf(message,"SpaceDim not 2 or 3");
-                    }
-                  if (discrepancy > m_threshold && volDiscrepancy>m_threshold)
-                    {
-                      MayDay::Warning(message);
-                    }
-                  // do the clipping
-                  thisVofClipped = true;
-                  a_hiFaceCentroid[idir][num][jdir] = 0.5;
-                }
-              if (a_hiFaceCentroid[idir][num][jdir] < -0.5)
-                {
-                  discrepancy = Abs(0.5 - a_hiFaceCentroid[idir][num][jdir]);
-                  char message[1024];
-                  if (SpaceDim ==2)
-                    {
-                      sprintf(message,"hiFaceCentroid (%e) out of bounds. Clipping: (%d,%d)",
-                              a_hiFaceCentroid[idir][num][jdir],a_iv[0],a_iv[1]);
-                    }
-                  else if (SpaceDim == 3)
-                    {
-                      sprintf(message,"hiFaceCentroid (%e) out of bounds. Clipping: (%d,%d,%d)",
-                              a_hiFaceCentroid[idir][num][jdir],a_iv[0],a_iv[1],a_iv[2]);
-                    }
-                  else
-                    {
-                      sprintf(message,"SpaceDim not 2 or 3");
-                    }
-                  if (discrepancy > m_threshold && volDiscrepancy > m_threshold)
-                    {
-                      MayDay::Warning(message);
-                    }
-                  // do the clipping
-                  thisVofClipped = true;
-                  a_hiFaceCentroid[idir][num][jdir] = -0.5;
-                }
-            }
-        }
-    }
+        if (a_bndryCentroid[idir] < -0.5)
+          {
+            discrepancy = Abs(-0.5 - a_bndryCentroid[idir]);
+            char message[1024];
+            if (SpaceDim ==2)
+              {
+                sprintf(message,"bndryCentroid (%e) out of bounds. Clipping: (%d,%d)",
+                        a_bndryCentroid[idir],a_iv[0],a_iv[1]);
+              }
+            else if (SpaceDim == 3)
+              {
+                sprintf(message,"bndryCentroid (%e) out of bounds. Clipping: (%d,%d,%d)",
+                        a_bndryCentroid[idir],a_iv[0],a_iv[1],a_iv[2]);
+              }
+            else
+              {
+                sprintf(message,"SpaceDim not 2 or 3");
+              }
+            if (discrepancy > m_threshold && volDiscrepancy>m_threshold)
+              {
+                MayDay::Warning(message);
+              }
+            // do the clipping
+            thisVofClipped = true;
+            a_bndryCentroid[idir] = -0.5;
+          }
+      }
+    // loFaceCentroid out of bounds
+    for (int idir = 0; idir<SpaceDim; ++idir)
+      {
+        for (int num = 0; num < a_loFaceCentroid[idir].size();num ++)
+          {
+            for (int jdir = 0; jdir<SpaceDim; ++jdir)
+              {
+                if (a_loFaceCentroid[idir][num][jdir] > 0.5)
+                  {
+                    discrepancy = Abs(0.5 - a_loFaceCentroid[idir][num][jdir]);
+                    char message[1024];
+                    if (SpaceDim ==2)
+                      {
+                        sprintf(message,"loFaceCentroid (%e) out of bounds. Clipping: (%d,%d)",
+                                a_loFaceCentroid[idir][num][jdir],a_iv[0],a_iv[1]);
+                      }
+                    else if (SpaceDim == 3)
+                      {
+                        sprintf(message,"loFaceCentroid (%e) out of bounds. Clipping: (%d,%d,%d)",
+                                a_loFaceCentroid[idir][num][jdir],a_iv[0],a_iv[1],a_iv[2]);
+                      }
+                    else
+                      {
+                        sprintf(message,"SpaceDim not 2 or 3");
+                      }
+                    if (discrepancy > m_threshold && volDiscrepancy>m_threshold)
+                      {
+                        MayDay::Warning(message);
+                      }
+                    // do the clipping
+                    thisVofClipped = true;
+                    a_loFaceCentroid[idir][num][jdir] = 0.5;
+                  }
+                if (a_loFaceCentroid[idir][num][jdir] < -0.5)
+                  {
+                    discrepancy = Abs(-0.5 - a_loFaceCentroid[idir][num][jdir]);
+                    char message[1024];
+                    if (SpaceDim ==2)
+                      {
+                        sprintf(message,"loFaceCentroid (%e) out of bounds. Clipping: (%d,%d)",
+                                a_loFaceCentroid[idir][num][jdir],a_iv[0],a_iv[1]);
+                      }
+                    else if (SpaceDim == 3)
+                      {
+                        sprintf(message,"loFaceCentroid (%e) out of bounds. Clipping: (%d,%d,%d)",
+                                a_loFaceCentroid[idir][num][jdir],a_iv[0],a_iv[1],a_iv[2]);
+                      }
+                    else
+                      {
+                        sprintf(message,"SpaceDim not 2 or 3");
+                      }
+                    if (discrepancy > m_threshold && volDiscrepancy>m_threshold)
+                      {
+                        MayDay::Warning(message);
+                      }
+                    // do the clipping
+                    thisVofClipped = true;
+                    a_loFaceCentroid[idir][num][jdir] = -0.5;
+                  }
+              }
+          }
+      }
+    // hiFaceCentroid out of bounds
+    for (int idir = 0; idir<SpaceDim; ++idir)
+      {
+        for (int num = 0; num < a_hiFaceCentroid[idir].size();num ++)
+          {
+            for (int jdir = 0; jdir<SpaceDim; ++jdir)
+              {
+                if (a_hiFaceCentroid[idir][num][jdir] > 0.5)
+                  {
+                    discrepancy = Abs(0.5 - a_hiFaceCentroid[idir][num][jdir]);
+                    char message[1024];
+                    if (SpaceDim ==2)
+                      {
+                        sprintf(message,"hiFaceCentroid (%e) out of bounds. Clipping: (%d,%d)",
+                                a_hiFaceCentroid[idir][num][jdir],a_iv[0],a_iv[1]);
+                      }
+                    else if (SpaceDim == 3)
+                      {
+                        sprintf(message,"hiFaceCentroid (%e) out of bounds. Clipping: (%d,%d,%d)",
+                                a_hiFaceCentroid[idir][num][jdir],a_iv[0],a_iv[1],a_iv[2]);
+                      }
+                    else
+                      {
+                        sprintf(message,"SpaceDim not 2 or 3");
+                      }
+                    if (discrepancy > m_threshold && volDiscrepancy>m_threshold)
+                      {
+                        MayDay::Warning(message);
+                      }
+                    // do the clipping
+                    thisVofClipped = true;
+                    a_hiFaceCentroid[idir][num][jdir] = 0.5;
+                  }
+                if (a_hiFaceCentroid[idir][num][jdir] < -0.5)
+                  {
+                    discrepancy = Abs(0.5 - a_hiFaceCentroid[idir][num][jdir]);
+                    char message[1024];
+                    if (SpaceDim ==2)
+                      {
+                        sprintf(message,"hiFaceCentroid (%e) out of bounds. Clipping: (%d,%d)",
+                                a_hiFaceCentroid[idir][num][jdir],a_iv[0],a_iv[1]);
+                      }
+                    else if (SpaceDim == 3)
+                      {
+                        sprintf(message,"hiFaceCentroid (%e) out of bounds. Clipping: (%d,%d,%d)",
+                                a_hiFaceCentroid[idir][num][jdir],a_iv[0],a_iv[1],a_iv[2]);
+                      }
+                    else
+                      {
+                        sprintf(message,"SpaceDim not 2 or 3");
+                      }
+                    if (discrepancy > m_threshold && volDiscrepancy > m_threshold)
+                      {
+                        MayDay::Warning(message);
+                      }
+                    // do the clipping
+                    thisVofClipped = true;
+                    a_hiFaceCentroid[idir][num][jdir] = -0.5;
+                  }
+              }
+          }
+      }
 
-  if (thisVofClipped)
-    {
-      GeometryShop* changedThis = (GeometryShop *) this;
-      changedThis->m_numCellsClipped += 1;
-    }
+    if (thisVofClipped)
+      {
+        GeometryShop* changedThis = (GeometryShop *) this;
+        changedThis->m_numCellsClipped += 1;
+      }
+  }
 }
 
 int GeometryShop::getNumCellsClipped()

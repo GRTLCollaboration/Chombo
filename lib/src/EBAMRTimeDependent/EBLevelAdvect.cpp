@@ -19,6 +19,7 @@
 #include "EBCellFactory.H"
 #include "FaceIterator.H"
 #include "EBPatchAdvectF_F.H"
+#include "CH_Thread.H"
 #include <iomanip>
 #include <cmath>
 #include <cstdio>
@@ -83,6 +84,7 @@ EBLevelAdvect(const DisjointBoxLayout&           a_thisDBL,
               const bool&                        a_hasCoarser,
               const bool&                        a_hasFiner,
               const EBPatchGodunovFactory* const a_patchGodunov,
+              const bool &                       a_forceNoEBCF,
               const EBIndexSpace*          const a_eb)
 {
   CH_TIME("EBLevelAdvect::EBLevelAdvect");
@@ -113,6 +115,7 @@ define(const DisjointBoxLayout&           a_thisDBL,
        const bool&                        a_hasCoarser,
        const bool&                        a_hasFiner,
        const EBPatchGodunovFactory* const a_patchGodunov,
+       const bool &                       a_forceNoEBCF,
        const EBIndexSpace*          const a_eb)
 {
   CH_TIME("EBLevelAdvect::define");
@@ -132,6 +135,7 @@ define(const DisjointBoxLayout&           a_thisDBL,
     }
 
   m_isDefined = true;
+  m_forceNoEBCF  = a_forceNoEBCF,
   m_thisGrids    = a_thisDBL;
   m_thisEBISL    = a_thisEBISL;
   m_refRatCrse   = a_nRefine;
@@ -170,16 +174,17 @@ define(const DisjointBoxLayout&           a_thisDBL,
       CH_TIME("EBLevelAdvect::define::fillPatchDefine");
       ProblemDomain domainCrse = coarsen(m_domain, m_refRatCrse);
 
+      IntVect ivGhost = m_nGhost*IntVect::Unit;
       //patcher is defined with the number of conserved vars.
       m_fillPatch.define(m_thisGrids, m_coarGrids,
                          m_thisEBISL, m_coarEBISL,
                          domainCrse, m_refRatCrse, m_nVar,
-                         m_nGhost, a_eb);
+                         m_nGhost, ivGhost, m_forceNoEBCF, a_eb);
 
       m_fillPatchVel.define(m_thisGrids, m_coarGrids,
                             m_thisEBISL, m_coarEBISL,
                             domainCrse, m_refRatCrse, SpaceDim,
-                            m_nGhost, a_eb);
+                            m_nGhost, ivGhost, m_forceNoEBCF, a_eb);
 
     }
 
@@ -228,8 +233,15 @@ advectToFacesCol(LevelData< EBFluxFAB >&                         a_extrapState,
       consTemp[dit()].setVal(0.);
     }
 
-  a_consState.copyTo(consInterv, consTemp, consInterv);
-  a_normalVel.copyTo(intervSD, veloTemp, intervSD);
+  //this should be strictly local
+  CH_assert(m_thisGrids == a_consState.disjointBoxLayout());
+  CH_assert(m_thisGrids == a_normalVel.disjointBoxLayout());
+  //if the above asserts are satisfied, copyto is strictly local
+  {
+    CH_TIME("copies");
+    a_consState.localCopyTo(consInterv, consTemp, consInterv);
+    a_normalVel.localCopyTo(intervSD  , veloTemp, intervSD);
+  }
   // Fill ghost cells using fillInterp, and copyTo.
   if (m_hasCoarser)
     {
@@ -254,20 +266,20 @@ advectToFacesCol(LevelData< EBFluxFAB >&                         a_extrapState,
   {
     CH_TIME("initial_exchange");
     consTemp.exchange(consInterv);
-    veloTemp.exchange(intervSD);
+    veloTemp.exchange(intervSD  );
   }
 
   LevelData<EBCellFAB>* srcTmpPtr = NULL;
   if (a_source != NULL)
     {
       // srcTmpPtr = (LevelData<EBCellFAB>*) a_source;
-
+      CH_TIME("source_related_stuff");
       srcTmpPtr = new LevelData<EBCellFAB>(m_thisGrids, m_nVar, ivGhost, factory);
       for (DataIterator dit = m_thisGrids.dataIterator(); dit.ok(); ++dit)
         {
           (*srcTmpPtr)[dit()].setVal(0.);
         }
-      a_source->copyTo(consInterv, *srcTmpPtr, consInterv);
+      a_source->localCopyTo(consInterv, *srcTmpPtr, consInterv);
 
       if ( (a_sourceCoarOld != NULL) &&
            (a_sourceCoarNew != NULL) &&
@@ -291,11 +303,13 @@ advectToFacesCol(LevelData< EBFluxFAB >&                         a_extrapState,
 
   {
     CH_TIME("advectToFaces");
-    int ibox = 0;
-    for (DataIterator dit = m_thisGrids.dataIterator(); dit.ok(); ++dit)
+    DataIterator dit = m_thisGrids.dataIterator();
+    int nbox=dit.size();
+#pragma omp parallel for
+    for (int mybox=0;mybox<nbox; mybox++)
       {
-        const Box& cellBox = m_thisGrids.get(dit());
-        const EBISBox& ebisBox = m_thisEBISL[dit()];
+        const Box& cellBox = m_thisGrids.get(dit[mybox]);
+        const EBISBox& ebisBox = m_thisEBISL[dit[mybox]];
         if (!ebisBox.isAllCovered())
           {
             //the viscous term goes into here
@@ -303,7 +317,7 @@ advectToFacesCol(LevelData< EBFluxFAB >&                         a_extrapState,
             EBCellFAB* srcPtr = &dummy;
             if (srcTmpPtr != NULL)
               {
-                srcPtr = (EBCellFAB*)(&((*srcTmpPtr)[dit()]));
+                srcPtr = (EBCellFAB*)(&((*srcTmpPtr)[dit[mybox]]));
               }
 
             const EBCellFAB& source = *srcPtr;
@@ -311,23 +325,21 @@ advectToFacesCol(LevelData< EBFluxFAB >&                         a_extrapState,
             BaseIVFAB<Real> boundaryPrim;
             bool doBoundaryPrim = false;
 
-            EBFluxFAB& extrapFAB  = a_extrapState[dit()];
+            EBFluxFAB& extrapFAB  = a_extrapState[dit[mybox]];
             advectToFaces(extrapFAB,
                           boundaryPrim,
-                          a_coveredPrimLo[dit()],
-                          a_coveredPrimHi[dit()],
-                          a_coveredFaceLo[dit()],
-                          a_coveredFaceHi[dit()],
-                          a_coveredSetsLo[dit()],
-                          a_coveredSetsHi[dit()],
-                          consTemp[dit()],
-                          veloTemp[dit()],
-                          a_advectionVel[dit()],
+                          a_coveredPrimLo[dit[mybox]],
+                          a_coveredPrimHi[dit[mybox]],
+                          a_coveredFaceLo[dit[mybox]],
+                          a_coveredFaceHi[dit[mybox]],
+                          a_coveredSetsLo[dit[mybox]],
+                          a_coveredSetsHi[dit[mybox]],
+                          consTemp[dit[mybox]],
+                          veloTemp[dit[mybox]],
+                          a_advectionVel[dit[mybox]],
                           cellBox, ebisBox,
                           a_dt,   a_timeFine,
-                          source,  dit(),doBoundaryPrim);
-
-            ibox++;
+                          source,  dit[mybox],doBoundaryPrim);
           }
       }
   }
@@ -438,8 +450,8 @@ advectToFacesBCG(LevelData< EBFluxFAB >&                         a_extrapState,
       consTemp[dit()].setVal(0.);
     }
 
-  a_consState.copyTo(consInterv, consTemp, consInterv);
-  a_normalVel.copyTo(intervSD, veloTemp, intervSD);
+  a_consState.localCopyTo(consInterv, consTemp, consInterv);
+  a_normalVel.localCopyTo(intervSD, veloTemp, intervSD);
   // Fill ghost cells using fillInterp, and copyTo.
   if (m_hasCoarser)
     {
@@ -464,7 +476,7 @@ advectToFacesBCG(LevelData< EBFluxFAB >&                         a_extrapState,
   {
     CH_TIME("initial_exchange");
     consTemp.exchange(consInterv);
-    veloTemp.exchange(intervSD);
+    veloTemp.exchange(intervSD  );
   }
 
   LevelData<EBCellFAB>* srcTmpPtr = NULL;

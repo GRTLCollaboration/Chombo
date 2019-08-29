@@ -65,6 +65,19 @@ class EBArith
 public:
 
   ///
+  static void convertToITM(IndexTM<Real, SpaceDim>& a_diffrv,  const RealVect& a_rv);
+
+
+  ///
+  static void convertToITM(IndexTM<int, SpaceDim>& a_diffrv,  const IntVect& a_rv);
+
+  ///
+  static void convertToITM(IndexTM<Real, SpaceDim-1>& a_diffrv,  const RealVect& a_rv, const int& a_ignoreIndex);
+
+  ///
+  static void convertToITM(IndexTM<int, SpaceDim-1>& a_diffrv,  const IntVect& a_rv, const int& a_ignoreIndex);
+
+  ///
   /**
      Gets the stencil to take the first derivative of  cell centered data.
      no high order one sided stuff (to keep stencil close)
@@ -109,7 +122,21 @@ public:
   static int orderScript(int icomp, int inorm, int ncomp);
 
   ///
-  /**
+  static void
+  compareError(Vector<Real>&            a_orders,
+               const  LevelData<EBCellFAB>&    a_errorFine,
+               const  LevelData<EBCellFAB>&    a_errorCoar,
+               const  DisjointBoxLayout&       a_gridsFine,
+               const  DisjointBoxLayout&       a_gridsCoar,
+               const  EBISLayout&              a_ebislFine,
+               const  EBISLayout&              a_ebislCoar,
+               const Box&                      a_coarseDom,
+               int                             a_testverbosity,
+               fstream*                        a_fout,
+               Vector<string>                  a_names,
+               string  a_prefix)          ;
+  ///
+  /**o
    */
   static void
   compareError(Vector<Real>&                            a_orders,
@@ -123,8 +150,33 @@ public:
                const Box&                               a_coarseDom,
                int                                      a_testverbosity,
                fstream*                                 a_fout = NULL,
-               Vector<string> names = Vector<string>());
+               Vector<string> names = Vector<string>(),
+               string prefix = string());
 
+  static Real
+  irregNorm(const LevelData<BaseIVFAB<Real> >    & a_dataOne,
+            const DisjointBoxLayout              & a_layout,
+            const EBISLayout                     & a_ebisl,
+            const int                            & a_comp,
+            const int                            & a_p);
+  static void 
+  irregNorm(Real& a_ebIrregNorm,
+            const BaseIVFAB<Real>& a_ebiError,
+            const IntVectSet& a_ivsIrreg,
+            const EBISBox& a_ebisBox,
+            const int& a_comp,
+            const int& a_normtype);
+  static void
+  compareIrregError(Vector<Real>&                          a_orders,
+                    const  LevelData<BaseIVFAB<Real> >&    a_errorFine,
+                    const  LevelData<BaseIVFAB<Real> >&    a_errorCoar,
+                    const  DisjointBoxLayout&              a_gridsFine,
+                    const  DisjointBoxLayout&              a_gridsCoar,
+                    const  EBISLayout&                     a_ebislFine,
+                    const  EBISLayout&                     a_ebislCoar,
+                    const Box&                             a_coarseDom,
+                    const string &                         a_prefix,
+                    Vector<string>                         a_names) ;         
   ///
   static void shrinkIVS(IntVectSet& a_ivs, const int& a_numShrink);
 
@@ -329,7 +381,8 @@ public:
                           const int&            a_idir,
                           const EBGraph&        a_ebGraph,
                           const EBFaceFAB&      a_faceData,
-                          const int&            a_comp);
+                          const int&            a_comp,
+                          const Real&           a_dropOrderValue = 0.);
 
   ///
   static Real
@@ -532,6 +585,15 @@ public:
                                    const RealVect&  a_dx,
                                    const RealVect&  a_probLo);
 
+
+  ///gets the location in real space of a face center
+  static RealVect  getFaceLocation(const FaceIndex& a_face,
+                                   const Real&  a_dx,
+                                   const RealVect&  a_probLo)
+    {
+      return getFaceLocation(a_face, a_dx*RealVect::Unit, a_probLo);
+    }
+
   ///get stencils for points along a line (generalized johansen stencil)
   static void dataRayCast(bool&               a_dropOrder,
                           Vector<VoFStencil>& a_pointStencils,
@@ -549,6 +611,34 @@ public:
   static RealVect  getVofLocation(const VolIndex&  a_vof,
                                   const RealVect&  a_dx,
                                   const RealVect&  a_probLo);
+
+  ///I have misspelled this one time too many
+  static RealVect  getVoFLocation(const VolIndex&  a_vof,
+                                  const RealVect&  a_dx,
+                                  const RealVect&  a_probLo)
+  {
+    return getVofLocation(a_vof, a_dx, a_probLo);
+  }
+
+  ///I have misspelled this one time too many
+  static RealVect  getVoFLocation(const VolIndex&  a_vof,
+                                  const Real&  a_dx,
+                                  const RealVect&  a_probLo)
+  {
+    RealVect rvdx = a_dx*RealVect::Unit;
+    return getVofLocation(a_vof, rvdx, a_probLo);
+  }
+
+
+  ///I have misspelled this one time too many
+  static RealVect  getVofLocation(const VolIndex&  a_vof,
+                                  const Real&  a_dx,
+                                  const RealVect&  a_probLo)
+  {
+    RealVect rvdx = a_dx*RealVect::Unit;
+    return getVofLocation(a_vof, rvdx, a_probLo);
+  }
+
 
   ///gets the location in real space of a cell center
   static RealVect  getIVLocation(const IntVect&   a_iv,
@@ -585,14 +675,6 @@ public:
                              const ProblemDomain&        a_domain,
                              const int&                  a_idir);
 
-  ///
-  static void
-  irregNorm(Real& a_ebIrregNorm,
-            const BaseIVFAB<Real>& a_ebiError,
-            const IntVectSet& a_ivsIrreg,
-            const EBISBox& a_ebisBox,
-            const int& a_comp,
-            const int& a_normtype);
 
   ///
   static FaceStencil getInterpStencil(const FaceIndex&     a_face,
@@ -639,6 +721,14 @@ public:
                            const VolIndex&   a_vof,
                            const EBISBox&    a_ebisBox,
                            const int&        a_redistRad);
+
+  /*******/
+  static void
+  getAllVoFsWithinRadius(Vector<VolIndex>& a_vofList,
+                         Vector<IntVect>    & a_dist,
+                         const VolIndex&   a_vof,
+                         const EBISBox&    a_ebisBox,
+                         const int&        a_redistRad);
 
   ///get volume of a vof in rz coords
   static void
@@ -943,6 +1033,21 @@ public:
                            const VolIndex& a_vof1,
                            const IntVect& a_cell2,
                            const EBISBox& a_ebisBox);
+  /*******/
+  static void
+  getAllVoFsWithinRadius(Vector<VolIndex>& a_vofList,
+                         const VolIndex&   a_vof,
+                         const EBISBox&    a_ebisBox,
+                         const int&        a_redistRad);
+
+  /*******/
+  static void
+  getAllVoFsWithinRadius(Vector<VolIndex>& a_vofList,
+                         const IntVect&    a_timesMoved,
+                         const VolIndex&   a_vof,
+                         const EBISBox&    a_ebisBox,
+                         const int&        a_redistRad);
+
   ///
   /** Returns all vofs that can be reached from a_vof via a
       monotone path of length <= than radius

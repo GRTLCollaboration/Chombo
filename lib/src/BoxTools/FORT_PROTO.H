@@ -635,6 +635,20 @@ public:
                              ,&a.hiVect()[4] \
                              ,&a.hiVect()[5] )
 
+#define CHF_CONST_FBA1( a,n ) a.dataPtr( n ) \
+                     ,D_DECL6( &a.loVect()[0] \
+                             ,&a.loVect()[1] \
+                             ,&a.loVect()[2] \
+                             ,&a.loVect()[3] \
+                             ,&a.loVect()[4] \
+                             ,&a.loVect()[5] ) \
+                     ,D_DECL6( &a.hiVect()[0] \
+                             ,&a.hiVect()[1] \
+                             ,&a.hiVect()[2] \
+                             ,&a.hiVect()[3] \
+                             ,&a.hiVect()[4] \
+                             ,&a.hiVect()[5] )
+
 /** @ingroup macros */
 #define CHF_CONST_FIA1_SHIFT( a, n, iv )     \
   a.dataPtr(n),                              \
@@ -665,6 +679,7 @@ public:
                              ,&a.hiVect()[3] \
                              ,&a.hiVect()[4] \
                              ,&a.hiVect()[5] )
+
 
 /** @ingroup macros */
 #define CHF_CONST_FRA1_SHIFT( a, n, iv)      \
@@ -827,6 +842,19 @@ public:
                              ,const int* const i ## a ## hi4 \
                              ,const int* const i ## a ## hi5 ) \
                              ,const int* const n ## a ## comp
+#define CHFp_CONST_FBA1( a ) const char *const a \
+                     ,D_DECL6( const int* const i ## a ## lo0 \
+                             ,const int* const i ## a ## lo1 \
+                             ,const int* const i ## a ## lo2 \
+                             , const int* const i ## a ## lo3 \
+                             ,const int* const i ## a ## lo4 \
+                             ,const int* const i ## a ## lo5 ) \
+                     ,D_DECL6( const int* const i ## a ## hi0 \
+                             ,const int* const i ## a ## hi1 \
+                             ,const int* const i ## a ## hi2 \
+                             ,const int* const i ## a ## hi3 \
+                             ,const int* const i ## a ## hi4 \
+                             ,const int* const i ## a ## hi5 )
 #define CHFp_CONST_FRA( a ) const Real *const a \
                      ,D_DECL6( const int* const i ## a ## lo0 \
                              ,const int* const i ## a ## lo1 \
@@ -868,6 +896,20 @@ public:
                              ,const int* const i ## a ## hi3 \
                              ,const int* const i ## a ## hi4 \
                              ,const int* const i ## a ## hi5 )
+#define CHFp_FBA1( a ) char *const a \
+                     ,D_DECL6( const int* const i ## a ## lo0 \
+                             ,const int* const i ## a ## lo1 \
+                             ,const int* const i ## a ## lo2 \
+                             ,const int* const i ## a ## lo3 \
+                             ,const int* const i ## a ## lo4 \
+                             ,const int* const i ## a ## lo5 ) \
+                     ,D_DECL6( const int* const i ## a ## hi0 \
+                             ,const int* const i ## a ## hi1 \
+                             ,const int* const i ## a ## hi2 \
+                             ,const int* const i ## a ## hi3 \
+                             ,const int* const i ## a ## hi4 \
+                             ,const int* const i ## a ## hi5 )
+
 #define CHFp_FRA1( a ) Real *const a \
                      ,D_DECL6( const int* const i ## a ## lo0 \
                              ,const int* const i ## a ## lo1 \
@@ -959,6 +1001,8 @@ public:
 //[NOTE: primitive multidimensional arrays cannot depend on SpaceDim]
 #define CHFt_CONST_IARRAY(rank, ia, ...) ia, DIMARG ## rank ## t(ia)
 #define CHFt_IARRAY(      rank, ia, ...) ia, DIMARG ## rank ## t(ia)
+#define CHFt_CONST_BARRAY(rank, ia, ...) ia, DIMARG ## rank ## t(ia)
+#define CHFt_BARRAY(      rank, ia, ...) ia, DIMARG ## rank ## t(ia)
 #define CHFt_CONST_RARRAY(rank, ra, ...) ra, DIMARG ## rank ## t(ra)
 #define CHFt_RARRAY(      rank, ra, ...) ra, DIMARG ## rank ## t(ra)
 #define CHFt_CONST_CARRAY(rank, ra, ...) ra, DIMARG ## rank ## t(ra)
@@ -1116,6 +1160,19 @@ public:
                              , i ## a ## hi4 \
                              , i ## a ## hi5 )
 #define CHFt_CONST_FIA1( a ) a \
+                     ,D_DECL6(  i ## a ## lo0 \
+                             , i ## a ## lo1 \
+                             , i ## a ## lo2 \
+                             , i ## a ## lo3 \
+                             , i ## a ## lo4 \
+                             , i ## a ## lo5 ) \
+                     ,D_DECL6(  i ## a ## hi0 \
+                             , i ## a ## hi1 \
+                             , i ## a ## hi2 \
+                             , i ## a ## hi3 \
+                             , i ## a ## hi4 \
+                             , i ## a ## hi5 )
+#define CHFt_CONST_FBA1( a ) a \
                      ,D_DECL6(  i ## a ## lo0 \
                              , i ## a ## lo1 \
                              , i ## a ## lo2 \

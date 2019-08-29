@@ -53,7 +53,7 @@ public:
     const VolIndex* vofPtr = dynamic_cast<const VolIndex *>(&a_baseInd);
     if (vofPtr == NULL) MayDay::Error("Trying to index into an EBCellFAB with something that is not a VolIndex");
     int retval = 0;
-    if (m_multiCells.contains(vofPtr->gridIndex()))
+    if (m_ebisBox.isMultiValued(vofPtr->gridIndex()))
       {
         retval = 1;
       }
@@ -66,7 +66,7 @@ public:
     const VolIndex* vofPtr = dynamic_cast<const VolIndex *>(&a_baseInd);
     if (vofPtr == NULL) MayDay::Error("Trying to index into an EBCellFAB with something that is not a VolIndex");
     long retval = 0;
-    if (m_multiCells.contains(vofPtr->gridIndex()))
+    if (m_ebisBox.isMultiValued(vofPtr->gridIndex()))
       {
         retval = m_irrFAB.offset(*vofPtr, a_ivar);
       }
@@ -168,8 +168,8 @@ public:
   ///
   const Box& box() const ;
 
-  ///
-  const IntVectSet& getMultiCells() const ;
+  /// has to be by value because sometimes the vector does not exist.
+  Vector<VolIndex> getMultiCells() const ;
 
   ///
   const BaseIVFAB<T>& getMultiValuedFAB() const;
@@ -247,7 +247,7 @@ public:
   const EBISBox& getEBISBox() const;
 
   ///
-  void
+  virtual void
   setCoveredCellVal(const T&    a_val,
                     const int&  a_comp,
                     const bool& a_doMulti=true);
@@ -262,16 +262,9 @@ protected:
   BaseFab<T> m_regFAB;
 
   EBISBox m_ebisBox;
-  //number of data values at each VolIndex
-  int m_nComp;
 
-  ///region over which the BaseEBCellFAB exists
   Box m_region;
 
-  ///whether each given cell is multi-valued
-  IntVectSet m_multiCells;
-
-  ///is m_multiCells not empty?
   bool m_hasMultiCells;
 
   ///has full define function been called?

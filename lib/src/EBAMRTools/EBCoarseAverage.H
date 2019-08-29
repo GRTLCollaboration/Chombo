@@ -156,12 +156,13 @@ public:
           const LevelData<EBCellFAB>& a_fineData,
           const Interval&             a_variables);
 
+  ///this does area weighted face averaging
   void
   average(LevelData<EBFluxFAB>&       a_coarData,
           const LevelData<EBFluxFAB>& a_fineData,
           const Interval&             a_variables);
 
-
+  ///this does area-weighted averaging for the irregular area (for data on the EB)
   void
   average(LevelData<BaseIVFAB<Real> >&       a_coarData,
           const LevelData<BaseIVFAB<Real> >& a_fineData,
@@ -172,13 +173,15 @@ protected:
   averageFAB(EBCellFAB&       a_coar,
              const EBCellFAB& a_fine,
              const DataIndex& a_datInd,
-             const Interval&  a_variables) const;
+             const Interval&  a_fineInterv,
+             const Interval&  a_coarInterv) const;
 
   void
   averageFAB(EBFaceFAB&       a_coar,
              const EBFaceFAB& a_fine,
              const DataIndex& a_datInd,
-             const Interval&  a_variables,
+             const Interval&  a_fineInterv,
+             const Interval&  a_coarInterv,
              const int&       a_dir) const;
 
   void

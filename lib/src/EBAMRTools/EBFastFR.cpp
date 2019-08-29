@@ -23,16 +23,19 @@
 #include "EBLevelDataOps.H"
 #include "CH_Timer.H"
 #include <iostream>
+
 using std::cout;
 using std::cin;
 using std::cerr;
 using std::endl;
+
 #include <iomanip>
 #include <cmath>
 #include <cstdio>
 #include <string>
 #include "EBCFData.H"
 #include "NamespaceHeader.H"
+
 IntVect   ivdebebffr(D_DECL(5,1,0));
 VolIndex vofdebebffr(ivdebebffr, 0);
 bool EBFastFR::s_verbose = false;
@@ -740,30 +743,11 @@ irregReflux(LevelData<EBCellFAB>& a_uCoar,
       //and fine holds area*fineFlux
       //make diff = area(fineFlux-coarFlux)  (with scaling stuff)
 
-      //dumpEBFFR(m_delUCoar, string("ducoar holds"));
-      //for (int idir = 0; idir < SpaceDim; idir++)
-      // {
-      //   for (SideIterator sit; sit.ok(); ++sit)
-      //     {
-      //       int iside = sign(sit());
-      //       pout() << "idir = " << idir << ", side = " << iside;
-      //       dumpEBFFR(m_delUCoFi[index(idir, sit())], string(", duCoFi holds"));
-      //     }
-      // }
-
-
       EBLevelDataOps::setVal(m_delUDiff, 0.0);
       m_delUCoar.copyTo(a_variables, m_delUDiff, a_variables);
 
-      //      dumpEBFFR(m_delUDiff, string("dudiff holds after first   copy"));
-
-
       EBAddOpEBFFR op;
       m_delUCoFi.copyTo(a_variables, m_delUDiff, a_variables, m_reverseCopier, op);
-
-      //dumpEBFFR(m_delUDiff, string("dudiff holds after reverse copy"));
-
-      //dumpEBFFR(a_uCoar, string("uCoar holds before reflux divergence"));
 
       //add refluxDivergence to solution u -= a_scale*(area*(fineFlux-coarFlux))
       incrementByRefluxDivergence(a_uCoar, m_delUDiff, a_variables, a_scale, false,
@@ -817,6 +801,10 @@ incrementByRefluxDivergence(LevelData<EBCellFAB>& a_uCoar,
                               Real udelDif = a_delUDiff[dit()](vof, ivar);
                               Real soluVal = a_uCoar[dit()](vof, ivar);
                               Real soluNew = soluVal - scale*udelDif;
+
+                              // Just used so now zero it just in case a
+                              // vof is in more than one CF interface
+                              a_delUDiff[dit()](vof, ivar) = 0.0;
 
                               a_uCoar[dit()](vof, ivar) = soluNew;
                             }

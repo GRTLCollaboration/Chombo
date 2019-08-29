@@ -23,36 +23,12 @@ NeumannConductivityDomainBC::
 }
 
 /*****/
-void
-NeumannConductivityDomainBC::
-setValue(Real a_value)
-{
-  m_value = a_value;
-  m_flux = RefCountedPtr<BaseBCValue>();
-
-  m_onlyHomogeneous = false;
-  m_isFunction = false;
-}
-
-/*****/
 int
 NeumannConductivityDomainBC::
 whichBC(int                  a_idir,
         Side::LoHiSide       a_side)
 {
   return 0;
-}
-
-/*****/
-void
-NeumannConductivityDomainBC::
-setFunction(RefCountedPtr<BaseBCValue> a_flux)
-{
-  m_value = 12345.6789;
-  m_flux = a_flux;
-
-  m_onlyHomogeneous = false;
-  m_isFunction = true;
 }
 
 /*****/
@@ -108,7 +84,8 @@ getFaceFlux(BaseFab<Real>&        a_faceFlux,
                   RealVect normal = RealVect::Zero;
                   normal[a_idir] = iside;
 
-                  a_faceFlux(iv,comp) = iside * m_flux->value(iv,a_dit,point,normal,a_time,comp);
+                  Real value = bcvaluefunc(point, a_idir, a_side);
+                  a_faceFlux(iv,comp) = iside *value;
                 }
             }
           else
@@ -225,7 +202,7 @@ getFaceGradPhi(Real&                 a_faceFlux,
       point *= a_dx;
       point[a_face.direction()] = 0.0;//make this not depend on whatever ebisbox is returning for centroid in the face direction.
       point += EBArith::getFaceLocation(a_face,a_dx,a_probLo);
-      flux = m_flux->value(a_face,a_side,a_dit,point,normal,a_time,a_comp);
+      flux = bcvaluefunc(point, a_idir, a_side);
     }
   else
     {
@@ -253,8 +230,7 @@ getFaceVel(Real&                 a_faceFlux,
            const int&            a_idir,
            const int&            a_icomp,
            const Real&           a_time,
-           const Side::LoHiSide& a_side,
-           const bool&           a_doDivFreeOutflow)
+           const Side::LoHiSide& a_side)
 {
   a_faceFlux =  a_vel[a_idir](a_face, a_icomp);
 }
@@ -263,7 +239,7 @@ NeumannConductivityDomainBCFactory::
 NeumannConductivityDomainBCFactory()
 {
   m_value = 12345.6789;
-  m_flux = RefCountedPtr<BaseBCValue>();
+  m_flux = RefCountedPtr<BaseBCFuncEval>();
 
   m_onlyHomogeneous = true;
   m_isFunction = false;
@@ -280,7 +256,7 @@ NeumannConductivityDomainBCFactory::
 setValue(Real a_value)
 {
   m_value = a_value;
-  m_flux = RefCountedPtr<BaseBCValue>();
+  m_flux = RefCountedPtr<BaseBCFuncEval>();
 
   m_onlyHomogeneous = false;
   m_isFunction = false;
@@ -288,7 +264,7 @@ setValue(Real a_value)
 /******/
 void
 NeumannConductivityDomainBCFactory::
-setFunction(RefCountedPtr<BaseBCValue> a_flux)
+setFunction(RefCountedPtr<BaseBCFuncEval> a_flux)
 {
   m_value = 12345.6789;
   m_flux = a_flux;
@@ -304,16 +280,17 @@ create(const ProblemDomain& a_domain,
        const RealVect&      a_dx)
 {
   NeumannConductivityDomainBC* newBC = new NeumannConductivityDomainBC();
-  if (!m_onlyHomogeneous)
+  if (m_onlyHomogeneous)
     {
-      if (m_isFunction)
-        {
-          newBC->setFunction(m_flux);
-        }
-      else
-        {
-          newBC->setValue(m_value);
-        }
+      newBC->setValue(0.);
+    }
+  else if (m_isFunction)
+    {
+      newBC->setFunction(m_flux);
+    }
+  else
+    {
+      newBC->setValue(m_value);
     }
   return newBC;
 }

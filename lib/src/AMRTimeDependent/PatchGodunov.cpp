@@ -113,7 +113,7 @@ void PatchGodunov::updateState(FArrayBox&       a_U,
   FluxBox whalf(a_box,numPrim);
   whalf.setVal(0.0);
 
-  a_F.resize(a_box,numFlux);
+  a_F.define(a_box,numFlux);
   a_F.setVal(0.0);
 
   computeWHalf(whalf, a_U, a_S, a_dt, a_box);
@@ -143,7 +143,7 @@ void PatchGodunov::updateState(FArrayBox&       a_U,
 
   a_wHalf.setVal(0.0);
 
-  a_F.resize(a_box,numFlux);
+  a_F.define(a_box,numFlux);
   a_F.setVal(0.0);
 
   computeWHalf(a_wHalf, a_U, a_S, a_dt, a_box);
@@ -277,8 +277,8 @@ void PatchGodunov::computeWHalf(FluxBox&         a_WHalf,
   for (int dir1 = 0; dir1 < SpaceDim; dir1++)
     {
       // Size the intermediate, extrapolated primitive variables
-      WMinus[dir1].resize(slopeBox,numPrim); // cell-centered
-      WPlus [dir1].resize(slopeBox,numPrim); // cell-centered
+      WMinus[dir1].define(slopeBox,numPrim); // cell-centered
+      WPlus [dir1].define(slopeBox,numPrim); // cell-centered
 
       // Compute predictor step to obtain extrapolated primitive variables
       if (m_normalPredOrder == 0)
@@ -309,7 +309,7 @@ void PatchGodunov::computeWHalf(FluxBox&         a_WHalf,
         }
 
       // Solve the Riemann problem
-      WHalf1[dir1].resize(fluxBox[dir1],numPrim); // face-centered
+      WHalf1[dir1].define(fluxBox[dir1],numPrim); // face-centered
       m_gdnvPhysics->riemann(WHalf1[dir1],WPlus[dir1],WMinus[dir1],W,
                              m_currentTime,dir1,faceBox[dir1]);
     }
@@ -364,7 +364,7 @@ void PatchGodunov::computeWHalf(FluxBox&         a_WHalf,
 
         // Solve the Riemann problem.
 
-        WHalf2[dir1][dir2].resize(fluxBox[dir1],numPrim);
+        WHalf2[dir1][dir2].define(fluxBox[dir1],numPrim);
         m_gdnvPhysics->riemann(WHalf2[dir1][dir2],
                                WTempPlus,
                                WTempMinus,
@@ -639,7 +639,7 @@ void PatchGodunov::PPMNormalPred(FArrayBox&       a_WMinus,
   Box faceBox = a_box;
   // added by petermc, 22 Sep 2008:
   // for 4th order, need extra faces in all the directions
-  if (m_highOrderLimiter) faceBox.grow(1);
+  if (m_util.useHighOrderLimiter()) faceBox.grow(1);
   faceBox.surroundingNodes(a_dir);
   FArrayBox WFace(faceBox,numprim);
 
@@ -729,7 +729,6 @@ void PatchGodunov::PPMNormalPred(FArrayBox&       a_WMinus,
 void PatchGodunov::highOrderLimiter(bool a_highOrderLimiter)
 {
   CH_assert(m_isDefined);
-  m_highOrderLimiter = a_highOrderLimiter;
   m_util.highOrderLimiter(a_highOrderLimiter);
 }
 

@@ -15,46 +15,12 @@
 #include "FArrayBox.H"
 #include "BoxIterator.H"
 #include "EBArith.H"
+#include "EBCellFABF_F.H"
 #include <float.h>
 #include "NamespaceHeader.H"
 
 bool EBCellFAB::s_verbose = false;
 
-void
-EBCellFAB::setInvalidData(const Real& a_val,
-                          const int& a_comp)
-{
-  CH_assert(a_comp >= 0);
-  CH_assert(a_comp < m_nComp);
-
-  if (m_ebisBox.isAllRegular())
-    {
-      return;
-    }
-  else if (m_ebisBox.isAllCovered())
-    {
-      m_regFAB.setVal(a_val, a_comp);
-    }
-  else
-    {
-      for (BoxIterator bit(m_region); bit.ok(); ++bit)
-        {
-          const IntVect& iv = bit();
-          if (m_ebisBox.isCovered(iv))
-            {
-              m_regFAB(iv, a_comp) = a_val;
-            }
-        }
-      //also set the multivalued cells
-      for (IVSIterator ivsit(getMultiCells());
-          ivsit.ok(); ++ivsit)
-        {
-          const IntVect& iv = ivsit();
-          m_regFAB(iv, a_comp) = a_val;
-        }
-      //also set the multivalued cells
-    }
-}
 /**********************/
 /**********************/
 EBCellFAB::EBCellFAB():BaseEBCellFAB<Real>()
@@ -126,9 +92,9 @@ EBCellFAB::negate(void)
 EBCellFAB&
 EBCellFAB::operator+=(const EBCellFAB& a_src)
 {
-  CH_assert(a_src.m_nComp == m_nComp);
+  CH_assert(a_src.nComp() == nComp());
 
-  plus(a_src, 0, 0, m_nComp);
+  plus(a_src, 0, 0, nComp());
 
   return *this;
 }
@@ -139,7 +105,7 @@ EBCellFAB::plus(const EBCellFAB& a_src,
                 int a_destcomp,
                 int a_numcomp)
 {
-  Box locRegion = a_src.m_region & m_region;
+  Box locRegion = a_src.getRegion() & getRegion();
   plus(a_src, locRegion, a_srccomp, a_destcomp, a_numcomp);
   return *this;
 }
@@ -152,8 +118,8 @@ EBCellFAB& EBCellFAB::plus(const EBCellFAB& a_src,
 {
   CH_assert(isDefined());
   CH_assert(a_src.isDefined());
-  CH_assert(a_srccomp + a_numcomp <= a_src.m_nComp);
-  CH_assert(a_destcomp + a_numcomp <= m_nComp);
+  CH_assert(a_srccomp + a_numcomp <= a_src.nComp());
+  CH_assert(a_destcomp + a_numcomp <= nComp());
   const Box& locRegion = a_region;
   bool sameRegBox = (a_src.m_regFAB.box() == m_regFAB.box());
 
@@ -166,7 +132,9 @@ EBCellFAB& EBCellFAB::plus(const EBCellFAB& a_src,
                      CHF_INT(a_destcomp),
                      CHF_INT(a_numcomp));
 
-      if (sameRegBox && (locRegion == m_region && locRegion == a_src.m_region))
+      m_irrFAB.forall(a_src.m_irrFAB, locRegion, a_srccomp, a_destcomp, a_numcomp, sameRegBox, [](Real& dest, const Real& src){dest+=src;});
+      /*
+      if (sameRegBox && (locRegion == getRegion() && locRegion == a_src.getRegion()))
         {
           Real* l = m_irrFAB.dataPtr(a_destcomp);
           const Real* r = a_src.m_irrFAB.dataPtr(a_srccomp);
@@ -177,17 +145,12 @@ EBCellFAB& EBCellFAB::plus(const EBCellFAB& a_src,
         }
       else
         {
-          IntVectSet ivsMulti = a_src.getMultiCells();
-          ivsMulti &= getMultiCells();
-          ivsMulti &= locRegion;
-          IVSIterator ivsit(ivsMulti);
-          for (ivsit.reset(); ivsit.ok(); ++ivsit)
+          const Vector<VolIndex>& vofs = m_irrFAB.getVoFs();
+          for(int i=0; i<vofs.size(); i++)
             {
-              const IntVect& iv = ivsit();
-              Vector<VolIndex> vofs = m_ebisBox.getVoFs(iv);
-              for (int ivof = 0; ivof < vofs.size(); ivof++)
+              const VolIndex& vof=vofs[i];
+              if(locRegion.contains(vof.gridIndex()))
                 {
-                  const VolIndex& vof = vofs[ivof];
                   for (int icomp = 0; icomp < a_numcomp; ++icomp)
                     {
                       m_irrFAB(vof, a_destcomp+icomp) +=
@@ -195,7 +158,26 @@ EBCellFAB& EBCellFAB::plus(const EBCellFAB& a_src,
                     }
                 }
             }
+          // IntVectSet ivsMulti = a_src.getMultiCells();
+          // ivsMulti &= getMultiCells();
+          // ivsMulti &= locRegion;
+          // IVSIterator ivsit(ivsMulti);
+          // for (ivsit.reset(); ivsit.ok(); ++ivsit)
+          //   {
+          //     const IntVect& iv = ivsit();
+          //     Vector<VolIndex> vofs = m_ebisBox.getVoFs(iv);
+          //     for (int ivof = 0; ivof < vofs.size(); ivof++)
+          //       {
+          //         const VolIndex& vof = vofs[ivof];
+          //         for (int icomp = 0; icomp < a_numcomp; ++icomp)
+          //           {
+          //             m_irrFAB(vof, a_destcomp+icomp) +=
+          //               a_src.m_irrFAB(vof, a_srccomp+icomp);
+          //           }
+          //       }
+          //   }
         }
+      */
     }
   return *this;
 }
@@ -205,15 +187,17 @@ EBCellFAB& EBCellFAB::plus(const EBCellFAB& a_src,
 
 void EBCellFAB::clone(const EBCellFAB& a_arg)
 {
-  define(a_arg.m_ebisBox, a_arg.m_region, a_arg.m_nComp);
+  CH_TIME("EBCellFAB::clone");
+  define(a_arg.m_ebisBox, a_arg.getRegion(), a_arg.nComp());
+  copy(a_arg);
 }
 
 EBCellFAB&
 EBCellFAB::operator-=(const EBCellFAB& a_src)
 {
-  CH_assert(a_src.m_nComp == m_nComp);
+  CH_assert(a_src.nComp() == nComp());
 
-  minus(a_src, 0, 0, m_nComp);
+  minus(a_src, 0, 0, nComp());
 
   return *this;
 }
@@ -225,6 +209,7 @@ EBCellFAB::minus(const EBCellFAB& a_src,
                  int a_destcomp,
                  int a_numcomp)
 {
+  CH_TIME("EBCellFAB::minus");
   CH_assert(isDefined());
   CH_assert(a_src.isDefined());
   // Dan G. feels strongly that the assert below should NOT be commented out
@@ -232,10 +217,10 @@ EBCellFAB::minus(const EBCellFAB& a_src,
   // Terry is just trying to get his code to work
   //CH_assert(m_ebisBox == a_src.m_ebisBox);
 
-  CH_assert(a_srccomp + a_numcomp <= a_src.m_nComp);
-  CH_assert(a_destcomp + a_numcomp <= m_nComp);
+  CH_assert(a_srccomp + a_numcomp <= a_src.nComp());
+  CH_assert(a_destcomp + a_numcomp <= nComp());
 
-  Box locRegion = a_src.m_region & m_region;
+  Box locRegion = a_src.getRegion() & getRegion();
   bool sameRegBox = (a_src.m_regFAB.box() == m_regFAB.box());
 
   if (!locRegion.isEmpty())
@@ -246,8 +231,9 @@ EBCellFAB::minus(const EBCellFAB& a_src,
                           CHF_INT(a_srccomp),
                           CHF_INT(a_destcomp),
                           CHF_INT(a_numcomp));
-
-      if (sameRegBox && (locRegion == m_region && locRegion == a_src.m_region))
+      m_irrFAB.forall(a_src.m_irrFAB, locRegion, a_srccomp, a_destcomp, a_numcomp, sameRegBox, [](Real& dest, const Real& src){dest-=src;});
+      /*
+      if (sameRegBox && (locRegion == getRegion() && locRegion == a_src.getRegion()))
         {
           Real* l = m_irrFAB.dataPtr(a_destcomp);
           const Real* r = a_src.m_irrFAB.dataPtr(a_srccomp);
@@ -277,6 +263,7 @@ EBCellFAB::minus(const EBCellFAB& a_src,
                 }
             }
         }
+      */
     }
   return *this;
 }
@@ -286,9 +273,9 @@ EBCellFAB::minus(const EBCellFAB& a_src,
 EBCellFAB&
 EBCellFAB::operator*=(const EBCellFAB& a_src)
 {
-  CH_assert(a_src.m_nComp == m_nComp);
+  CH_assert(a_src.nComp() == nComp());
 
-  mult(a_src, 0, 0, m_nComp);
+  mult(a_src, 0, 0, nComp());
 
   return *this;
 }
@@ -299,6 +286,7 @@ EBCellFAB::mult(const EBCellFAB& a_src,
                 int a_destcomp,
                 int a_numcomp)
 {
+  CH_TIME("EBCellFAB::mult");
   CH_assert(isDefined());
   CH_assert(a_src.isDefined());
   // Dan G. feels strongly that the assert below should NOT be commented out
@@ -306,8 +294,8 @@ EBCellFAB::mult(const EBCellFAB& a_src,
   // Terry is just trying to get his code to work
   //CH_assert(m_ebisBox == a_src.m_ebisBox);
 
-  CH_assert(a_srccomp + a_numcomp <= a_src.m_nComp);
-  CH_assert(a_destcomp + a_numcomp <= m_nComp);
+  CH_assert(a_srccomp + a_numcomp <= a_src.nComp());
+  CH_assert(a_destcomp + a_numcomp <= nComp());
   if (s_verbose)
     {
       IntVect ivdebug(D_DECL(964,736,0));
@@ -317,7 +305,7 @@ EBCellFAB::mult(const EBCellFAB& a_src,
       Real aphi = (*this)(vof, 0) * a_src(vof, 0);
       pout() << ",  aphi(calc) = " <<  aphi << endl;
     }
-  Box locRegion = a_src.m_region & m_region;
+  Box locRegion = a_src.getRegion() & getRegion();
   bool sameRegBox = (a_src.m_regFAB.box() == m_regFAB.box());
 
   if (!locRegion.isEmpty())
@@ -328,7 +316,9 @@ EBCellFAB::mult(const EBCellFAB& a_src,
                           CHF_INT(a_srccomp),
                           CHF_INT(a_destcomp),
                           CHF_INT(a_numcomp));
-      if (sameRegBox && (locRegion == m_region && locRegion == a_src.m_region))
+      m_irrFAB.forall(a_src.m_irrFAB, locRegion, a_srccomp, a_destcomp, a_numcomp, sameRegBox, [](Real& dest, const Real& src){dest*=src;});
+      /*
+      if (sameRegBox && (locRegion == getRegion() && locRegion == a_src.getRegion()))
         {
           Real* l = m_irrFAB.dataPtr(a_destcomp);
           const Real* r = a_src.m_irrFAB.dataPtr(a_srccomp);
@@ -358,13 +348,9 @@ EBCellFAB::mult(const EBCellFAB& a_src,
                 }
             }
         }
+      */
     }
-  if (s_verbose)
-    {
-      IntVect ivdebug(D_DECL(964,736,0));
-      VolIndex vof(ivdebug, 0);
-      pout() << ",  aphi(aft) = " <<  (*this)(vof, 0) << endl;
-    }
+
   return *this;
 }
 
@@ -373,9 +359,9 @@ EBCellFAB::mult(const EBCellFAB& a_src,
 EBCellFAB&
 EBCellFAB::operator/=(const EBCellFAB& a_src)
 {
-  CH_assert(a_src.m_nComp == m_nComp);
+  CH_assert(a_src.nComp() == nComp());
 
-  divide(a_src, 0, 0, m_nComp);
+  divide(a_src, 0, 0, nComp());
 
   return *this;
 }
@@ -387,6 +373,7 @@ EBCellFAB::divide(const EBCellFAB& a_src,
                   int a_numcomp)
 {
 
+  CH_TIME("EBCellFAB::divide");
   CH_assert(isDefined());
   CH_assert(a_src.isDefined());
   // Dan G. feels strongly that the assert below should NOT be commented out
@@ -394,11 +381,11 @@ EBCellFAB::divide(const EBCellFAB& a_src,
   // Terry is just trying to get his code to work
   //CH_assert(m_ebisBox == a_src.m_ebisBox);
 
-  CH_assert(a_srccomp + a_numcomp <= a_src.m_nComp);
-  CH_assert(a_destcomp + a_numcomp <= m_nComp);
+  CH_assert(a_srccomp + a_numcomp <= a_src.nComp());
+  CH_assert(a_destcomp + a_numcomp <= nComp());
   bool sameRegBox = (a_src.m_regFAB.box() == m_regFAB.box());
 
-  Box locRegion = a_src.m_region & m_region;
+  Box locRegion = a_src.getRegion() & getRegion();
   if (!locRegion.isEmpty())
     {
       FORT_DIVIDETWOFAB(CHF_FRA(m_regFAB),
@@ -407,7 +394,9 @@ EBCellFAB::divide(const EBCellFAB& a_src,
                         CHF_INT(a_srccomp),
                         CHF_INT(a_destcomp),
                         CHF_INT(a_numcomp));
-      if (sameRegBox && (locRegion == m_region && locRegion == a_src.m_region))
+      m_irrFAB.forall(a_src.m_irrFAB, locRegion, a_srccomp, a_destcomp, a_numcomp, sameRegBox, [](Real& dest, const Real& src){dest/=src;});
+      /*
+      if (sameRegBox && (locRegion == getRegion() && locRegion == a_src.getRegion()))
         {
           Real* l = m_irrFAB.dataPtr(a_destcomp);
           const Real* r = a_src.m_irrFAB.dataPtr(a_srccomp);
@@ -437,6 +426,7 @@ EBCellFAB::divide(const EBCellFAB& a_src,
                 }
             }
         }
+      */
     }
   return *this;
 }
@@ -446,14 +436,15 @@ EBCellFAB::divide(const EBCellFAB& a_src,
 EBCellFAB&
 EBCellFAB::operator+=(const Real& a_src)
 {
+  CH_TIME("EBCellFAB::operator+=");
   CH_assert(isDefined());
   FORT_ADDFABR(CHF_FRA(m_regFAB),
                CHF_CONST_REAL(a_src),
-               CHF_BOX(m_region));
+               CHF_BOX(getRegion()));
 
   Real* l = m_irrFAB.dataPtr(0);
   int nvof = m_irrFAB.numVoFs();
-  for (int i=0; i<m_nComp*nvof; i++)
+  for (int i=0; i<nComp()*nvof; i++)
     l[i] += a_src;
 
   // const IntVectSet& ivsMulti = getMultiCells();
@@ -465,7 +456,7 @@ EBCellFAB::operator+=(const Real& a_src)
   //     for (int ivof = 0; ivof < vofs.size(); ivof++)
   //       {
   //         const VolIndex& vof = vofs[ivof];
-  //         for (int icomp = 0; icomp < m_nComp; ++icomp)
+  //         for (int icomp = 0; icomp < nComp(); ++icomp)
   //           {
   //             m_irrFAB(vof, icomp) += a_src;
   //           }
@@ -479,14 +470,15 @@ EBCellFAB::operator+=(const Real& a_src)
 EBCellFAB&
 EBCellFAB::operator-=(const Real& a_src)
 {
+  CH_TIME("EBCellFAB::operator-=");
   CH_assert(isDefined());
   FORT_SUBTRACTFABR(CHF_FRA(m_regFAB),
                     CHF_CONST_REAL(a_src),
-                    CHF_BOX(m_region));
+                    CHF_BOX(getRegion()));
 
   Real* l = m_irrFAB.dataPtr(0);
   int nvof = m_irrFAB.numVoFs();
-  for (int i=0; i<m_nComp*nvof; i++)
+  for (int i=0; i<nComp()*nvof; i++)
     l[i] -= a_src;
 
   return *this;
@@ -497,14 +489,15 @@ EBCellFAB::operator-=(const Real& a_src)
 EBCellFAB&
 EBCellFAB::operator*=(const Real& a_src)
 {
+  CH_TIME("EBCellFAB::operator*=");
   CH_assert(isDefined());
   FORT_MULTIPLYFABR(CHF_FRA(m_regFAB),
                     CHF_CONST_REAL(a_src),
-                    CHF_BOX(m_region));
+                    CHF_BOX(getRegion()));
 
   Real* l = m_irrFAB.dataPtr(0);
   int nvof = m_irrFAB.numVoFs();
-  for (int i=0; i<m_nComp*nvof; i++)
+  for (int i=0; i<nComp()*nvof; i++)
     l[i] *= a_src;
 
   return *this;
@@ -520,19 +513,62 @@ EBCellFAB::mult(Real a_src)
   return *this;
 }
 
+EBCellFAB& EBCellFAB::mult(Real a_value, int a_startcomp, int a_numcomp)
+{
+  CH_TIME("EBCellFAB::multcomp");
+  Real* l = m_irrFAB.dataPtr(a_startcomp);
+  int nvof = m_irrFAB.numVoFs();
+  for (int i=0; i<a_numcomp*nvof; i++)
+    l[i] *= a_value;
+  
+  ((FArrayBox&)m_regFAB).mult(a_value, a_startcomp, a_numcomp);
+  return *this;
+}
+
+void EBCellFAB::setCoveredCellVal(const Real&    a_val,
+                                 const int&  a_comp,
+                                 const bool& a_doMulti)
+{
+  CH_TIME("EBCellFAB::setCoveredCellVal");
+  //BaseEBCellFAB<Real>::setCoveredCellVal(a_val, a_comp, a_doMulti);
+  
+  if(a_doMulti)
+    {
+      BaseEBCellFAB<Real>::setCoveredCellVal(a_val, a_comp, a_doMulti);
+    }
+  else
+    {
+      int all;
+      const BaseFab<char>& mask = m_ebisBox.getEBGraph().getMask(all);
+      if(all == -1) // all covered
+        {
+          m_regFAB.setVal(a_val, a_comp);
+        }
+      else if (all == 0)
+        {
+          FORT_SETCOVERED(CHF_FRA1(m_regFAB, a_comp),
+                          CHF_CONST_REAL(a_val),
+                          CHF_CONST_FBA1(mask, 0),
+                          CHF_BOX(getRegion()));
+        }
+    }
+  
+}
+
 /**********************/
 /**********************/
 EBCellFAB&
 EBCellFAB::operator/=(const Real& a_src)
 {
+  CH_TIME("EBCellFAB::operator/=");
   CH_assert(isDefined());
   FORT_DIVIDEFABR(CHF_FRA(m_regFAB),
                   CHF_CONST_REAL(a_src),
-                  CHF_BOX(m_region));
+                  CHF_BOX(getRegion()));
 
   Real* l = m_irrFAB.dataPtr(0);
   int nvof = m_irrFAB.numVoFs();
-  for (int i=0; i<m_nComp*nvof; i++)
+  for (int i=0; i<nComp()*nvof; i++)
     l[i] /= a_src;
 
   return *this;
@@ -543,16 +579,18 @@ EBCellFAB::operator/=(const Real& a_src)
 EBCellFAB&
 EBCellFAB::plus(const EBCellFAB& a_src, Real a_scale)
 {
+  CH_TIME("EBCellFAB::plusScale");
   CH_assert(isDefined());
   CH_assert(a_src.isDefined());
   // Dan G. feels strongly that the assert below should NOT be commented out
   // Brian feels that a weaker version of the CH_assert (if possible) is needed
   // Terry is just trying to get his code to work
   //CH_assert(m_ebisBox == a_src.m_ebisBox);
-  CH_assert(a_src.m_nComp == m_nComp);
+  CH_assert(a_src.nComp() == nComp());
 
-  Box locRegion = a_src.m_region & m_region;
+  Box locRegion = a_src.getRegion() & getRegion();
   bool sameRegBox = (a_src.m_regFAB.box() == m_regFAB.box());
+  int ncomp=nComp();
   if (!locRegion.isEmpty())
     {
       int srccomp = 0;
@@ -563,36 +601,11 @@ EBCellFAB::plus(const EBCellFAB& a_src, Real a_scale)
                           CHF_BOX(locRegion),
                           CHF_INT(srccomp),
                           CHF_INT(destcomp),
-                          CHF_INT(m_nComp));
-      if (sameRegBox && (locRegion == m_region && locRegion == a_src.m_region))
-        {
-          Real* l = m_irrFAB.dataPtr(destcomp);
-          const Real* r = a_src.m_irrFAB.dataPtr(srccomp);
-          int nvof = m_irrFAB.numVoFs();
-          CH_assert(nvof == a_src.m_irrFAB.numVoFs());
-          for (int i=0; i<m_nComp*nvof; i++)
-            l[i]+=r[i] * a_scale;
-        }
-      else
-        {
-          IntVectSet ivsMulti = a_src.getMultiCells();
-          ivsMulti &= getMultiCells();
-          ivsMulti &= locRegion;
-          IVSIterator ivsit(ivsMulti);
-          for (ivsit.reset(); ivsit.ok(); ++ivsit)
-            {
-              const IntVect& iv = ivsit();
-              Vector<VolIndex> vofs = m_ebisBox.getVoFs(iv);
-              for (int ivof = 0; ivof < vofs.size(); ivof++)
-                {
-                  const VolIndex& vof = vofs[ivof];
-                  for (int icomp = 0; icomp < m_nComp; ++icomp)
-                    {
-                      m_irrFAB(vof, icomp) += a_src.m_irrFAB(vof, icomp) * a_scale;
-                    }
-                }
-            }
-        }
+                          CHF_INT(ncomp));
+
+      m_irrFAB.forall(a_src.m_irrFAB, locRegion, srccomp, destcomp, ncomp, sameRegBox, 
+                      [a_scale](Real& dest, const Real& src){dest+=a_scale*src;});
+
     }
   return *this;
 }
@@ -603,6 +616,7 @@ EBCellFAB&
 EBCellFAB::axby(const EBCellFAB& a_X, const EBCellFAB& a_Y,
                 const Real& a_A, const Real& a_B)
 {
+  CH_TIME("EBCellFAB::axby");
   CH_assert(isDefined());
   CH_assert(a_X.isDefined());
   CH_assert(a_Y.isDefined());
@@ -610,11 +624,12 @@ EBCellFAB::axby(const EBCellFAB& a_X, const EBCellFAB& a_Y,
   // Brian feels that a weaker version of the CH_assert (if possible) is needed
   // Terry is just trying to get his code to work
   //CH_assert(m_ebisBox == a_X.m_ebisBox);
-  CH_assert(a_X.m_nComp == m_nComp);
-  CH_assert(a_Y.m_nComp == m_nComp);
+  CH_assert(a_X.nComp() == nComp());
+  CH_assert(a_Y.nComp() == nComp());
 
   bool sameRegBox = (a_X.m_regFAB.box() == a_Y.m_regFAB.box()) && (a_X.m_regFAB.box() ==  m_regFAB.box());
-  Box locRegion = a_X.m_region & m_region & a_Y.m_region;
+  Box locRegion = a_X.getRegion() & getRegion() & a_Y.getRegion();
+  int ncomp=nComp();
   if (!locRegion.isEmpty())
     {
       int srccomp = 0;
@@ -627,35 +642,45 @@ EBCellFAB::axby(const EBCellFAB& a_X, const EBCellFAB& a_Y,
                    CHF_BOX(locRegion),
                    CHF_INT(srccomp),
                    CHF_INT(destcomp),
-                   CHF_INT(m_nComp));
+                   CHF_INT(ncomp));
       bool nvofTest   = false;
       bool regionTest = false;
-      //CP: we do a thorough test here to see if all VoFs are the same, just being cautious
-      const Vector<VolIndex>& vofs   = m_irrFAB.getVoFs();
-      const Vector<VolIndex>& vofs_x = a_X.m_irrFAB.getVoFs();
-      const Vector<VolIndex>& vofs_y = a_Y.m_irrFAB.getVoFs();
-      if (vofs.size() == vofs_x.size() && vofs.size()==vofs_y.size())
+      if(m_irrFAB.numVoFs()>0)
         {
-          nvofTest = true;
-          for (int i=0; i<vofs.size(); i++)
+          //CP: we do a thorough test here to see if all VoFs are the same, just being cautious
+          const Vector<VolIndex>& vofs   = m_irrFAB.getVoFs();
+          const Vector<VolIndex>& vofs_x = a_X.m_irrFAB.getVoFs();
+          const Vector<VolIndex>& vofs_y = a_Y.m_irrFAB.getVoFs();
+          if (vofs.size() == vofs_x.size() && vofs.size()==vofs_y.size())
             {
-              if (vofs[i] != vofs_x[i] || vofs[i] != vofs_y[i])
+              nvofTest = true;
+              for (int i=0; i<vofs.size(); i++)
                 {
-                  nvofTest = false;
-                  break;
+                  if (vofs[i] != vofs_x[i] || vofs[i] != vofs_y[i])
+                    {
+                      nvofTest = false;
+                      break;
+                    }
                 }
             }
-
         }
-      if (locRegion == a_X.m_region && locRegion == a_Y.m_region && locRegion == m_region)
+
+      if (locRegion == a_X.getRegion() && locRegion == a_Y.getRegion() && locRegion == getRegion())
         regionTest = true;
+      bool sameRegion = sameRegBox&&regionTest && nvofTest;
+      
+     m_irrFAB.forall(a_X.m_irrFAB, locRegion, srccomp, destcomp, ncomp, sameRegion, 
+                     [a_A](Real& dest, const Real& src){dest=a_A*src;});
+     m_irrFAB.forall(a_Y.m_irrFAB, locRegion, srccomp, destcomp, ncomp, sameRegion, 
+                     [a_B](Real& dest, const Real& src){dest+=a_B*src;});
+     /*
       if (sameRegBox && regionTest && nvofTest)
         {
           const Real* l = a_X.m_irrFAB.dataPtr(destcomp);
           const Real* r = a_Y.m_irrFAB.dataPtr(destcomp);
           Real* c = m_irrFAB.dataPtr(destcomp);
           int nvof = a_X.m_irrFAB.numVoFs();
-          for (int i=0; i<m_nComp*nvof; i++)
+          for (int i=0; i<nComp()*nvof; i++)
             c[i] = l[i] * a_A + r[i] * a_B;
         }
       else
@@ -673,7 +698,7 @@ EBCellFAB::axby(const EBCellFAB& a_X, const EBCellFAB& a_Y,
               for (int ivof = 0; ivof < vofs.size(); ivof++)
                 {
                   const VolIndex& vof = vofs[ivof];
-                  for (int icomp = 0; icomp < m_nComp; ++icomp)
+                  for (int icomp = 0; icomp < nComp(); ++icomp)
                     {
                       m_irrFAB(vof, icomp) = a_X.m_irrFAB(vof, icomp) * a_A
                         + a_Y.m_irrFAB(vof, icomp) * a_B;
@@ -681,11 +706,13 @@ EBCellFAB::axby(const EBCellFAB& a_X, const EBCellFAB& a_Y,
                 }
             }
         }
+     */
     }
   return *this;
 }
 /**********************/
 /**********************/
+/*
 EBCellFAB&
 EBCellFAB::axby(const EBCellFAB& a_X, const EBCellFAB& a_Y,
                 const Real& a_A, const Real& a_B,
@@ -698,11 +725,11 @@ EBCellFAB::axby(const EBCellFAB& a_X, const EBCellFAB& a_Y,
   // Brian feels that a weaker version of the CH_assert (if possible) is needed
   // Terry is just trying to get his code to work
   //CH_assert(m_ebisBox == a_X.m_ebisBox);
-  CH_assert(m_nComp     > a_destComp);
-  CH_assert(a_X.m_nComp > a_xComp);
-  CH_assert(a_Y.m_nComp > a_yComp);
+  CH_assert(nComp()     > a_destComp);
+  CH_assert(a_X.nComp() > a_xComp);
+  CH_assert(a_Y.nComp() > a_yComp);
 
-  Box locRegion = a_X.m_region & m_region & a_Y.m_region;
+  Box locRegion = a_X.getRegion() & getRegion() & a_Y.getRegion();
   bool sameRegBox = (a_X.m_regFAB.box() == a_Y.m_regFAB.box()) && (a_X.m_regFAB.box() ==  m_regFAB.box());
 
   if (!locRegion.isEmpty())
@@ -736,9 +763,16 @@ EBCellFAB::axby(const EBCellFAB& a_X, const EBCellFAB& a_Y,
             }
 
         }
-      if (locRegion == a_X.m_region && locRegion == a_Y.m_region && locRegion == m_region)
+      if (locRegion == a_X.getRegion() && locRegion == a_Y.getRegion() && locRegion == getRegion())
         regionTest = true;
 
+      bool sameRegion = sameRegBox&&regionTest && nvofTest;
+      
+     m_irrFAB.forall(a_X.m_irrFAB, locRegion, a_srccomp, a_destcomp, ncomp, sameRegion, 
+                     [a_A](Real& dest, const Real& src){dest=a_A*src;});
+     m_irrFAB.forall(a_Y.m_irrFAB, locRegion, a_srccomp, a_destcomp, ncomp, sameRegion, 
+                     [a_B](Real& dest, const Real& src){dest+=a_B*src;});
+     
       if (sameRegBox && regionTest && nvofTest)
         {
           const Real* l = a_X.m_irrFAB.dataPtr(a_xComp);
@@ -774,11 +808,13 @@ EBCellFAB::axby(const EBCellFAB& a_X, const EBCellFAB& a_Y,
     }
   return *this;
 }
+*/
 
 //-----------------------------------------------------------------------
 Real
 EBCellFAB::max(int a_comp) const
 {
+  CH_TIME("EBCellFAB::max");
   CH_assert(isDefined());
   Real val = -DBL_MAX;
 
@@ -799,6 +835,7 @@ EBCellFAB::max(int a_comp) const
 Real
 EBCellFAB::min(int a_comp) const
 {
+  CH_TIME("EBCellFAB::min");
   CH_assert(isDefined());
   Real val = DBL_MAX;
 
@@ -822,7 +859,7 @@ EBCellFAB::norm(int a_power,
                 int a_numComp) const
 {
 
-  return norm(m_region , a_power ,a_comp,a_numComp);
+  return norm(getRegion() , a_power ,a_comp,a_numComp);
 
 }
 
@@ -833,6 +870,7 @@ EBCellFAB::norm(const Box& a_subbox,
                 int        a_comp,
                 int        a_numComp) const
 {
+  CH_TIME("EBCellFAB::norm");
   CH_assert(a_numComp == 1);
   return EBArith::norm(*this, a_subbox, m_ebisBox, a_comp, a_power);
 }

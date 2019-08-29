@@ -32,20 +32,27 @@ using std::endl;
 using std::cerr;
 #include "NamespaceHeader.H"
 
+class LocalCoordMoveSwitch
+{
+public:
+  //only turn on  for convergence tests 
+  static bool s_turnOffMoveLocalCoords;
+};
+
 template <int dim> class IFData
 {
 public:
   // data types to record vertex signs and edge intersections
   typedef IndexTM<int,dim>                      EdgeIndex;
-  typedef map<EdgeIndex,Real,LexLT<EdgeIndex> > EdgeIntersections;
+  typedef map<EdgeIndex,Real > EdgeIntersections;
 
   typedef IndexTM<int,dim>                      Vertex;
-  typedef map<Vertex,int,LexLT<Vertex> >        CornerSigns;
+  typedef map<Vertex,int >        CornerSigns;
 
   typedef IndexTM<int,dim>                      IvDim;
   typedef IndexTM<Real,dim>                     RvDim;
 
-  typedef map<IvDim,RvDim,LexLT<IvDim> >        NormalDerivatives;
+  typedef map<IvDim,RvDim >        NormalDerivatives;
 
   // member data
   CornerSigns           m_cornerSigns;
@@ -77,17 +84,17 @@ public:
          const RvDim  & a_origin,
          const int    & a_maxOrder);
 
-  // makes an lower dimensional IFData from a IFSlicer; used for refinement
+  // makes an lower dimensional IFData from a IFSlicer; used for refinement (or it used to be)
   IFData(IFSlicer<dim> * a_function,
          const RvDim   & a_dx,
          const RvDim   & a_origin,
          const int     & a_maxOrder);
 
+
+
   // makes a reduced IFData
   IFData(const IFData<dim+1> & a_hInfo,
-#if RECURSIVE_GEOMETRY_GENERATION != 0
          const int           & a_maxOrder,
-#endif
          const int           & a_idir,
          const int           & a_hilo);
 
@@ -165,9 +172,7 @@ public:
   IFData(const IFData<1> & a_ifData);
 
   IFData(const IFData<2> & a_hIFData,
-#if RECURSIVE_GEOMETRY_GENERATION != 0
          const int       & a_maxOrder,
-#endif
          const int       & a_idir,
          const int       & a_hilo);
 

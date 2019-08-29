@@ -11,7 +11,7 @@
 // #include <cstdio>
 
 #include "FourthOrderFineInterp.H"
-
+#include "NamespaceHeader.H"
 //////////////////////////////////////////////////////////////////////////////
 // Constructor - set up some defaults
 FourthOrderFineInterp::FourthOrderFineInterp()
@@ -220,3 +220,4 @@ void FourthOrderFineInterp::interpOnPatch(
   // m_patchInterp.setCoarseBox(coarseBox);
   m_patchInterp.interpToFine(a_fine, a_coarse, stencilHereFab, a_ivs);
 }
+#include "NamespaceFooter.H"

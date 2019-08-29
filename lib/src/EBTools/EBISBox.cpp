@@ -240,12 +240,9 @@ EBISBox::areaFrac(const FaceIndex& a_face) const
 RealVect
 EBISBox::normal(const VolIndex& a_vof) const
 {
-  //  Real bndryArea = PolyGeom::bndryArea(a_vof, *this);
-  //  RealVect retval = PolyGeom::normal(a_vof, *this, bndryArea);
-
   RealVect retval;
   const IntVect& iv = a_vof.gridIndex();
-  if (isRegular(iv))
+  if (isRegular(iv)) 
     {
       retval = BASISREALV(0);
     }
@@ -256,6 +253,14 @@ EBISBox::normal(const VolIndex& a_vof) const
   else
     {
       retval = m_data.normal(a_vof);
+      // Real tol = 1.0e-20;
+      // //this can happen if the cell is really regular
+      // bool allZeros = D_TERM((Abs(retval[0]) < tol), && (Abs(retval[1]) < tol), && (Abs(retval[2]) < tol));
+
+      // if(allZeros)
+      //   {
+      //     retval = BASISREALV(0);
+      //   }
     } //end else (vof is irregular)
 
   return retval;
@@ -398,10 +403,12 @@ EBISBox::faceIndex(const VolIndex& a_vof, int face) const
 /*******************************/
 void
 EBISBox::define(const EBGraph&  a_graph,
-                const EBData&   a_data)
+                const EBData&   a_data,
+                const DataIndex& a_dit)
 {
   m_graph = a_graph;
   m_data  = a_data;
+  m_dit   = a_dit;
 }
 /*******************************/
 void EBISBox::setDomain(const ProblemDomain& a_domain)

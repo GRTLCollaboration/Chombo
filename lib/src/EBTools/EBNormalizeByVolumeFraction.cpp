@@ -11,112 +11,108 @@
 #include "EBNormalizeByVolumeFraction.H"
 #include "EBArith.H"
 #include "EBISLayout.H"
+#include "EBCellFactory.H"
+#include "CH_OpenMP.H"
 #include "NamespaceHeader.H"
-#include <vector>
 using namespace std;
-
-
 //----------------------------------------------------------------------------
+void 
 EBNormalizeByVolumeFraction::
-EBNormalizeByVolumeFraction(const EBLevelGrid& a_levelGrid):
-   m_levelGrid(a_levelGrid)
+getLocalStencil(VoFStencil      & a_stencil, 
+                const VolIndex  & a_vof, 
+                const DataIndex & a_dit)
 {
+  Vector<VolIndex> neighbors;
+  EBArith::getAllVoFsWithinRadius(neighbors, a_vof, m_eblg.getEBISL()[a_dit], m_radius);
+  Real sumkap = 0;
+  a_stencil.clear();
+  for(int ivof = 0; ivof < neighbors.size(); ivof++)
+    {
+      Real kappa = m_eblg.getEBISL()[a_dit].volFrac(neighbors[ivof]);
+      //data is assumed to already be kappa weighted
+      a_stencil.add(neighbors[ivof], 1.0);
+      sumkap += kappa;
+    }
+  if(sumkap > 1.0e-9)
+    {
+      a_stencil *= (1.0/sumkap);
+    }
 }
 //----------------------------------------------------------------------------
-
-
-//----------------------------------------------------------------------------
+void 
 EBNormalizeByVolumeFraction::
-~EBNormalizeByVolumeFraction()
+define(const LevelData<EBCellFAB> & a_Q)
 {
+  CH_TIME("EBNormalizeByVolFrac::define");
+  m_isDefined = true;
+  m_stencil.define(m_eblg.getDBL());
+
+  DataIterator dit = m_eblg.getDBL().dataIterator(); 
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
+    {
+      CH_TIME("vof stencil definition");
+      const     Box& grid = m_eblg.getDBL()  [dit[mybox]];
+      const EBISBox& ebis = m_eblg.getEBISL()[dit[mybox]];
+ 
+      IntVectSet ivs = ebis.getIrregIVS(grid);
+      VoFIterator vofit(ivs, ebis.getEBGraph());
+      const Vector<VolIndex>& vofvec = vofit.getVector();
+      // cast from VolIndex to BaseIndex
+      Vector<RefCountedPtr<BaseIndex> >    dstVoF(vofvec.size());
+      Vector<RefCountedPtr<BaseStencil> > stencil(vofvec.size());
+      // fill stencils for the vofs
+      for(int ivec = 0; ivec < vofvec.size(); ivec++)
+        {
+          VoFStencil localStencil;
+          getLocalStencil(localStencil, vofvec[ivec], dit[mybox]);
+
+          // another cast from VolIndex to BaseIndex
+          dstVoF[ivec]  = RefCountedPtr<BaseIndex  >(new  VolIndex(vofvec[ivec]));
+          stencil[ivec] = RefCountedPtr<BaseStencil>(new VoFStencil(localStencil));
+        }
+      m_stencil[dit[mybox]] = RefCountedPtr<AggStencil<EBCellFAB, EBCellFAB > >
+        (new AggStencil<EBCellFAB, EBCellFAB >(dstVoF, stencil, a_Q[dit[mybox]], a_Q[dit[mybox]]));
+
+    }//dit
 }
-//----------------------------------------------------------------------------
-
-
 //----------------------------------------------------------------------------
 void
 EBNormalizeByVolumeFraction::
 operator()(LevelData<EBCellFAB>& a_Q,
-           const Interval& a_compInterval,
-           const int& a_radius) const
+           const Interval& a_compInterval)
 {
   CH_TIME("EBNormalizer::operator()");
-   // Endpoints of the given interval.
-   int begin = a_compInterval.begin(), end = a_compInterval.end(),
-       length = a_compInterval.size();
+  if(!m_isDefined)
+    {
+      define(a_Q);
+    }
 
-   // Loop over the EBISBoxes within our grid. The EB data structures are
-   // indexed in the same manner as the non-EB data structures, so we piggy-
-   // back the former on the latter.
-   a_Q.exchange();
-   EBISLayout ebisLayout = m_levelGrid.getEBISL();
-   DisjointBoxLayout layout = m_levelGrid.getDBL();
-   for (DataIterator dit = layout.dataIterator(); dit.ok(); ++dit)
-   {
-      const EBISBox& box = ebisLayout[dit()];
-      EBCellFAB& QFAB = a_Q[dit()];
+  a_Q.exchange();
+  EBCellFactory fact(m_eblg.getEBISL());
 
-      // Go over the irregular cells in this box.
-      const IntVectSet& cfivs = (*m_levelGrid.getCFIVS())[dit()];
-      const IntVectSet& irregCells = box.getIrregIVS(layout[dit()]);
+  //for this to be correct, need the source and destination to be different
+//  LevelData<EBCellFAB> save(m_eblg.getDBL(), a_Q.nComp(), a_Q.ghostVect(), fact);
+//  for (DataIterator dit = m_eblg.getDBL().dataIterator(); dit.ok(); ++dit)
+//    {
+//      save[dit()].copy(a_Q[dit()]);
+//    }
+  // Endpoints of the given interval.
+  int begin  = a_compInterval.begin();
+  int length = a_compInterval.size();
 
-      // The average has to be computed from the uncorrected data from all
-      // the neighbors, so we can't apply the corrections in place. For now,
-      // we stash them in a map.
-      map<VolIndex, vector<Real> > correctedValues;
-      for (VoFIterator vit(irregCells, box.getEBGraph()); vit.ok(); ++vit)
-        {
-          Real kappajSum = 0.0;
-          vector<Real> kappajQjSum(length, 0.0);
-
-          // Get all of the indices of the VoFs within a monotone path
-          // radius of 1.
-          VolIndex vofi = vit();
-          Vector<VolIndex> vofjs;
-          EBArith::getAllVoFsInMonotonePath(vofjs, vofi, box, a_radius);
-
-          // Accumulate the contributions from the neighboring cells.
-          for (unsigned int j = 0; j < vofjs.size(); ++j)
-            {
-              VolIndex vofj = vofjs[j];
-
-              if (!cfivs.contains(vofj.gridIndex()))
-                {
-                  Real kappaj = box.volFrac(vofj);
-                  for (int icomp = begin; icomp <= end; ++icomp)
-                    {
-                      kappajQjSum[icomp] += QFAB(vofj, icomp);
-                    }
-                  // Add this volume fraction to the sum.
-                  kappajSum += kappaj;
-                }
-            }
-
-          if (kappajSum > 0.)
-            {
-              // Normalize the quantity and stow it.
-              vector<Real> correctedValue(length);
-              //         Real kappai = box.volFrac(vofi);  //unused dtg
-              for (int icomp = begin; icomp <= end; ++icomp)
-                {
-                  // correctedValue[icomp - begin] =
-                  //    QFAB(vofi, icomp) + (1.0 - kappai) * kappajQjSum[icomp] / kappajSum;
-                  correctedValue[icomp - begin] = kappajQjSum[icomp] / kappajSum;
-                }
-              correctedValues[vofi] = correctedValue;
-            }
-        }
-
-      // Apply the corrections.
-      for (map<VolIndex, vector<Real> >::const_iterator
-           cit = correctedValues.begin(); cit != correctedValues.end(); ++cit)
-      {
-         for (int icomp = begin; icomp <= end; ++icomp)
-         {
-            QFAB(cit->first, icomp) = cit->second[icomp-begin];
-         }
-      }
-   }
+  //save.exchange();
+   
+  DataIterator dit = m_eblg.getDBL().dataIterator(); 
+  int nbox=dit.size();
+#pragma omp parallel for
+  for (int mybox=0;mybox<nbox; mybox++)
+    {
+      EBCellFAB save(fact.ebisBox(dit[mybox]), grow(m_eblg.getDBL()[dit[mybox]],a_Q.ghostVect()),a_Q.nComp()) ;
+      save.copy(a_Q[dit[mybox]]);
+      m_stencil[dit[mybox]]->apply(a_Q[dit[mybox]], save, begin, begin, length, false);
+    }
 }
 //----------------------------------------------------------------------------
 
@@ -124,10 +120,9 @@ operator()(LevelData<EBCellFAB>& a_Q,
 //----------------------------------------------------------------------------
 void
 EBNormalizeByVolumeFraction::
-operator()(LevelData<EBCellFAB>& a_Q,
-           const int& a_radius) const
+operator()(LevelData<EBCellFAB>& a_Q)
 {
-  return (*this)(a_Q, Interval(0, a_Q.nComp()-1), a_radius);
+  return (*this)(a_Q, Interval(0, a_Q.nComp()-1));
 }
 //----------------------------------------------------------------------------
 

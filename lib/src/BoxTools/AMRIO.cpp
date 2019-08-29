@@ -68,6 +68,12 @@ WriteAMRHierarchyHDF5(const string& filename,
   CH_TIMER("WriteFile",writeFile);
   CH_TIMER("CloseFile",closeFile);
 
+#ifdef CH_MPI
+  {
+    CH_TIME("Barrier");
+    MPI_Barrier(Chombo_MPI::comm);
+  }
+#endif
   CH_START(createFile);
   HDF5Handle handle(filename.c_str(),  HDF5Handle::CREATE);
   CH_STOP(createFile);
@@ -78,9 +84,11 @@ WriteAMRHierarchyHDF5(const string& filename,
   CH_STOP(writeFile);
 
 #ifdef CH_MPI
-  MPI_Barrier(Chombo_MPI::comm);
+  {
+    CH_TIME("Barrier");
+    MPI_Barrier(Chombo_MPI::comm);
+  }
 #endif
-
   CH_START(closeFile);
   handle.close();
   CH_STOP(closeFile);
@@ -279,7 +287,10 @@ WriteAMRHierarchyHDF5(const string& filename,
                         a_domain, a_refRatio, a_numLevels);
 
 #ifdef CH_MPI
-  MPI_Barrier(Chombo_MPI::comm);
+  { 
+    CH_TIME("Barrier");
+    MPI_Barrier(Chombo_MPI::comm);
+  }
 #endif
   handle.close();
 }
@@ -1075,9 +1086,68 @@ viewBFR(const BaseFab<Real>* a_dataPtr)
 }
 
 void
+viewCFAB(const CFArrayBox* a_dataPtr)
+{
+  if (a_dataPtr == NULL)
+  {
+    return;
+  }
+
+  const Box& bx = a_dataPtr->box();
+  int ncomp = a_dataPtr->nComp();
+  FArrayBox fab(bx, 2*ncomp);
+  BoxIterator bit(bx);
+  for (bit.begin(); bit.ok(); bit.next())
+    {
+      const IntVect& iv = bit();
+      int ivarr = 0;
+      for (int ivarc = 0; ivarc < ncomp; ivarc++)
+        {
+          const Complex& cval = a_dataPtr->operator()(iv, ivarc);
+          fab(iv, ivarr) = cval.re();
+          ivarr++;
+          fab(iv, ivarr) = cval.im();
+          ivarr++;
+        }
+    }
+
+  const char* fname = tmpnam(NULL);
+  writeFABname(&fab, fname);
+  VisualizeFile(fname);
+}
+///
+/** Writes a plotfile using the same format as WriteAMRHierarchyHDF5, but
+    for a CFArrayBox.  This is useful for debugging.  *a_dataPtr is written
+    to the file given by a_filename.  It has two components named "real"
+    and "imaginary"
+*/
+void
+writeCFABname(const CFArrayBox      * a_dataPtr,
+             const char           * a_filename)
+{
+  if (a_dataPtr == NULL)
+    {
+      return;
+    }
+  FArrayBox out(a_dataPtr->box(),2);
+  Vector<string> names(2);
+  names[0] = "real";
+  names[1] = "imaginary";
+  Real* rptr=out.dataPtr(0);
+  Real* iptr=out.dataPtr(1);
+  const Complex* cptr=a_dataPtr->dataPtr();
+  for(size_t i=0; i<a_dataPtr->box().numPts(); ++i)
+    {
+      rptr[i] = cptr[i].re();
+      iptr[i] = cptr[i].im();
+    }
+  writeFABname(&out, a_filename, names);
+}
+void
 writeFABname(const FArrayBox      * a_dataPtr,
              const char           * a_filename,
-             const Vector<string> & a_compNames)
+             const Vector<string> & a_compNames,
+             const Real           & a_dx)
 {
   if (a_dataPtr == NULL)
   {
@@ -1116,7 +1186,7 @@ writeFABname(const FArrayBox      * a_dataPtr,
   Box domainLevel = data.box();
   // put bogus numbers here
   Real dtLevel = 1.0;
-  Real dxLevel = 1.0;
+  Real dxLevel = a_dx;
   Real time = 1.0;
 
   int refLevel = 1;
@@ -1135,7 +1205,7 @@ writeFABname(const FArrayBox      * a_dataPtr,
                        domainLevel, refLevel);
   if (eek != 0)
   {
-    MayDay::Error("writeFABname: error in writeLEvel");
+    MayDay::Error("writeFABname: error in writeLevel");
   }
 
   handle.close();
@@ -1365,7 +1435,7 @@ writeVectorLevelName(const Vector<LevelData<FArrayBox>*>* a_dataPtr,
 
       if (eek != 0)
       {
-        MayDay::Error("writeLDFname: error in writeLEvel");
+        MayDay::Error("writeVectorLevelName: error in writeLevel");
       }
     }
   handle.close();

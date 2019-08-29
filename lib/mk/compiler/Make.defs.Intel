@@ -44,13 +44,13 @@ getcompilerversion := $(CHOMBO_HOME)/mk/compilerVersion.pl
 
 # '-EP' is different from '-E -P' in icc
 # -C disable stripping out C++ comments, which are valid code in Fortran
-CH_CPP = $(CXX) -EP -C
+CH_CPP = $(CXX) -EP 
 
 # Changed c++11 flag into c++14 as required for GRChombo
 _cxxbaseflags = -restrict -m64 -std=c++14
 
 cxxdbgflags += -g -Wall -Wextra -pedantic -fstack-protector-all $(_cxxbaseflags)
-cxxoptflags += -O3 -m64 -qopt-multi-version-aggressive $(_cxxbaseflags)
+cxxoptflags += -O3 -qopt-multi-version-aggressive $(_cxxbaseflags)
 
 # For ifort v18.0 and above need this extra flag to preprocess correctly
 # Note that this assumes your version of icpc is the same as ifort like any

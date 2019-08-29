@@ -56,6 +56,9 @@ main(int argc, char** argv)
 #endif
   //begin scoping trick
   {
+    const char* in_file = "slab.inputs";
+    //parse input file
+    ParmParse pp(0,NULL,NULL,in_file);      
 
     int eekflag = 0;
     //define the geometry object.
@@ -227,8 +230,11 @@ int checkAMRAlias(const Box& a_domain)
   aliasEBAMR(dataOneRegPtr,dataOne);
 
   for (int i=0; i<numlevels-1; i++)
-    delete dataOneRegPtr[i] ;
-
+   {
+     delete dataOneRegPtr[i] ;
+     delete dataOne[i];
+     delete dataTwo[i];
+  }
   return eekflag;
 }
 void aliasEBAMR(Vector<LevelData<FArrayBox>* >& a_output,

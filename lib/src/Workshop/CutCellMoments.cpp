@@ -55,6 +55,11 @@ CutCellMoments<1>::~CutCellMoments()
 {
 }
 
+void CutCellMoments<1>::dump() const
+{
+  print(pout());
+}
+
 Real CutCellMoments<1>::changeMomentCoordinates(OneDMoments           & a_refinedMomentMap,
                                                 const IndexTM<int,1>  & a_monomial,
                                                 const IndexTM<Real,1> & a_refinedCenterDelta)
@@ -171,11 +176,7 @@ Real CutCellMoments<1>::getBdEBMoment(const IndexTM<int,1>  & a_mono,
 
 void CutCellMoments<1>::addBdMoments(CutCellMoments<1>     & a_coarseBdCutCell,
                                      const IFData<2>       & a_IFData,
-#if RECURSIVE_GEOMETRY_GENERATION == 0
-                                     const int             & a_degreeP,
-#else
                                      const int             & a_degreePmax,
-#endif
                                      const bool            & a_useConstraints,
                                      const IndexTM<Real,1> & a_refinedCenterDelta,
                                      const IndexTM<int,1>  & a_localHilo)
@@ -186,11 +187,7 @@ void CutCellMoments<1>::addBdMoments(CutCellMoments<1>     & a_coarseBdCutCell,
   {
     IndexTM<int,1> degree;
 
-#if RECURSIVE_GEOMETRY_GENERATION == 0
-    for (int iDegree = 0; iDegree <= a_degreeP; ++iDegree)
-#else
     for (int iDegree = 0; iDegree <= a_degreePmax; ++iDegree)
-#endif
     {
       degree[0] = iDegree;
       Real loPt = -0.5*m_IFData.m_globalCoord.m_dx[0];
@@ -200,11 +197,7 @@ void CutCellMoments<1>::addBdMoments(CutCellMoments<1>     & a_coarseBdCutCell,
     }
   }
 
-#if RECURSIVE_GEOMETRY_GENERATION == 0
-  for (int iDegree = 0; iDegree <= a_degreeP; ++iDegree)
-#else
   for (int iDegree = 0; iDegree <= a_degreePmax; ++iDegree)
-#endif
   {
     IndexTM<int,1>degree;
     degree[0] = iDegree;

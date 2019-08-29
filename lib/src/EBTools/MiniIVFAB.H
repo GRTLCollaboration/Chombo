@@ -13,6 +13,7 @@
 
 #include <cmath>
 #include <cstdlib>
+#include <memory>
 #include "SPACE.H"
 #include "Vector.H"
 #include "IntVectSet.H"
@@ -33,13 +34,12 @@ be more brutal for vof-by-vof indexing.
 bvs
 */
 template <class T>
-class MiniIVFAB : public BaseIVFAB<T>
+class MiniIVFAB //: public BaseIVFAB<T>
 {
 public:
   ///
   /**
-     Default constructor.  Constructs an uninitialized IVFAB.  You must
-     subsequently call {\bf define} before using this IVFAB.
+     Null constructor.  
   */
   MiniIVFAB();
 
@@ -50,26 +50,23 @@ public:
      must lie completely within the EBGraph.  The
      contents are uninitialized.  Calls full define function.
   */
-  MiniIVFAB(const IntVectSet& a_region,
+  MiniIVFAB( const IntVectSet& a_region,
              const EBGraph&    a_ebgraph,
              const int&        a_nvarin);
 
   ///
+  bool hasVoFs() const
+  {
+    if(m_vofs) return true;
+    return false;
+  }
+  ///
   /**
-     Constructs an 'aliased' BaseIVFAB of the requested interval of the
-     argument BaseIVFAB.  This BaseIVFAB does not allocate any memory, but
-     sets its data pointer into the memory pointed to by the argument
-     BaseIVFAB.  It is the users responsiblity to ensure this aliased
-     BaseIVFAB is not used after the original BaseIVFAB has deleted its data ptr
-     (resize, define(..) called, or destruction, etc.).
 
-     This aliased BaseIVFAB will also generate side effects (modifying the values
-     of data in one will modify the other's data).
-
-     This aliased BaseIVFAB will have a_comps.size() components, starting at zero.
+     This aliased MiniIVFAB will have a_comps.size() components, starting at zero.
   */
   MiniIVFAB(const Interval& a_comps,
-            BaseIVFAB<T>&   a_original);
+            MiniIVFAB<T>&   a_original);
 
 
   ///
@@ -88,8 +85,12 @@ public:
               const int&        a_nvarin);
 
 
-
-
+  ///
+  void copy(const Box& a_fromBox,
+            const Interval& a_dstInterval,
+            const Box& a_toBox,
+            const MiniIVFAB<T>& a_src,
+            const Interval& a_srcInterval);
   ///
   int size(const Box& R, const Interval& comps) const ;
 
@@ -99,21 +100,26 @@ public:
   ///
   void linearIn(void* buf, const Box& R, const Interval& comps);
 
-  ///
-  /**
-     Remove all data from this BaseIVFAB.
-     You must call {\bf define} again in order
-     to use it.
-  */
-  virtual void clear();
+  Vector<VolIndex>  getVoFs() const;
 
-  const Vector<VolIndex>&  getVoFs() const;
-
-  ///invalid but necessary for leveldata to compile
-  MiniIVFAB(const Box& a_region, int a_nVar)
+  inline T* dataPtr(int a_ivar)
   {
-    MayDay::Error("invalid constructor called for MiniIVFAB");
+    if(m_vofs) return m_data+a_ivar*m_vofs->size();
+    return m_data;
   }
+  
+  const T* dataPtr(int a_ivar) const
+  {
+    if(m_vofs) return m_data+a_ivar*m_vofs->size();
+    return m_data;
+  }
+  
+  void setVal(const T& a_val);
+
+  void setVal(int a_comp, const T& a_val);
+
+  void setVal(const T& a_val, const Box& a_box, int a_startcomp, int a_ncomp);
+
 
   ///get index into vector
   /**
@@ -121,13 +127,42 @@ public:
    */
   virtual T* getIndex(const VolIndex& a_vof,const int& a_comp) const;
 
+ ///for AggStencil
+  long offset(const BaseIndex& a_vof, const int& a_ivar) const
+  {
+    const VolIndex* vof = dynamic_cast< const VolIndex* >(&a_vof);
+    if (vof == NULL) MayDay::Error("cast failed:MiniIVFAB only takes vofs for indexing");
+    unsigned int i = 0;
+    for(;i<m_vofs->size(); i++)
+      if(*vof == (*m_vofs)[i]) break;
+    i+=a_ivar*m_vofs->size();
+    return i;
+  }
+
+  ///
+  T& operator() (const VolIndex& a_vof, int a_comp)
+  {  return *(getIndex(a_vof, a_comp));}
+
+  ///
+  const T& operator() (const VolIndex& a_vof, int a_comp) const
+  {
+    return *(getIndex(a_vof, a_comp));
+  }
+
+  template <typename F>
+  void forall(const MiniIVFAB& a_src, const Box& a_box, int a_srccomp, int a_destcomp, int a_numcomp, bool sameRegBox, const F& func);
+
+  int numVoFs() const;
+
+  int nComp() const {return m_nComp;}
 private:
-  virtual void
-  setDefaultValues();
 
 protected:
 
-  Vector<VolIndex> m_vofs;
+  shared_ptr<Vector<VolIndex> > m_vofs;
+  shared_ptr<Vector<T> > m_Memory;
+  int m_nComp = 0;
+  T* m_data   = nullptr;
 
 };
 

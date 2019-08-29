@@ -14,10 +14,11 @@
 #include "EBCellFAB.H"
 #include "LevelData.H"
 #include "EBLevelGrid.H"
+#include "AggStencil.H"
 #include "NamespaceHeader.H"
 
-
-/** \class EBNormalizeByVolumeFraction
+///
+/** 
  *  This class represents an operation that takes a volume-fraction-weighted
  *  quantity kappa*Q (where kappa is the volume fraction) and computes Q
  *  from it by normalizing it w.r.t. the volume fractions of cells within a
@@ -26,49 +27,83 @@
  */
 class EBNormalizeByVolumeFraction
 {
-   public:
+public:
 
-   /** Construct an EBNormalizeByVolumeFraction object associated with the
-    *  associated with the given EBLevelGrid.
-    *  \param EBLevelGrid The level grid for which data can be normalized
-    *           by the resulting object.
-    */
-   explicit EBNormalizeByVolumeFraction(const EBLevelGrid& a_levelGrid);
+  ///
+  /** Construct an EBNormalizeByVolumeFraction object associated with the
+   *  associated with the given EBLevelGrid.
+   *  \param EBLevelGrid The level grid for which data can be normalized
+   *           by the resulting object.
+   wacky interface is for backward compatibility
+   if data is null, define is not called.
+   */
+  EBNormalizeByVolumeFraction(const EBLevelGrid          & a_eblg,
+                              const LevelData<EBCellFAB> * a_data  = NULL,
+                              const int                    a_radius = 1)
+  {
+    CH_assert(a_radius > 0);
+    m_eblg      = a_eblg;
+    m_radius    = a_radius;
+    m_isDefined = false;
+    if(a_data != NULL)
+      {
+        define(*a_data);
+      }
+  }
 
-   /** Destructor. */
-   ~EBNormalizeByVolumeFraction();
+  
+  ///define all the ste3ncils
+  void define(const LevelData<EBCellFAB>& a_data);
 
-   /** Compute the normalized quantity corresponding to the given
-    *  volume-fraction-weighted quantity by volume-averaging that quantity
-    *  over every monotone path radius for each cell in the level.
-    *  \param a_Q A volume-fraction-weighted quantity to be normalized.
-    *  \param a_compInterval An interval representing the range of components
-    *                        to be normalized by this operation.
-    */
-   void operator()(LevelData<EBCellFAB>& a_Q,
-                   const Interval& a_compInterval,
-                   const int&     a_radius = 1) const;
 
-   /** Compute the normalized quantity corresponding to the given
-    *  volume-fraction-weighted quantity by volume-averaging that quantity
-    *  over every monotone path radius for each cell in the level. This
-    *  version of the correction normalizes all components of \a a_Q.
-    *  \param a_Q A volume-fraction-weighted quantity to be normalized.
-    */
-   void operator()(LevelData<EBCellFAB>& a_Q,
-                   const int&     a_radius = 1) const;
+  /** Destructor. */
+  ~EBNormalizeByVolumeFraction()
+    {
+    }
 
-   protected:
+  /** Compute the normalized quantity corresponding to the given
+   *  volume-fraction-weighted quantity by volume-averaging that quantity
+   *  over every monotone path radius for each cell in the level.
+   *  \param a_Q A volume-fraction-weighted quantity to be normalized.
+   *  \param a_compInterval An interval representing the range of components
+   *                        to be normalized by this operation.
+   */
+  void operator()(LevelData<EBCellFAB>& a_Q,
+                  const Interval& a_compInterval);
 
-   // Forbidden operations.
-   EBNormalizeByVolumeFraction();
-   EBNormalizeByVolumeFraction(const EBNormalizeByVolumeFraction&);
-   EBNormalizeByVolumeFraction& operator=(const EBNormalizeByVolumeFraction&);
+  /** Compute the normalized quantity corresponding to the given
+   *  volume-fraction-weighted quantity by volume-averaging that quantity
+   *  over every monotone path radius for each cell in the level. This
+   *  version of the correction normalizes all components of \a a_Q.
+   *  \param a_Q A volume-fraction-weighted quantity to be normalized.
+   */
+  void operator()(LevelData<EBCellFAB>& a_Q);
+ 
+  void normalize(LevelData<EBCellFAB>& a_Q,
+                 const Interval& a_compInterval) 
+  {
+    (*this)(a_Q, a_compInterval);
+  }
 
-   private:
+  void normalize(LevelData<EBCellFAB>& a_Q) 
+  {
+    (*this)(a_Q);
+  }
+protected:
 
-   /** The associated level grid. */
-   const EBLevelGrid& m_levelGrid;
+  void getLocalStencil(VoFStencil      & a_stencil, 
+                       const VolIndex  & a_vof, 
+                       const DataIndex & a_dit);
+
+  EBNormalizeByVolumeFraction();
+  EBNormalizeByVolumeFraction(const EBNormalizeByVolumeFraction&);
+  EBNormalizeByVolumeFraction& operator=(const EBNormalizeByVolumeFraction&);
+
+private:
+  bool m_isDefined;
+  int m_radius;
+  LayoutData<RefCountedPtr<AggStencil<EBCellFAB, EBCellFAB> > > m_stencil;
+  EBLevelGrid  m_eblg;
 };
 
 #include "NamespaceFooter.H"

@@ -76,6 +76,10 @@ template <class T> inline void Swap(T& a_a,
 //    rtn*=a;
 //  return rtn;
 //}
+template <unsigned int P>
+constexpr inline int ipow(int M) { return M*ipow<P-1>(M);}
+template<>
+constexpr inline int ipow<0>(int M) {return 1;}
 
 inline int ipow(int a, int b)
 {
@@ -99,6 +103,54 @@ inline Real ipow(const Real& a, const int& b)
 //     rtn*=a;
 //   return (b>0) ? rtn : 1.0/rtn;
 }
+
+/*------------------------------------------------------------------------------
+ * The following rarely used functions are in namespace Misc to avoid conficts
+ * and help identify their origin
+ *----------------------------------------------------------------------------*/
+
+namespace Misc
+{
+
+/// Test if integer is a power of 2
+inline bool isPower2(const int a_i)
+{
+  if (a_i <= 0) return false;      // Catch <= 0
+  unsigned i = a_i;
+  while (!(i & 1))                 // Find first bit
+    {
+      i >>= 1;
+    }
+  return (i >> 1) ? false : true;  // Can't have any other bits
+}
+
+/// Test for class type
+/**
+   Use the SFINAE principle as described in 15.2.2 "Determining
+   Class Types" in Vandevoorde and Josuttis "C++ Templates" book to
+   see if T is class type.  E.g.,
+     TypeTr<int>::IsClass == false
+     TypeTr<Box>::IsClass == true
+*/
+template <typename T>
+class TypeTr
+{
+  private:
+  typedef char One;
+  typedef struct
+  {
+    char a[2];
+  } Two;
+  template <typename C> static One test(int C::*);
+  template <typename C> static Two test(...);
+  public:
+  enum
+  {
+    IsClass = sizeof(TypeTr<T>::template test<T>(0)) == 1
+  };
+};
+
+}  // namespace Misc
 
 #include "BaseNamespaceFooter.H"
 

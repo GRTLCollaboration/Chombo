@@ -291,7 +291,7 @@ sub SubroutProc::doFortranProc
     my $continstr = $SubroutProc::continstr;
     my $dimension = $SubroutProc::dimension;
 
-    my %singtype = ( R => "REAL_T" , I => "integer" , C => "COMPLEX_T" );
+    my %singtype = ( R => "REAL_T" , B => "BYTE_T" , I => "integer" , C => "COMPLEX_T" );
 
     my $subnamecap = uc($subname);
     my @subargs = split(",",$argstring);
@@ -372,9 +372,9 @@ sub SubroutProc::doFortranProc
                 $declarations .= $boxdec;
                 $arguments    .= $continstr.$comma.$boxarg;
             }
-            # this handles {CHF,CHF_CONST}_F{I,R,C}A[1] because they're all
+            # this handles {CHF,CHF_CONST}_F{I,R,C,B}A[1] because they're all
             # the same except for the type and the numcomps variable
-            elsif($singarg =~ /CHF(\_CONST)?\_F([RIC])A(1?)/ig)
+            elsif($singarg =~ /CHF(\_CONST)?\_F([RICB])A(1?)/ig)
             {
                 ### single or multiple component real|integer|complex fab.
                 ### box declaration has all the neccessary carraige returns
@@ -405,10 +405,10 @@ sub SubroutProc::doFortranProc
             }
             # this handles {CHF,CHF_CONST}_{VI,VR,I1D,R1D} because they're all the same
             # except for the type
-            elsif($singarg =~ /CHF\_(?:CONST\_)?(V[IRC]|[IRC]1D)/ig)
+            elsif($singarg =~ /CHF\_(?:CONST\_)?(V[IRCB]|[IRCB]1D)/ig)
             {
                 #NOTE: ChF code can use CHF_UBOUND[] on this, but not CHF_LBOUND[]
-                $1 =~ /([IRC])/i;
+                $1 =~ /([IRCB])/i;
                 $uboundarg[0]  = "i".$singname."hi0";
                 $arguments    .= $continstr.$comma.$singname;
                 $arguments    .= $continstr.",".$uboundarg[0];
@@ -517,6 +517,8 @@ sub SubroutProc::doFortranProc
     if(!$incall){
         print SubroutProc::FOUT $moduledecs;
         print SubroutProc::FOUT $indentstr."implicit none";
+        print SubroutProc::FOUT $indentstr."integer*8 ch_flops";
+        print SubroutProc::FOUT $indentstr."COMMON/ch_timer/ ch_flops";
         ## only declare CHF_ID array if it is used
         if($debug)
         {
@@ -712,6 +714,10 @@ sub SubroutProc::doCPrototype
         elsif($singarg =~ /CHF\_CONST\_FIA1/ig)
         {
             $arguments .= $indentstr.$comma."CHFp\_CONST\_FIA1\($singname\)";
+        }
+        elsif($singarg =~ /CHF\_CONST\_FBA1/ig)
+        {
+            $arguments .= $indentstr.$comma."CHFp\_CONST\_FBA1\($singname\)";
         }
         elsif($singarg =~ /CHF\_FIA1/ig)
         {
@@ -915,6 +921,10 @@ sub SubroutProc::doTimedCPrototype
         elsif($singarg =~ /CHF\_CONST\_FIA1/ig)
         {
             $arguments .= $indentstr.$comma."CHFp\_CONST\_FIA1\($singname\)";
+        }
+        elsif($singarg =~ /CHF\_CONST\_FBA1/ig)
+        {
+            $arguments .= $indentstr.$comma."CHFp\_CONST\_FBA1\($singname\)";
         }
         elsif($singarg =~ /CHF\_FIA1/ig)
         {

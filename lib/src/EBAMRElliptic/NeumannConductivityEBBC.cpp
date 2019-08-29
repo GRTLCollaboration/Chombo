@@ -13,32 +13,9 @@
 #include "NeumannConductivityEBBC.H"
 #include "EBStencil.H"
 #include "NamespaceHeader.H"
-/*****************/
-void NeumannConductivityEBBC::getEBFlux(Real&                         a_flux,
-                                        const VolIndex&               a_vof,
-                                        const LevelData<EBCellFAB>&   a_phi,
-                                        const LayoutData<IntVectSet>& a_cfivs,
-                                        const DataIndex&              a_dit,
-                                        const RealVect&               a_probLo,
-                                        const RealVect&               a_dx,
-                                        const bool&                   a_useHomogeneous,
-                                        const Real&                   a_time,
-                                        const pair<int,Real>*         a_cacheHint )
-{
-  m_bc.getEBFlux(a_flux,
-                 a_vof,
-                 a_phi,
-                 a_cfivs,
-                 a_dit,
-                 a_probLo,
-                 a_dx,
-                 a_useHomogeneous,
-                 a_time,
-                 a_cacheHint );
 
-  Real bcoef = (*m_bcoe)[a_dit](a_vof,0);
-  a_flux *= bcoef;
-}
+int NeumannConductivityEBBC::s_comp = 0;
+
 /*****************/
 NeumannConductivityEBBC::NeumannConductivityEBBC(const ProblemDomain& a_domain,
                                                  const EBISLayout&    a_layout,

@@ -29,7 +29,7 @@ template <int dim> class CutCellMoments;
 template <int dim> class LSProblem
 {
   typedef IndexTM<int,dim>IvDim;
-  typedef map<IvDim,int,LexLT <IvDim> > PthMomentLoc;
+  typedef map<IvDim,int > PthMomentLoc;
   typedef map<int,IvDim> LocPthMoment;
 
 public:
@@ -123,7 +123,7 @@ public:
 
 
 
-private:
+
   void setRhs(const Vector<Real>& a_rhs); //deprecated
 
   //constructs matrix of overdetermined system

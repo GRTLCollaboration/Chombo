@@ -43,7 +43,7 @@ BaseIVFactory<T>::BaseIVFactory(const EBISLayout& a_ebisl)
   for (DataIterator dit = m_sets.dataIterator(); dit.ok(); ++dit)
     {
       Box region =  m_ebisl[dit()].getRegion();
-      m_sets[dit()] = m_ebisl[dit()].boundaryIVS(region);
+      m_sets[dit()] = m_ebisl[dit()].getIrregIVS(region);
     }
 }
 /***************/

@@ -18,7 +18,7 @@
 #include "parstream.H"
 #include "BaseNamespaceHeader.H"
 
-using std::cout;
+
 using std::endl;
 
 // try a 30 Mbyte max message size and see if that helps.
@@ -67,6 +67,12 @@ unsigned int numProc()
 
 int GetPID(int rank)
 {
+  if (pids.size() == 0)
+    {
+      int proc = getpid();
+      gather(pids, proc, uniqueProc(SerialTask::compute));
+      broadcast(pids, uniqueProc(SerialTask::compute));
+    }
   if (rank<0) return -1;
   if (rank>=pids.size()) return -2;
   return pids[rank];
@@ -97,9 +103,6 @@ int procID()
     g_resetProcID = false;
     firstCall = false;
 
-//     int proc = getpid();
-//     gather(pids, proc, 0);
-//     broadcast(pids, 0);
     MPI_Comm_rank(Chombo_MPI::comm, &lastProcID);
   }
   return lastProcID;

@@ -2573,13 +2573,13 @@ EBPatchPolytropic::
 setCoveredConsVals(EBCellFAB& a_consState)
 {
   CH_TIME("EBPatchPolytropic::setCoveredConsVals");
-  a_consState.setInvalidData(1.0, CRHO);
-  a_consState.setInvalidData(0.0, CMOMX);
-  a_consState.setInvalidData(0.0, CMOMY);
+  a_consState.setCoveredCellVal(1.0, CRHO);
+  a_consState.setCoveredCellVal(0.0, CMOMX);
+  a_consState.setCoveredCellVal(0.0, CMOMY);
 #if CH_SPACEDIM==3
-  a_consState.setInvalidData(0.0, CMOMZ);
+  a_consState.setCoveredCellVal(0.0, CMOMZ);
 #endif
-  a_consState.setInvalidData(1.0, CENG);
+  a_consState.setCoveredCellVal(1.0, CENG);
 }
 /**************/
 //this is the stable, non-conservative estimate of the solution update

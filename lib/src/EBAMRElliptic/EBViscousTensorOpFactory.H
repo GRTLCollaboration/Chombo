@@ -67,26 +67,6 @@ public:
                            int a_numLevels = -1,
                            bool a_noMG = false);
 
-  //! Constructs a factory that builds EBConductivityOps with a time-dependent
-  //! A coefficient and a time-independent B coefficient. The A coefficient
-  //! is interpolated between its beginning-of-step and end-of-step values.
-  EBViscousTensorOpFactory(const Vector<EBLevelGrid>&                                  a_eblgs,
-                           const Real&                                                 a_alpha,
-                           const Real                                         &        a_beta,
-                           const Vector<RefCountedPtr<LevelData<EBCellFAB> > >&        a_acoef0,
-                           const Vector<RefCountedPtr<LevelData<EBCellFAB> > >&        a_acoef1,
-                           const Vector<RefCountedPtr<LevelData<EBFluxFAB> > >&        a_eta,
-                           const Vector<RefCountedPtr<LevelData<EBFluxFAB> > >&        a_lambda,
-                           const Vector<RefCountedPtr<LevelData<BaseIVFAB<Real> > > >& a_etaIrreg,
-                           const Vector<RefCountedPtr<LevelData<BaseIVFAB<Real> > > >& a_lambdaIrreg,
-                           const Real&                                                 a_dxCoarse,
-                           const Vector<int>&                                          a_refRatio,
-                           const RefCountedPtr<BaseDomainBCFactory>&                   a_domainBCFactory,
-                           const RefCountedPtr<BaseEBBCFactory>    &                   a_ebBcFactory,
-                           const IntVect&                                              a_ghostCellsPhi,
-                           const IntVect&                                              a_ghostCellsRhs,
-                           int a_numLevels = -1,
-                           bool a_noMG = false);
 
   ///
   virtual EBViscousTensorOp*
@@ -152,12 +132,6 @@ protected:
 
   //! Time-independent a coefficients.
   Vector<RefCountedPtr<LevelData<EBCellFAB> > >        m_acoef;
-
-  //! Beginning-of-step (time-dependent) a coefficients.
-  Vector<RefCountedPtr<LevelData<EBCellFAB> > >        m_acoef0;
-
-  //! End-of-step (time-dependent) a coefficient.
-  Vector<RefCountedPtr<LevelData<EBCellFAB> > >        m_acoef1;
 
   Vector<RefCountedPtr<LevelData<EBFluxFAB> > >        m_eta;
   Vector<RefCountedPtr<LevelData<EBFluxFAB> > >        m_lambda;

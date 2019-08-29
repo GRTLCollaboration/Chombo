@@ -84,15 +84,6 @@ IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY
 OF SUCH DAMAGE.
 */
 
-#ifdef CH_LANG_CC
-/*
- *      _______              __
- *     / ___/ /  ___  __ _  / /  ___
- *    / /__/ _ \/ _ \/  V \/ _ \/ _ \
- *    \___/_//_/\___/_/_/_/_.__/\___/
- *    Please refer to Copyright.txt, in Chombo's root directory.
- */
-#endif
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -108,6 +99,7 @@ OF SUCH DAMAGE.
 #include "KDTree.H"
 
 #include "Misc.H"
+#include "parstream.H"
 
 #include "CH_Timer.H"
 
@@ -494,11 +486,11 @@ int KDTreeStatistics(KDTree const *tree){
   int sumDepth = 0;
   int i, curDepth;
 
-  FILE *leafDepthFile;
-  if ( (leafDepthFile = fopen("leafDepths.txt","w"))==NULL){
-    printf("failure opening file leafDepths.txt\n");
-    PXErrorReturn(PX_READWRITE_ERROR);
-  }
+//  FILE *leafDepthFile;
+//  if ( (leafDepthFile = fopen("leafDepths.txt","w"))==NULL){
+//    printf("failure opening file leafDepths.txt\n");
+//    PXErrorReturn(PX_READWRITE_ERROR);
+//  }
 
   for (i=0; i<numLeaves; i++){
     curDepth = leafDepths[i];
@@ -508,14 +500,17 @@ int KDTreeStatistics(KDTree const *tree){
     else if (maxDepth < curDepth)
       maxDepth = curDepth;
 
-    fprintf(leafDepthFile, "%d\n",curDepth);
+//    fprintf(leafDepthFile, "%d\n",curDepth);
   }
 
-  printf("\n numNodes = %d, numSingletons = %d, numLeaves = %d, maxStackSize = %d\n", numNodes, numSingletons, numLeaves,maxStackSize);
-  printf("maxDepth = %d, minDepth = %d, avg = %.6E\n",maxDepth, minDepth, ((Real) sumDepth)/((Real) numLeaves));
+  char diag[10000];
+  sprintf(diag,"\n numNodes = %d, numSingletons = %d, numLeaves = %d, maxStackSize = %d\n", numNodes, numSingletons, numLeaves,maxStackSize);
+  pout() << diag;
+  sprintf(diag,"maxDepth = %d, minDepth = %d, avg = %.6E\n",maxDepth, minDepth, ((Real) sumDepth)/((Real) numLeaves));
+  pout() << diag;
 
   free(leafDepths);
-  fclose(leafDepthFile);
+//  fclose(leafDepthFile);
 
   return PX_NO_ERROR;
 }

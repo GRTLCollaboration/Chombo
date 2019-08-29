@@ -140,7 +140,7 @@ public:
 
   static int preAllocatable()
   {
-    return 1; // symmetric allocatable.
+    return 2; // default:  NOT symmetric allocatable.
   }
 
   ///

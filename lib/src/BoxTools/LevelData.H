@@ -78,6 +78,16 @@ public:
                       BoxLayoutData<T>& dest,
                       const Interval& destComps) const;
 
+
+  ///only works if source and dest have the same disjointboxlayout
+  virtual void localCopyTo(const Interval& srcComps,
+                           LevelData<T>  & dest,
+                           const Interval& destComps) const;
+
+  /// assumes source and dest have same interval
+  virtual void localCopyTo(LevelData<T>  & dest) const;
+
+
   /// Simplest case -- assumes source and dest have same interval
   virtual void copyTo(BoxLayoutData<T>& dest) const;
 
@@ -101,12 +111,12 @@ public:
                       BoxLayoutData<T>& dest,
                       const Interval& destComps,
                       const Copier& copier,
-                      const LDOperator<T>& a_op = CopyLDOperator<T>()) const;
+                      const LDOperator<T>& a_op = LDOperator<T>()) const;
 
   /// Simplest case -- assumes source and dest have same interval
   virtual void copyTo(BoxLayoutData<T>& dest,
                       const Copier& copier,
-                      const LDOperator<T>& a_op = CopyLDOperator<T>()) const;
+                      const LDOperator<T>& a_op = LDOperator<T>()) const;
 
   ////////////////////////////// FM MOD. END ////////////////////////////
   ///
@@ -127,24 +137,27 @@ public:
                       LevelData<T>& dest,
                       const Interval& destComps,
                       const Copier& copier,
-                      const LDOperator<T>& a_op = CopyLDOperator<T>()) const;
+                      const LDOperator<T>& a_op = LDOperator<T>()) const;
 
   /// Simplest case -- assumes source and dest have same interval
   virtual void copyTo(LevelData<T>& dest,
                       const Copier& copier,
-                      const LDOperator<T>& a_op = CopyLDOperator<T>()) const;
-  ///
-  virtual void exchange(const Interval& comps);
+                      const LDOperator<T>& a_op = LDOperator<T>()) const;
 
   /// Simplest case -- do all components
   virtual void exchange(void);
 
-  ///
-  virtual void exchange(const Interval& comps,
-                        const Copier& copier);
-
-  /// Simplest case -- do all components
+  /// Simplest case -- do all components. Accepts a pre-built copier.
   virtual void exchange(const Copier& copier);
+
+  /// Accepts an arbitrary component range
+  virtual void exchange(const Interval& comps);
+
+  /// The most general case -- can accept an arbitrary component range,
+  /// a pre-built Copier object, and an arbitrary accumulation operator.
+  virtual void exchange(const Interval& comps,
+                        const Copier& copier,
+                        const LDOperator<T>& a_op = LDOperator<T>());
 
   /// asynchronous exchange start.  load and fire off messages.
   virtual void exchangeBegin(const Copier& copier);
@@ -274,6 +287,11 @@ public:
   virtual void apply( const ApplyFunctor& );
 
   void degenerate( LevelData<T>& a_to, const SliceSpec& a_ss ) const;
+
+  /// version of degenerate which does strictly local copying
+  /** this means that it maintains source ghost cell values in the 
+      destination*/
+  void degenerateLocalOnly( LevelData<T>& a_to, const SliceSpec& a_ss ) const;
 
 protected:
   DisjointBoxLayout m_disjointBoxLayout;

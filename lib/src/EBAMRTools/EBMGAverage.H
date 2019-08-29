@@ -141,7 +141,7 @@ protected:
   EBISLayout        m_buffEBISL;
 
   LayoutData<RefCountedPtr<EBStencil> >  m_averageEBStencil;
-
+  LevelData<EBCellFAB> m_buffer;
 private:
     //disallowed for all the usual reasons
   EBMGAverage(const EBMGAverage& ebcin)

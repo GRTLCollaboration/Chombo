@@ -54,7 +54,7 @@ void getPoissonLoadsAndBoxes(Vector<unsigned long long>&            a_loads,
 
   EBLevelGrid eblg(a_dblOrig, ebisl, a_domain);
 
-  EBPoissonOpFactory factory(eblg, RealVect::Unit, RealVect::Zero, 2, 1, 1,domBC, ebBC, 1.0, 1.0, nghostPhi, nghostPhi);
+  EBPoissonOpFactory factory(eblg, RealVect::Unit, RealVect::Zero, 2, 1, 1,domBC, ebBC, 1.0, 1.0, nghostPhi, nghostPhi, true);
 
   RefCountedPtr<EBPoissonOp>  ebpo = RefCountedPtr<EBPoissonOp>(factory.MGnewOp(a_domain, 0, false));
 
@@ -131,6 +131,7 @@ EBEllipticLoadBalance(Vector<int>&         a_procs,
   Vector<Box>  boxes;
   getPoissonLoadsAndBoxes(loads, boxes, dblOrig, a_domain, a_ebis_ptr );
 
+  //this is insanely expensive and should be unnecessary
   resetLoadOrder(loads, boxes, inBoxes);
   if (a_verbose)
     {

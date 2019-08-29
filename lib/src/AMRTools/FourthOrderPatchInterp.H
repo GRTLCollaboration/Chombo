@@ -15,7 +15,7 @@
 #include "ProblemDomain.H"
 #include "IntVectSet.H"
 #include "FourthOrderInterpStencil.H"
-#include "UsingNamespace.H"
+#include "NamespaceHeader.H"
 
 /// Fourth-order interpolation in space on a single patch
 
@@ -137,4 +137,5 @@ private:
   }
 };
 
+#include "NamespaceFooter.H"
 #endif

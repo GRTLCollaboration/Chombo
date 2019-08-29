@@ -225,14 +225,18 @@ main(int a_argc, char* a_argv[])
 
     CH_START(t1);
 
+    print_memory_line("before_geometry_generation");
     //define geometry
     AMRINSGeometry(params, coarsestDomain);
+    print_memory_line("after_geometry_generation");
 
     CH_STOP(t1);
 
+    print_memory_line("before_big_old_run");
     CH_START(t2);
     ebamrieuler(params, coarsestDomain);
     CH_STOP(t2);
+    print_memory_line("after_big_old_run");
 
     EBIndexSpace* ebisPtr = Chombo_EBIS::instance();
     ebisPtr->clear();

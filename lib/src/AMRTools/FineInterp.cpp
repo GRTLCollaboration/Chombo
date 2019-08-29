@@ -16,7 +16,7 @@
 #include "Tuple.H"
 #include "InterpF_F.H"
 #include "AverageF_F.H"
-
+#include "DebugOut.H"
 #include "FineInterp.H"
 #include "NamespaceHeader.H"
 
@@ -145,7 +145,7 @@ FineInterp::interpToFine(LevelData<FArrayBox>& a_fine_data,
 
   const BoxLayout fine_domain = a_fine_data.boxLayout();
   DataIterator dit = fine_domain.dataIterator();
-
+  m_coarsened_fine_data.exchange();
   for (dit.begin(); dit.ok(); ++dit)
     {
       const BaseFab<Real>& coarsened_fine = m_coarsened_fine_data[dit()];
@@ -243,6 +243,10 @@ FineInterp::interpGridData(BaseFab<Real>& a_fine,
   const
 {
   CH_TIME("FineInterp::interpGridData");
+
+  // This function assumes 3D or less
+  CH_assert(SpaceDim <= 3);
+
   // fill fine data with piecewise constant coarse data
   const Box& b = a_coarsened_fine_box;
   const int num_comp = a_fine.nComp ();
@@ -261,13 +265,13 @@ FineInterp::interpGridData(BaseFab<Real>& a_fine,
   FArrayBox slopes[3] {{b,num_comp}, {b,num_comp}, {b,num_comp}};
   for (int dir = 0; dir < 3; ++dir)
     {
-      BaseFab<Real>& dir_slope = slopes[dir];
+      FArrayBox& dir_slope = slopes[dir];
       // initialize to zero for PC-interp case
       dir_slope.setVal(0.0);
     }
   for (int dir = 0; dir < SpaceDim; ++dir)
     {
-      BaseFab<Real>& dir_slope = slopes[dir];
+      FArrayBox& dir_slope = slopes[dir];
 
       const Box bcenter = grow(m_coarse_problem_domain,-BASISV(dir)) & b;
       if (!bcenter.isEmpty())
@@ -297,6 +301,8 @@ FineInterp::interpGridData(BaseFab<Real>& a_fine,
                                    CHF_CONST_INT ( dir )
                                    );
         }
+     // pout() << "before limit slopes for dir " << dir << " and box " << dir_slope.box() << endl;
+     // dumpFAB(&dir_slope);
     }
 
   // to do limits, we need to have a box which includes
@@ -336,6 +342,12 @@ FineInterp::interpGridData(BaseFab<Real>& a_fine,
                      CHF_BOX (domBox)
                      );
 
+  //for(int idir = 0; idir < SpaceDim; idir++)
+  //  {
+  //    FArrayBox& dir_slope = slopes[idir];
+  //    pout() << "afterlimit slopes for dir " << idir << " and box " << dir_slope.box() << endl;
+  //    dumpFAB(&dir_slope);
+  //  }
   for (int dir = 0; dir < SpaceDim; ++dir)
     {
       BaseFab<Real>& dir_slope = slopes[dir];

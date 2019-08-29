@@ -236,12 +236,22 @@ public:
   virtual BaseIF* newImplicitFunction() const;
 
   void GetFullHeader(IntVect&  a_num,
-                      RealVect& a_spacing,
-                      RealVect& a_origin)
+                     RealVect& a_spacing,
+                     RealVect& a_origin)
   {
     a_num = m_num;
     a_spacing = m_spacing;
     a_origin = m_origin;
+  }
+
+  RefCountedPtr<FArrayBox> GetAsciiData(void)
+  {
+    return m_ascii_data;
+  }
+
+  RefCountedPtr<BaseFab<unsigned char> > GetBinaryData(void)
+  {
+    return m_binary_data;
   }
 
 protected:

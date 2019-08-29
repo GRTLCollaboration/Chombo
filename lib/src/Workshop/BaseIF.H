@@ -14,10 +14,12 @@
 #include "RealVect.H"
 #include "ProblemDomain.H"
 #include "IndexTM.H"
-
+#include "EB_TYPEDEFS.H"
+#include "VolIndex.H"
+#include "FaceIndex.H"
 #include "Notation.H"
 #include "GeometryService.H"
-
+#include "IndexedMoments.H"
 #include "NamespaceHeader.H"
 
 ///
@@ -42,6 +44,62 @@ public:
   {
   }
 
+  ///return int x^p dV for the vof
+  virtual IndMomSpaceDim getExactVolumeMoments(const VolIndex    & a_vof,
+                                               const Real        & a_dx) const
+  {
+    IndMomSpaceDim retval;
+    retval.setToZero();
+    MayDay::Error("not implemented");
+    return retval;
+  }
+                                          
+  
+  ///return int_eb x^p dA for the eb
+  virtual IndMomSpaceDim getExactEBMoments(const VolIndex   & a_vof,
+                                           const Real       & a_dx) const
+  {
+    IndMomSpaceDim retval;
+    retval.setToZero();
+    MayDay::Error("not implemented");
+    return retval;
+  }
+                                          
+                                          
+  ///return int_eb x^p n_i dA for the eb
+  virtual IndMomSpaceDim getExactEBNormalMoments(const VolIndex   & a_vof,
+                                                 const Real       & a_dx,
+                                                 const int        & a_ni) const
+  {
+    IndMomSpaceDim retval;
+    retval.setToZero();
+    MayDay::Error("not implemented");
+    return retval;
+  }
+                                          
+  ///
+  virtual IndMomSpaceDim getExactEBNormalPartialDerivs(const VolIndex   & a_vof,
+                                                       const Real       & a_dx,
+                                                       const int        & a_ni) const
+  {
+    IndMomSpaceDim retval;
+    retval.setToZero();
+    MayDay::Error("not implemented");
+    return retval;
+  }
+
+  ///return int x^p  dA for the face
+  virtual IndMomSDMinOne getExactFaceMoments(const FaceIndex  & a_face,
+                                             const Real       & a_dx) const
+  {
+    IndMomSDMinOne retval;
+    retval.setToZero();
+    MayDay::Error("not implemented");
+    return retval;
+  }
+                                          
+  
+  
   ///
   /**
    Return the value of the function at a_point.  When delineating a domain,
@@ -50,19 +108,41 @@ public:
   */
   virtual Real value(const RealVect& a_point) const = 0;
 
+  ///return the partial derivative at the point
+  virtual Real derivative(const  IntVect& a_deriv,
+                          const RealVect& a_point) const
+  {
+    MayDay::Error("not implemented");
+    return 0.;
+  }
+
   virtual Real value(const IndexTM<int,GLOBALDIM> & a_partialDerivative,
                      const IndexTM<Real,GLOBALDIM>& a_point) const
   {
-    Real retval= LARGEREALVAL;
+    Real retval= 0;
     if (a_partialDerivative == IndexTM<int,GLOBALDIM>::Zero)
       {
         retval = value(a_point);
       }
     else
       {
-        MayDay::Abort("Not implemented");
+        retval = derivative(a_partialDerivative, a_point);
       }
     return retval;
+  }
+
+
+  virtual Real value(const IntVect  & a_deriv,
+                     const RealVect & a_point) const
+  {
+    IndexTM<int,GLOBALDIM>   deriv;
+    IndexTM<Real,GLOBALDIM>  point;
+    for(int idir = 0; idir < SpaceDim; idir ++)
+      {
+        deriv[idir] = a_deriv[idir];
+        point[idir] = a_point[idir];
+      }
+    return value(deriv, point);
   }
 
   virtual bool fastIntersection(const Box&           a_region,
@@ -99,15 +179,37 @@ public:
 
   ///
   /**
-     Return the value of the function at a_point (of type IndexTM).
+     Return the value of the function at a_point (of type INdexTM).
   */
   virtual Real value(const IndexTM<Real,GLOBALDIM>& a_point) const
   {
-    MayDay::Abort("'value' called with 'IndexTM' not implemented in BaseIF");
-    Real retval = LARGEREALVAL;
-    return retval;
+    CH_assert(GLOBALDIM==SpaceDim);
+    RealVect rvpoint;
+    for(int idir = 0; idir < SpaceDim; idir++)
+      {
+        rvpoint[idir] = a_point[idir];
+      }
+    return value(rvpoint);
   };
 
+  ///
+  /**
+     Return the derivative of the function at a_point (of type INdexTM).
+  */
+  virtual Real derivative(const IndexTM< int,GLOBALDIM>& a_deriv,
+                          const IndexTM<Real,GLOBALDIM>& a_point
+                          ) const
+  {
+    CH_assert(GLOBALDIM==SpaceDim);
+    RealVect rvpoint;
+    IntVect  ivderiv;
+    for(int idir = 0; idir < SpaceDim; idir++)
+      {
+        rvpoint[idir] = a_point[idir];
+        ivderiv[idir] = a_deriv[idir];
+      }
+    return derivative(ivderiv, rvpoint);
+  };
   ///
   /**
      Return a newly allocated derived class.  The responsibility
@@ -120,6 +222,23 @@ public:
     MayDay::Abort("Print function not implemented");
   };
 
+    ///
+  /**
+     An Implicit Function has three options for implementing this function
+     1) do nothing, allow the empty base implementation to remain in place as a null-op
+     2) take the makeGrids call as a directive: Here are the grids EBIndexSpace is wanting to use, configure
+         yourself accordingly to make this efficient for you.  
+     3) discard the DisjointBoxLayout EBIndexSpace would like and insert your own implementation of layout
+        EBIndexSpace will faithfully use a_grids returned from this function, including it's load balance. 
+  */
+  virtual void makeGrids( const ProblemDomain&      a_domain,
+                          DisjointBoxLayout&        a_grids,
+                          const int&                a_maxGridSize,
+                          const int&                a_maxIrregGridSize )
+  {
+    //default operation: Implicit Function and EBIndexSpace do not know about each other's data layout.
+  }
+  
   static void corners(const Box& a_region, const RealVect& a_origin, const Real& a_dx,
                       RealVect& a_lo, RealVect& a_hi)
   {

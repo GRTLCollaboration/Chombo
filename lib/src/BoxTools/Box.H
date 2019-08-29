@@ -61,10 +61,10 @@ public:
 
   ///
   /**
-      The copy constructor.
+      The copy constructor. Let compiler build default copy constructor (bvs)
 
   */
-  IndexType (const IndexType& rhs);
+  // IndexType (const IndexType& rhs);
 
   ///
   /**
@@ -285,12 +285,12 @@ IndexType::IndexType ()
 {
 }
 
-inline
-IndexType::IndexType (const IndexType& bt)
-  :
-  itype(bt.itype)
-{
-}
+//inline
+//IndexType::IndexType (const IndexType& bt)
+//  :
+//  itype(bt.itype)
+//{
+//}
 
 inline
 IndexType& IndexType::operator= (const IndexType& bt)
@@ -303,14 +303,14 @@ inline
 IndexType::IndexType (const IntVect& iv)
 {
   itype = D_TERM6((iv[0]?1:0), | ((iv[1]?1:0)<<1), | ((iv[2]?1:0)<<2),
-                  | (iv[3]?1:0), | ((iv[4]?1:0)<<1), | ((iv[5]?1:0)<<2));
+                  | ((iv[3]?1:0)<<3), | ((iv[4]?1:0)<<4), | ((iv[5]?1:0)<<5));
 }
 
 inline
 IndexType& IndexType::operator= (const IntVect& iv)
 {
   itype = D_TERM6((iv[0]?1:0), | ((iv[1]?1:0)<<1), | ((iv[2]?1:0)<<2),
-                  | (iv[3]?1:0), | ((iv[4]?1:0)<<1), | ((iv[5]?1:0)<<2));
+                  | ((iv[3]?1:0)<<3), | ((iv[4]?1:0)<<4), | ((iv[5]?1:0)<<5));
   return *this;
 }
 
@@ -477,11 +477,11 @@ public:
 
   ///
   /**
-     The destructor.
+     The destructor. Let the compiler build the default version (bvs)
 
   */
-  ~Box ()
-  {}
+  //  ~Box ()
+  //  {}
 
   ///
   /**
@@ -557,10 +557,10 @@ public:
 
   ///
   /**
-     The copy constructor.
+     The copy constructor.  Compiler can build default copy (bvs)
 
   */
-  Box (const Box& b);
+  //  Box (const Box& b);
 
   void define(const Box& b);
 
@@ -698,7 +698,7 @@ public:
      Box.  This is identical to volume().  
 
   */
-  unsigned long long int numPts () const;
+  size_t numPts () const;
 
  
   ///
@@ -707,7 +707,7 @@ public:
      Box.  This is identical to numPts().  
 
   */
-  unsigned long long int volume () const;
+  size_t volume () const;
 
   ///
   /**
@@ -853,10 +853,10 @@ public:
 
   ///
   /**
-     The assignment operator.
+     The assignment operator. Compiler can build default version for us (bvs)
 
   */
-  Box& operator= (const Box& b);
+  //  Box& operator= (const Box& b);
 
   ///
   /**
@@ -1713,29 +1713,29 @@ Box refine  (const Box&     b,
 
 #ifndef WRAPPER
 
-inline
-Box::Box (const Box& b)
-  : smallend(b.smallend),
-    bigend(b.bigend),
-    btype(b.btype)
-{
+//inline
+//Box::Box (const Box& b)
+//  : smallend(b.smallend),
+//    bigend(b.bigend),
+//    btype(b.btype)
+//{
 //   D_EXPR6(len[0] = b.len[0],
 //          len[1] = b.len[1],
 //          len[2] = b.len[2]);
-}
+//}
 
-inline
-Box&
-Box::operator= (const Box& b)
-{
-  smallend = b.smallend;
-  bigend = b.bigend;
-  btype = b.btype;
+//inline
+//Box&
+//Box::operator= (const Box& b)
+//{
+//  smallend = b.smallend;
+//  bigend = b.bigend;
+//  btype = b.btype;
 //   D_EXPR6(len[0] = b.len[0],
 //          len[1] = b.len[1],
 //          len[2] = b.len[2]);
-  return *this;
-}
+//  return *this;
+//}
 
 inline
 IntVect

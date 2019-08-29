@@ -305,6 +305,12 @@ IntVectSet EBGraphImplem::getMultiCells(const Box& a_subbox) const
   return (*m_multiIVS) & a_subbox;
 }
 
+bool EBGraphImplem::isMultiValued(const IntVect& a_iv) const
+{
+  if(m_multiIVS == NULL || !m_multiIVS->contains(a_iv)) return false;
+  return true;
+}
+
 /*******************************/
 void EBGraphImplem::setToAllRegular()
 {
@@ -523,10 +529,12 @@ void EBGraphImplem::buildGraph(const BaseFab<int>&      a_regIrregCovered,
                                const Box&               a_validRegion,
                                const ProblemDomain&     a_domain)
 {
+  CH_TIME("EBGraphImplem::buildGraph");
+
   define(a_validRegion);
   setDomain(a_domain);
 
-  //remember that this forces a dense representation.
+  // remember that this forces a dense representation.
   m_tag = HasIrregular;
   if (m_irregIVS != NULL) delete m_irregIVS;
   if (m_multiIVS != NULL) delete m_multiIVS;
@@ -534,7 +542,7 @@ void EBGraphImplem::buildGraph(const BaseFab<int>&      a_regIrregCovered,
   m_irregIVS = new IntVectSet(DenseIntVectSet(m_region, false));
   m_graph.define(m_region, 1);
 
-  //set regular and covered cells
+  // set regular and covered cells
   for (BoxIterator bit(m_region); bit.ok(); ++bit)
     {
       const IntVect& iv = bit();
@@ -542,7 +550,7 @@ void EBGraphImplem::buildGraph(const BaseFab<int>&      a_regIrregCovered,
         {
           m_graph(iv, 0).defineAsRegular();
         }
-      else if (a_regIrregCovered(iv, 0) == -1) //covered cell
+      else if (a_regIrregCovered(iv, 0) == -1) // covered cell
         {
           m_graph(iv, 0).defineAsCovered();
         }
@@ -552,8 +560,8 @@ void EBGraphImplem::buildGraph(const BaseFab<int>&      a_regIrregCovered,
         }
     }
 
-  //now for irregular cells
-  //add the vofs
+  // now for irregular cells
+  // add the vofs
   for (int ivecIrreg = 0; ivecIrreg < a_irregGraph.size(); ivecIrreg++)
     {
       const IrregNode& inputNode = a_irregGraph[ivecIrreg];
@@ -570,15 +578,15 @@ void EBGraphImplem::buildGraph(const BaseFab<int>&      a_regIrregCovered,
         }
     }
 
-  //add the faces
+  // add the faces
   for (int ivecIrreg = 0; ivecIrreg < a_irregGraph.size(); ivecIrreg++)
     {
       const IrregNode& inputNode = a_irregGraph[ivecIrreg];
       const IntVect& iv =inputNode.m_cell;
       Vector<GraphNodeImplem>& vecNodes =
         *(m_graph(iv, 0).m_cellList);
-      //pick out which node we are talking about
-      //by maching its nodeInd with ivecIrreg
+      // pick out which node we are talking about
+      // by maching its nodeInd with ivecIrreg
       bool foundNode = false;
       GraphNodeImplem* nodePtr = NULL;
       for (int ivecGraph = 0; ivecGraph < vecNodes.size(); ivecGraph++)
@@ -593,7 +601,7 @@ void EBGraphImplem::buildGraph(const BaseFab<int>&      a_regIrregCovered,
         {
           MayDay::Error("EBGraph: internal error in construction");
         }
-      //now add the arcs in the input to the node
+      // now add the arcs in the input to the node
       GraphNodeImplem& node = *nodePtr;
       for (int idir = 0; idir < SpaceDim; idir++)
         {
@@ -609,16 +617,16 @@ void EBGraphImplem::buildGraph(const BaseFab<int>&      a_regIrregCovered,
                   int otherNodeInd = irregArcs[iarc];
                   if (otherNodeInd == -1)
                     {
-                      //if otherNodeInd == -1, boundary arc.
-                      //just make the arc in our node = -1
-                      //to signify the same
+                      // if otherNodeInd == -1, boundary arc.
+                      // just make the arc in our node = -1
+                      // to signify the same
                       nodeArcs[iarc] = -1;
                     }
                   else if (otherNodeInd == -2)
                     {
-                      //this means that the vof is connected
-                      //to a regular vof,
-                      //which always have a cell index of 0
+                      // this means that the vof is connected
+                      // to a regular vof,
+                      // which always have a cell index of 0
                       nodeArcs[iarc] =  0;
                     }
                   else
@@ -628,7 +636,6 @@ void EBGraphImplem::buildGraph(const BaseFab<int>&      a_regIrregCovered,
                 }
             }
         }
-
     }
 }
 
@@ -702,7 +709,7 @@ bool EBGraphImplem::isDomainSet() const
 }
 
 /*******************************/
-const BaseFab<int>& EBGraphImplem::getMask(int& a_regIrregCovered) const
+const BaseFab<char>& EBGraphImplem::getMask(int& a_regIrregCovered) const
 {
   if (this->isAllRegular())
     {
@@ -719,7 +726,7 @@ const BaseFab<int>& EBGraphImplem::getMask(int& a_regIrregCovered) const
         {
           Box maskBox = m_region & m_domain;
           m_mask.define(maskBox, 1);
-          fillIntMask(m_mask);
+          fillMask(m_mask);
           m_isMaskBuilt = true;
         }
     }
@@ -1113,25 +1120,8 @@ void EBGraph::fillCellTypeMask(BaseFab<char>& a_mask) const
   m_implem->fillCellTypeMask(a_mask);
 }
 
-void EBGraph::fillIntMask(BaseFab<int>& a_mask) const
-{
-  m_implem->fillIntMask(a_mask);
-}
 
 void EBGraphImplem::fillMask(BaseFab<char>& a_mask) const
-{
-  Box b = a_mask.box() & m_graph.box();
-  if (b.isEmpty()) return;
-  BoxIterator bit(b);
-  for (; bit.ok(); ++bit)
-    {
-      const GraphNode& g = m_graph(bit(), 0);
-      CH_assert(g.size() < 128);
-      a_mask(bit(), 0) = (char)(g.size());
-    }
-}
-
-void EBGraphImplem::fillIntMask(BaseFab<int>& a_mask) const
 {
   if (m_tag == AllRegular )
     {
@@ -1139,35 +1129,27 @@ void EBGraphImplem::fillIntMask(BaseFab<int>& a_mask) const
     }
   else if (m_tag == AllCovered )
     {
-      a_mask.setVal(-1);
+      a_mask.setVal(0);
     }
   else
     {
       Box b = a_mask.box();
       for (BoxIterator bit(b); bit.ok(); ++bit)
         {
-          if (isRegular(bit()))
-            {
-              a_mask(bit(), 0) =  1;
-            }
-          else if (isCovered(bit()))
-            {
-              a_mask(bit(), 0) = -1;
-            }
-          else if (numVoFs(bit()) > 1)
-            {
-              //multivalued need to be treated as covered as far as the mask is concerned
-              a_mask(bit(), 0) = -1;
-            }
-          else
+          if (isCovered(bit())|| isMultiValued(bit()))
             {
               a_mask(bit(), 0) = 0;
             }
+          else 
+            {
+              a_mask(bit(), 0) = 1;
+            }
         }
+          
     }
 }
-
 /*******************************/
+
 void EBGraphImplem::fillCellTypeMask(BaseFab<char>& a_mask) const
 {
   // This is added for VisIt support.
@@ -1820,11 +1802,11 @@ Vector<int> EBGraphImplem::coarsenFaces(const VolIndex&       a_coarVoF,
               for (int ithisFine = 0; ithisFine < theseFineVoFs.size(); ithisFine++)
                 {
                   const VolIndex& thisFineVoF = theseFineVoFs[ithisFine];
-                  int thesetwocon = -1;
+                  //                  int thesetwocon = -1;
                   if (a_fineGraph.isConnected(thisFineVoF, otherFineVoF))
                     {
                       addThisFace = true;
-                      thesetwocon = 1;
+                      //                      thesetwocon = 1;
                     }
                 }
             }
@@ -2007,12 +1989,6 @@ EBGraph::EBGraph()
 /*******************************/
 EBGraph::~EBGraph()
 {
-}
-
-/*******************************/
-long long EBGraph::numVoFs(const Box& a_box) const
-{
-  return m_implem->numVoFs(a_box);
 }
 
 /*******************************/

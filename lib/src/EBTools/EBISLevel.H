@@ -84,6 +84,7 @@ public:
 class EBISLevel
 {
 public:
+  static int s_ebislGhost;
   void dumpDebug(const string& a_string);
 
   void coarsenVoFs(EBISLevel& a_fineEBIS);
@@ -93,6 +94,8 @@ public:
   void coarsenFaces(EBISLevel& a_fineEBIS);
 
   long long numVoFsOnProc() const;
+
+  Real totalVolFracOnProc() const;
 
   void levelStitch(EBISLevel&       a_otherPhase,
                    const EBISLevel* a_fineThisPtr,
@@ -120,10 +123,8 @@ public:
             const RealVect        & a_origin,
             const Real            & a_dx,
             const GeometryService & a_geoserver,
-            const EBIndexSpace    * const a_ebisPtr               = Chombo_EBIS::instance(),
-            const bool            & a_distributedData             = false,
-            const bool            & a_fixRegularNextToMultiValued = true,
-            const int             & a_level = 0);
+            int                     a_nCellMax,
+            const bool            & a_fixRegularNextToMultiValued = true);
 
   ///
   /**
@@ -134,10 +135,10 @@ public:
    */
   EBISLevel(EBISLevel             & a_finerLevel,
             const GeometryService & a_geoserver,
-            const EBIndexSpace    * const a_ebisPtr               = Chombo_EBIS::instance(),
-            const bool            & a_distributedData             = false,
+            int                     a_nCellMax,
             const bool            & a_fixRegularNextToMultiValued = true);
 
+  void checkGraph() const;
 #ifdef CH_USE_HDF5
   /// read from file from top level only file
   EBISLevel(HDF5Handle& handle);
@@ -202,6 +203,7 @@ public:
 
   int m_phase;
 
+  static bool s_recursive;
 
 private:
 
@@ -226,26 +228,52 @@ private:
   ///
   LevelData<EBData>  m_data;
 
+  ///whether this has higher order moment info
+  bool m_hasMoments;
+
   Real m_tolerance; // used in Multifluid face matching algorithm.
 
-  mutable std::map<int, dmap> m_cache;
-
+  //mutable std::map<int, dmap> m_cache;
+  mutable dmap m_cache;
   mutable int m_cacheMisses, m_cacheHits, m_cacheStale;
+
+  void dumpCache() const;
 
   static Real s_tolerance;
   static bool s_verbose;
 
-  //make grids for this level.
 
-  static void makeBoxes(Vector<Box>&              a_boxes,
-                        Vector<long>&             a_irregCount,
-                        const Box&                a_region,
-                        const ProblemDomain&      a_domain,
-                        const GeometryService&    a_geoserver,
-                        const RealVect&           a_origin,
-                        const Real&               a_dx,
-                        const int                 a_ncellmax,
-                        const EBIndexSpace* const a_ebisPtr);
+  static void
+  defineGraphFromGeo(LevelData<EBGraph>             &     a_graph,
+                     LayoutData<Vector<IrregNode> > &     a_allNodes,
+                     const GeometryService          &     a_geoserver,
+                     const DisjointBoxLayout        &     a_grids,
+                     const ProblemDomain            &     a_domain,
+                     const RealVect                 &     a_origin,
+                     const Real                     &     a_dx,
+                     bool                                 a_hasMoments);
+
+  //make grids for this level.
+  static void makeBoxes(Vector<Box>&                a_boxes,
+                        Vector<unsigned long long>& a_loads,
+                        const Box&                  a_region,
+                        const ProblemDomain&        a_domain,
+                        const GeometryService&      a_geoserver,
+                        const RealVect&             a_origin,
+                        const Real&                 a_dx,
+                        bool                        a_hasMoments,
+                        const int                   a_ncellmax);
+
+  static 
+  void makeLoads(Vector<unsigned long long>& a_loads,
+                 Vector<Box>&                a_boxes,
+                 const Box&                  a_region,
+                 const ProblemDomain&        a_domain,
+                 const GeometryService&      a_geoserver,
+                 const RealVect&             a_origin,
+                 const Real&                 a_dx,
+                 bool                        a_hasMoments,
+                 const int                   a_ncellmax);
 
   static void makeBoxes(std::list<Box>&        a_boxes,
                         const Box&             a_region,
@@ -253,6 +281,7 @@ private:
                         const GeometryService& a_geoserver,
                         const RealVect&        a_origin,
                         const Real&            a_dx,
+                        bool                        a_hasMoments,
                         const int              a_ncellmax);
 
   //these are disallowed

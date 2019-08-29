@@ -51,9 +51,9 @@ public:
   ///
   /**
      Full define function.   \\
-     dblFine, dblCoar: The fine and coarse layouts
+     dblCoar: coarse layouts
      of the data. \\
-     ebislFine, ebislCoar: The fine and coarse layouts
+     ebislCoar: coarse EBISlayout \\
      of the geometric description.\\
      nref: The refinement ratio between the two levels.\\
      nvar: The number of variables contained in the data
@@ -62,7 +62,6 @@ public:
   */
   void define(const DisjointBoxLayout& a_dblFine,
               const DisjointBoxLayout& a_dblCoar,
-              const EBISLayout& a_ebislFine,
               const EBISLayout& a_ebislCoar,
               const Box& a_domainCoar,
               const int& a_nref,
@@ -125,8 +124,7 @@ protected:
   int  m_refRat;
   Box  m_domainCoar;
 
-  //input fine grid
-  DisjointBoxLayout    m_gridsFine;
+ 
   //input coarse grid
   DisjointBoxLayout    m_gridsCoar;
 
@@ -136,8 +134,7 @@ protected:
   //location of mass sources on refined coarse layout
   LayoutData<IntVectSet> m_setsCoar;
 
-  //ebisl of input fine grid
-  EBISLayout m_ebislFine;
+ 
   //ebisl of input coar grid
   EBISLayout m_ebislCoar;
 

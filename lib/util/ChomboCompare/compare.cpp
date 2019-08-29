@@ -29,12 +29,16 @@ using namespace std;
 
 #include "computeSum.H"
 #include "computeNorm.H"
+#include "computeNormWeighted.H"
 
 #include "HOExtrapBC.H"
 #include "AverageHO_F.H"
 
 Vector<string> noAverageVars;
 Vector<string> sumVars;
+bool weighted;
+string weightVar;
+int weightComp;
 
 void init(string&         a_exactRoot,
           string&         a_computedRoot,
@@ -51,6 +55,7 @@ void init(string&         a_exactRoot,
           Real&           a_bogusValue,
           bool&           a_computeRelativeError,
           bool&           a_removeMean,
+          bool&           a_divideByDt,
           bool&           a_doGhostCells,
           bool&           a_useUnitDomain,
           bool&           a_HOaverage,
@@ -134,6 +139,7 @@ int main(int argc, char* argv[])
   bool verbose = false;
   bool computeRelativeError = false;
   bool removeMean = false;
+  bool divideByDt = false;
   bool useUnitDomain = false;
   bool HOaverage = false;
 
@@ -149,8 +155,9 @@ int main(int argc, char* argv[])
   init(exactRoot, computedRoot, errorRoot, intFieldSize,
        numCrseStart, errorVars, numCrseFinish, crseStep,
        crseMult, doPlots, isTimeDep, isSameSize, bogusValue,
-       computeRelativeError, removeMean, doGhostCells, useUnitDomain,
-       HOaverage,verbose);
+       computeRelativeError, removeMean, divideByDt, doGhostCells, 
+       useUnitDomain, HOaverage,verbose);
+       
 
 
   int nStep, exactStep;
@@ -348,12 +355,39 @@ int main(int argc, char* argv[])
     constructErrorNames(errorNames, errorVars);
 
     Vector<LevelData<FArrayBox>* > error(computedNumLevels);
+    Vector<LevelData<FArrayBox>* > weighting(computedNumLevels);
+    if (weighted)
+      {
+        bool foundWeight = false;
+        for (int i=0; i<numComputed; i++)
+          {
+            if (weightVar == computedVars[i])
+              { // found weightVar
+                foundWeight = true;
+                weightComp = i;
+                break;
+              }
+          }
+        if (!foundWeight)
+          {
+            pout() << "computedVar " << weightVar
+                   << " not found in computed solution!"
+                   << endl;
+            MayDay::Error();
+          }
+      }
 
     // allocate error -- same domain as computed solution
     for (int level = 0; level < computedNumLevels; level++)
     {
       error[level] = new LevelData<FArrayBox>(computedGrids[level],
                                               numError, ghostVect);
+      if (weighted)
+        {
+          Interval weightIntvl(weightComp, weightComp);
+          weighting[level] = new LevelData<FArrayBox>;
+          aliasLevelData(*(weighting[level]), computedSoln[level], weightIntvl);
+        }
     }
 
     if (!isSameSize)
@@ -470,6 +504,36 @@ int main(int argc, char* argv[])
         } // end loop over levels
       } // end loop over errors
     }
+  
+    // divide by dt
+    if (divideByDt)
+      {
+        int lBase = 0;
+        int numLevels = error.size();
+        
+        Real dt = computedTime - exactTime;
+        
+        for (int err = 0; err < numError; err++)
+          {
+            for (int level = 0; level < numLevels; level++)
+              {
+                LevelData<FArrayBox>& thisLevelError = *error[level];
+                
+                const DisjointBoxLayout levelGrids = error[level]->getBoxes();
+                
+                DataIterator dit = levelGrids.dataIterator();
+                for (dit.reset(); dit.ok(); ++dit)
+                  {
+                    const Box thisBox = levelGrids[dit()];
+                    FArrayBox& thisFabError = thisLevelError[dit()];
+                    
+                    thisFabError.divide(dt);
+                  } // end loop over grids
+                
+                thisLevelError.exchange();
+              } // end loop over levels
+          } // end loop over errors
+      } // end if divide by dt
 
     // now compute norms
 
@@ -499,20 +563,46 @@ int main(int argc, char* argv[])
                        lBase);
 
       normType = 1;
-      L1 = computeNorm(error,
-                       computedRefRatio,
-                       normDx,
-                       errComps,
-                       normType,
-                       lBase);
+      if (weighted)
+        {
+          L1 = computeNormWeighted(error,
+                                   weighting,
+                                   computedRefRatio,
+                                   normDx,
+                                   errComps,
+                                   normType,
+                                   lBase);
+        }
+      else
+        {
+          L1 = computeNorm(error,
+                           computedRefRatio,
+                           normDx,
+                           errComps,
+                           normType,
+                           lBase);
+        }
 
       normType = 2;
-      L2 = computeNorm(error,
-                       computedRefRatio,
-                       normDx,
-                       errComps,
-                       normType,
-                       lBase);
+      if (weighted)
+        {
+          L2 = computeNormWeighted(error,
+                                   weighting,
+                                   computedRefRatio,
+                                   normDx,
+                                   errComps,
+                                   normType,
+                                   lBase);
+        }
+      else
+        {
+          L2 = computeNorm(error,
+                           computedRefRatio,
+                           normDx,
+                           errComps,
+                           normType,
+                           lBase);
+        }
       
       sum = computeSum(error,
                        computedRefRatio,
@@ -549,7 +639,7 @@ int main(int argc, char* argv[])
                             computedDomain,
                             computedDx,
                             computedDt,
-                            computedTime,
+                            exactTime,
                             computedRefRatio,
                             computedNumLevels);
 
@@ -582,7 +672,19 @@ int main(int argc, char* argv[])
         delete error[level];
         error[level] = NULL;
       }
+
+      if (weighted)
+        {
+          if (weighting[level] != NULL)
+            {
+              delete weighting[level];
+              weighting[level] = NULL;
+            }
+        }
+
     }
+    // add a blank line between timesteps
+    pout() << endl;
   } // end loop over timesteps
 
 #ifdef CH_MPI
@@ -1025,7 +1127,7 @@ void computeSameSizeError(Vector<LevelData<FArrayBox>* >&       a_error,
         {
           string thisExactVar = a_exactVars[exactComp];
           // check if this exact variable is "the one"
-          if (thisExactVar == thisErrVar)
+          if ((thisExactVar == thisErrVar) || nonAverageVar(thisErrVar))
           {
             int computedComp = 0;
 
@@ -1060,7 +1162,7 @@ void computeSameSizeError(Vector<LevelData<FArrayBox>* >&       a_error,
                     thisError.invert(-1.0, nErr, 1);
                     thisError.plus(1.0, nErr, 1);
                   }
-                  else
+                  else if (!nonAverageVar(thisErrVar))
                   {
                     thisError.minus(thisComputed, computedComp, nErr, 1);
                   }
@@ -1115,6 +1217,8 @@ void computeSameSizeError(Vector<LevelData<FArrayBox>* >&       a_error,
         {
           if (a_computedVars[computedComp] == thisErrVar)
           {
+            if ( !nonAverageVar(thisErrVar) )
+              {
             for (levelDit.reset(); levelDit.ok(); ++levelDit)
             {
               FArrayBox& thisComputed = thisLevelComputed[levelDit()];
@@ -1122,7 +1226,7 @@ void computeSameSizeError(Vector<LevelData<FArrayBox>* >&       a_error,
 
               thisError.minus(thisComputed, computedComp, nErr, 1);
             } // end loop over computed/error grids
-
+              }
             done = true;
           } // if a_computedVar is a_errorVar
 
@@ -1208,6 +1312,7 @@ void init(string&         a_exactRoot,
           Real&           a_bogusValue,
           bool&           a_computeRelativeError,
           bool&           a_removeMean,
+          bool&           a_divideByDt,
           bool&           a_doGhostCells,
           bool&           a_useUnitDomain,
           bool&           a_HOaverage,
@@ -1236,6 +1341,10 @@ void init(string&         a_exactRoot,
   temp = a_removeMean;
   ppCompare.query("removeMean", temp);
   a_removeMean = (temp == 1);
+
+  temp = a_divideByDt;
+  ppCompare.query("divide_by_dt", temp);
+  a_divideByDt = (temp == 1);
 
   temp = a_isSameSize;
   ppCompare.query("sameSize", temp);
@@ -1302,6 +1411,8 @@ void init(string&         a_exactRoot,
     ppCompare.getarr("sum_var", sumVars, 0, nErr);
   }
 
+  nErr = ppCompare.query("weight_var", weightVar);
+  weighted = (nErr == 1);
 }
 
 void constructPlotFileName(ostrstream&   a_fileName,

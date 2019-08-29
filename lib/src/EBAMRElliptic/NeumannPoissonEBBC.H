@@ -114,6 +114,8 @@ public:
 
   Real m_value;
   RefCountedPtr<BaseBCValue> m_flux;
+
+  static int s_comp;
 };
 
 ///
@@ -142,6 +144,12 @@ public:
    */
   virtual void setFunction(RefCountedPtr<BaseBCValue> a_flux);
 
+  virtual void setData( RefCountedPtr<LevelData<BaseIVFAB<Real> > >& a_data)
+  {
+    m_data = a_data;
+    m_dataBased = true;
+  }
+
   ///
   /**
    */
@@ -157,6 +165,9 @@ private:
 
   Real m_value;
   RefCountedPtr<BaseBCValue> m_flux;
+
+  RefCountedPtr<LevelData<BaseIVFAB<Real> > >  m_data;
+  bool m_dataBased;
 };
 
 #include "NamespaceFooter.H"

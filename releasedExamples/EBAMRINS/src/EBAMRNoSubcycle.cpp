@@ -20,9 +20,9 @@
 #include "EBCoarseAverage.H"
 #include "EBFluxFactory.H"
 #include "EBCellFactory.H"
-#include "EBLevelAdvect.H"
+#include "EBAdvectLevelIntegrator.H"
+#include "EBAdvectPatchIntegrator.H"
 #include "EBGradDivFilter.H"
-#include "EBPatchAdvect.H"
 #include "REAL.H"
 #include "EBPhysIBCFactory.H"
 #include "EBAMRIO.H"
@@ -35,7 +35,6 @@
 #include "NeumannPoissonEBBC.H"
 #include "DirichletPoissonEBBC.H"
 #include "InflowOutflowIBC.H"
-#include "EBNormalizeByVolumeFraction.H"
 #include <iomanip>
 #include <cmath>
 #include <cstdio>
@@ -84,6 +83,10 @@ EBAMRNoSubcycle(const AMRParameters&      a_params,
   m_aveSpac.resize(nlevels);
   m_ebLevAd.resize(nlevels);
   m_fluxReg.resize(nlevels);
+  m_redist.resize(nlevels);
+  m_normalizor.resize(nlevels);
+  m_constCFI.resize(nlevels);
+  m_vectorScrat.resize(nlevels, NULL);
   m_velo.resize(nlevels, NULL);
   m_pres.resize(nlevels, NULL);
   m_gphi.resize(nlevels, NULL);
@@ -109,6 +112,9 @@ EBAMRNoSubcycle(const AMRParameters&      a_params,
   m_useFixedDt = false;
   m_steadyState = false;
   m_stopAdvance = false;
+  
+  m_plotFile = "plot";
+  m_checkFile = "check";
 
   m_ccProjector  = NULL;
   m_macProjector = NULL;
@@ -117,7 +123,7 @@ EBAMRNoSubcycle(const AMRParameters&      a_params,
   m_dt = -1.0;
   //setup still needs to get called
   m_isSetup  = false;
-
+  m_nGhost = 3;
   m_pointsUpdated = 0;
 }
 /**********/
@@ -129,6 +135,7 @@ allocateDataHolders()
   for (int ilev = 0; ilev <= m_params.m_maxLevel; ilev++)
     {
       m_velo[ilev]   = new LevelData<EBCellFAB>();
+      m_vectorScrat[ilev]   = new LevelData<EBCellFAB>();
       m_pres[ilev]   = new LevelData<EBCellFAB>();
       m_gphi[ilev]   = new LevelData<EBCellFAB>();
       m_advVel[ilev] = new LevelData<EBFluxFAB>();
@@ -155,6 +162,7 @@ EBAMRNoSubcycle::
   for (int ilev = 0; ilev <= m_params.m_maxLevel; ilev++)
     {
       delete m_velo[ilev];
+      delete m_vectorScrat[ilev];
       delete m_pres[ilev];
       delete m_gphi[ilev];
       delete m_advVel[ilev];
@@ -330,7 +338,7 @@ run(Real a_maxTime, int a_maxStep)
   CH_assert(m_isSetup);
 
   ParmParse pp;
-
+  print_memory_line("ebamrnosub::beginning_run");
   pp.query("stokesFlow", m_params.m_stokesFlow);
   if (m_params.m_stokesFlow)
     {
@@ -352,6 +360,9 @@ run(Real a_maxTime, int a_maxStep)
     {
       pout() << "Stopping velocity predictor-corrector at steady-state" << endl;
     }
+  
+  pp.query("plot_file", m_plotFile);
+  pp.query("check_file", m_checkFile);
 
   //only call computeInitialDt if we're not doing a restart
   if (!m_doRestart)
@@ -364,13 +375,9 @@ run(Real a_maxTime, int a_maxStep)
           pout() << "EBAMRNoSubcycle: cc projecting initial velocity" << endl;
         }
       Interval interv(0, SpaceDim-1);
-      Vector<LevelData<EBCellFAB>* > tempLDPtr2;
-      tempLDPtr2.resize(m_finestLevel+1);
+      Vector<LevelData<EBCellFAB>* >& tempLDPtr2 = m_vectorScrat;
       for (int ilev=0; ilev<= m_finestLevel; ilev++)
         {
-          EBCellFactory ebcellfact(m_ebisl[ilev]);
-          tempLDPtr2[ilev] = new LevelData<EBCellFAB>();
-          tempLDPtr2[ilev]->define(m_grids[ilev], SpaceDim,  IntVect::Zero, ebcellfact);
           m_gphi[ilev]->copyTo(interv, *(tempLDPtr2[ilev]), interv);
         }
 
@@ -383,11 +390,6 @@ run(Real a_maxTime, int a_maxStep)
       for (int ilev=0; ilev<= m_finestLevel; ilev++)
         {
           tempLDPtr2[ilev]->copyTo(interv, *m_gphi[ilev], interv);
-        }
-
-      for (int ilev=0; ilev<= m_finestLevel; ilev++)
-        {
-          delete tempLDPtr2[ilev];
         }
 
       m_advanceGphiOnly = true;
@@ -409,7 +411,9 @@ run(Real a_maxTime, int a_maxStep)
           pout() << "##############################################################################" << endl;
           pout() << "EBAMRNoSubcycle: gphi iteration " << iter  << ", dt = " <<  m_dt  << endl;
           advance();
+          print_memory_line("ebamrnosub::after_gphi_advance");
           postTimeStep();
+          print_memory_line("ebamrnosub::after_gphi_post_time_step");
         }
 
       m_advanceGphiOnly = false;
@@ -503,8 +507,10 @@ run(Real a_maxTime, int a_maxStep)
 
       //do timestep
       advance();
+      print_memory_line("ebamrnosub::after_advance");
 
       postTimeStep();
+      print_memory_line("ebamrnosub::after_posttimestep");
 
       //advance time
       m_time += m_dt;
@@ -680,7 +686,7 @@ EBAMRNoSubcycle::preRegrid()
         }
       //allocate bunch of scratch stuff
       allocateTemporaries();
-      allocateExtraTemporaries();
+
       //make cellscratch2 == 0 for residual calc
       EBAMRDataOps::setVal(m_cellScratc2, 0.0);
       EBAMRDataOps::setVal(m_cellScratc1, 0.0);
@@ -738,7 +744,6 @@ EBAMRNoSubcycle::preRegrid()
         }//end loop over velocity components
       //remove all that scratch space
       deleteTemporaries();
-      deleteExtraTemporaries();
     }
 }
 /*********************/
@@ -758,7 +763,6 @@ EBAMRNoSubcycle::postRegrid()
         }
       //allocate bunch of scratch stuff
       allocateTemporaries();
-      allocateExtraTemporaries();
 
       //make vel = (I-mu lapl)^-1 vel
       Real alpha = 1.0;
@@ -808,7 +812,6 @@ EBAMRNoSubcycle::postRegrid()
 
       //remove all that scratch space
       deleteTemporaries();
-      deleteExtraTemporaries();
     }
 
   if (m_params.m_verbosity > 0)
@@ -818,13 +821,10 @@ EBAMRNoSubcycle::postRegrid()
 
   //in case gphi is not zero, need to save it and copy it back after projection
   Interval interv(0, SpaceDim-1);
-  Vector<LevelData<EBCellFAB>* > tempLDPtr2;
-  tempLDPtr2.resize(m_finestLevel+1);
+  Vector<LevelData<EBCellFAB>* >& tempLDPtr2 = m_vectorScrat;
   for (int ilev=0; ilev<= m_finestLevel; ilev++)
     {
       EBCellFactory ebcellfact(m_ebisl[ilev]);
-      tempLDPtr2[ilev] = new LevelData<EBCellFAB>();
-      tempLDPtr2[ilev]->define(m_grids[ilev], SpaceDim,  IntVect::Zero, ebcellfact);
       m_gphi[ilev]->copyTo(interv, *(tempLDPtr2[ilev]), interv);
     }
 
@@ -837,10 +837,6 @@ EBAMRNoSubcycle::postRegrid()
       tempLDPtr2[ilev]->copyTo(interv, *m_gphi[ilev], interv);
     }
 
-  for (int ilev=0; ilev<= m_finestLevel; ilev++)
-    {
-      delete tempLDPtr2[ilev];
-    }
 
   //re-initialize pressure here after projecting velocity (as done in init iterations)
   //do this at thy peril (use, instead, pre-regrid data as initial guess)
@@ -858,6 +854,39 @@ EBAMRNoSubcycle::postRegrid()
   m_advanceGphiOnly = false;
 }
 /*********************/
+void EBAMRNoSubcycle::
+exchange(Vector<LevelData<EBFluxFAB>* >&  a_data)
+{
+  CH_TIME("exchange_fluxfabs");
+  for (int ilev = 0; ilev <= m_finestLevel; ilev++)
+    {
+      int ncomp = a_data[ilev]->nComp();
+      Interval interval(0, ncomp-1);
+      int nghost = a_data[ilev]->ghostVect()[0];
+      if(nghost > 0)
+        {
+          CH_TIME("exchange_no_copier");
+          a_data[ilev]->exchange(interval);
+        }
+    }
+}
+/*********************/
+void EBAMRNoSubcycle::
+exchange(Vector<LevelData<EBCellFAB>* >&  a_data)
+{
+  CH_TIME("exchange_cellfabs");
+  for (int ilev = 0; ilev <= m_finestLevel; ilev++)
+    {
+      int ncomp = a_data[ilev]->nComp();
+      Interval interval(0, ncomp-1);
+      int nghost = a_data[ilev]->ghostVect()[0];
+      if(nghost > 0)
+        {
+          CH_TIME("exchange_no_copier");
+          a_data[ilev]->exchange(interval);
+        }
+    }
+}
 void EBAMRNoSubcycle::
 averageDown(Vector<LevelData<EBFluxFAB>* >&  a_data)
 {
@@ -878,12 +907,8 @@ averageDown(Vector<LevelData<EBFluxFAB>* >&  a_data)
                         *a_data[ilev  ],
                         interval);
     } //end loop over levels
-  for (int ilev = 0; ilev <= m_finestLevel; ilev++)
-    {
-      int ncomp = a_data[ilev]->nComp();
-      Interval interval(0, ncomp-1);
-      a_data[ilev]->exchange(interval);
-    }
+
+  exchange(a_data);
 }
 /**************************/
 void
@@ -907,16 +932,12 @@ averageDown(Vector<LevelData<EBCellFAB>* >&  a_data)
                         *a_data[ilev  ],
                         interval);
     } //end loop over levels
-  for (int ilev = 0; ilev <= m_finestLevel; ilev++)
-    {
-      int ncomp = a_data[ilev]->nComp();
-      Interval interval(0, ncomp-1);
-      a_data[ilev]->exchange(interval);
-    }
+
+  exchange(a_data);
 }
 /*********************/
 void
-EBAMRNoSubcycle::defineGrids(const Vector<Vector<Box> >& a_vectBoxes)
+EBAMRNoSubcycle::defineGrids(Vector<Vector<Box> >& a_vectBoxes)
 {
   CH_TIME("EBAMRNoSubcycle::defineGrids");
   if (m_params.m_verbosity > 3)
@@ -953,56 +974,57 @@ EBAMRNoSubcycle::defineEBISLs()
     }
   int numEBGhost = 6;//number of ghost cells in EBISL
   m_eblg.resize(m_finestLevel+1);
-  //now define all of the storage we need
-  RefCountedPtr<EBPhysIBCFactory> advectBC = m_ibc->getVelAdvectBC(0); //this gets reset
-  RefCountedPtr<EBPatchAdvectFactory> fact = RefCountedPtr<EBPatchAdvectFactory> (new EBPatchAdvectFactory(advectBC, m_params.m_useLimiting));
-
   for (int ilev = 0; ilev<= m_finestLevel; ilev++)
     {
       m_eblg[ilev] = EBLevelGrid(m_grids[ilev], m_domain[ilev], numEBGhost, m_ebisPtr);
       m_ebisl[ilev] = m_eblg[ilev].getEBISL();
-      DisjointBoxLayout coarDBL;
-      EBISLayout        coarEBISL;
+      EBLevelGrid coarEBLG;
       int refRat = 2;
        if (ilev > 0)
          {
-           coarDBL =  m_grids[ilev-1];
-           coarEBISL= m_ebisl[ilev-1];
+           coarEBLG = m_eblg[ilev-1];
            refRat = m_params.m_refRatio[ilev-1];
          }
        bool hasCoarser = (ilev > 0);
        bool hasFiner   = (ilev < m_finestLevel);
-       m_ebLevAd[ilev]  = RefCountedPtr<EBLevelAdvect>(new EBLevelAdvect(m_grids[ilev],
-                                                                         coarDBL,
-                                                                         m_ebisl[ilev],
-                                                                         coarEBISL,
-                                                                         ProblemDomain(m_domain[ilev]),
-                                                                         refRat,
-                                                                         m_dx[ilev]*RealVect::Unit,
-                                                                         hasCoarser,
-                                                                         hasFiner,
-                                                                         &(*fact),
-                                                                         m_ebisPtr));
+       pout() << "defining EBAdvectIntegrator for level " << ilev << endl;
+       bool taggingAllIrregular = true; //see tagCellsLevel
+       bool useLimiting = m_params.m_useLimiting;
+       m_ebLevAd[ilev]  = RefCountedPtr<EBAdvectLevelIntegrator>
+         (new EBAdvectLevelIntegrator(m_eblg[ilev],
+                                      coarEBLG,
+                                      refRat,
+                                      m_dx[ilev]*RealVect::Unit,
+                                      hasCoarser,
+                                      hasFiner,
+                                      useLimiting,
+                                      taggingAllIrregular,
+                                      m_ebisPtr));
 
-       /**/
        /**/
       if (ilev > 0)
         {
           //always one component for quadcfi---only way to get reuse
           int nvarquad = 1;
+          pout() << "definging EBQuadCFI for level " << ilev << endl;
           m_quadCFI[ilev]  = RefCountedPtr<EBQuadCFInterp>(new  EBQuadCFInterp(m_grids[ilev], m_grids[ilev-1],
                                                                                m_ebisl[ilev], m_ebisl[ilev-1],
                                                                                m_domain[ilev-1],
                                                                                m_params.m_refRatio[ilev-1], nvarquad,
                                                                                *m_eblg[ilev].getCFIVS(),
                                                                                m_ebisPtr ));
-
+          pout() << "definging EBConstCFI for level " << ilev << endl;
+          IntVect ivghost = 3*IntVect::Unit;
+          m_constCFI[ilev] = RefCountedPtr<EBConstantCFInterp>
+            (new  EBConstantCFInterp(m_grids[ilev], m_ebisl[ilev], m_domain[ilev], ivghost));
+          pout() << "definging ebcoarseaverage 1 for level " << ilev << endl;
           m_aveOper[ilev]  = RefCountedPtr<EBCoarseAverage>(new EBCoarseAverage(m_grids[ilev], m_grids[ilev-1],
                                                                                 m_ebisl[ilev], m_ebisl[ilev-1],
                                                                                 m_domain[ilev-1],
                                                                                 m_params.m_refRatio[ilev-1], nvarquad,
                                                                                 m_ebisPtr));
 
+          pout() << "definging ebcoarseaverage 2 for level " << ilev << endl;
           m_aveSpac[ilev]  = RefCountedPtr<EBCoarseAverage>(new EBCoarseAverage(m_grids[ilev], m_grids[ilev-1],
                                                                                 m_ebisl[ilev], m_ebisl[ilev-1],
                                                                                 m_domain[ilev-1],
@@ -1039,19 +1061,20 @@ EBAMRNoSubcycle::defineEBISLs()
 }
 /*********************/
 void
-EBAMRNoSubcycle::initialGrid(const Vector<Vector<Box> >& a_vectBoxes)
+EBAMRNoSubcycle::initialGrid(Vector<Vector<Box> >& a_vectBoxes)
 {
   CH_TIME("EBAMRNoSubcycle::initialGrid");
   if (m_params.m_verbosity >= 3)
     {
       pout () << "EBAMRNoSubcycle::initialGrid "  << endl;
     }
+  pout() << "definegrids" << endl;
   defineGrids(a_vectBoxes);
+  pout() << "defineebisls" << endl;
   defineEBISLs();
-  defineExtraEBISLs();
   defineNewVel();
   definePressure();
-  defineExtraTerms();
+  pout() << "defineeprojections" << endl;
   defineProjections();
 }
 /*********************/
@@ -1072,11 +1095,15 @@ defineNewVel(const int a_startLevel)
   for (int ilev = startLevel; ilev <= m_finestLevel; ilev++)
     {
       EBCellFactory ebcellfact(m_ebisl[ilev]);
-      m_velo[ilev]->define(m_grids[ilev], SpaceDim,  3*IntVect::Unit, ebcellfact);
+      m_velo[ilev]->define(m_grids[ilev], SpaceDim,  m_nGhost*IntVect::Unit, ebcellfact);
+      m_vectorScrat[ilev]->define(m_grids[ilev], SpaceDim,  m_nGhost*IntVect::Unit, ebcellfact);
       EBFluxFactory ebfluxfact(m_ebisl[ilev]);
-      m_advVel[ilev]->define(m_grids[ilev], 1,  3*IntVect::Unit, ebfluxfact);
+      m_advVel[ilev]->define(m_grids[ilev], 1,  m_nGhost*IntVect::Unit, ebfluxfact);
+      m_redist[ilev] = RefCountedPtr<EBLevelRedist>(new EBLevelRedist(m_grids[ilev], m_ebisl[ilev],
+                                                                      m_domain[ilev],CH_SPACEDIM));
     }
   EBAMRDataOps::setToZero(m_velo);
+  EBAMRDataOps::setToZero(m_vectorScrat);
   EBAMRDataOps::setToZero(m_advVel);
 }
 /*********************/
@@ -1156,6 +1183,7 @@ defineProjections()
   int whichReflux = 0;
   EBAMRPoissonOpFactory::setWhichReflux(whichReflux);
 
+  pout() << "defining projections "  << endl;
   m_macProjector =   new EBCompositeMACProjector(m_eblg, m_params.m_refRatio, m_quadCFI,
                                                  coarDxVect, RealVect::Zero,
                                                  macBCVel, celBCPhi, ebbcPhi,
@@ -1163,7 +1191,8 @@ defineProjections()
                                                  m_params.m_verbosity,numPreCond,m_time,m_params.m_relaxType,bottomSolverType);
 
 
-  m_macProjector->setSolverParams(m_params.m_numSmooth, m_params.m_iterMax, m_params.m_mgCycle,
+  m_macProjector->setSolverParams(m_params.m_numSmooth, 
+                                  m_params.m_iterMax, m_params.m_mgCycle,
                                   m_params.m_hang, m_params.m_tolerance,
                                   m_params.m_verbosity);
 
@@ -1207,20 +1236,29 @@ defineProjections()
 
       Vector<LevelData<EBCellFAB>* > phi(numLevels);
       Vector<LevelData<EBCellFAB>* > rhs(numLevels);
+      int normalizerad = 1; 
       for (int ilev = 0; ilev < numLevels; ilev++)
         {
           EBCellFactory ebcellfact(m_ebisl[ilev]);
           phi[ilev] = new LevelData<EBCellFAB>(m_grids[ilev], 1,   3*IntVect::Unit, ebcellfact);
           rhs[ilev] = new LevelData<EBCellFAB>(m_grids[ilev], 1,   3*IntVect::Unit, ebcellfact);
+          //really uses cell scratch but the same number of ghost cells
+          m_normalizor[ilev] = 
+            RefCountedPtr<EBNormalizeByVolumeFraction>
+            (new EBNormalizeByVolumeFraction(m_eblg[ilev], phi[ilev], normalizerad));
         }
 
       m_bottomSolver.m_verbosity = m_params.m_verbosity;
       int numBotSmooth = 64;
+      int viscitermin = -1;
+      int viscitermax = m_params.m_iterMax;
       pp.query("mg_num_bottom_smooths", numBotSmooth);
       m_params.m_numBotSmooth = numBotSmooth;
       m_bottomSolverSimp.setNumSmooths(m_params.m_numBotSmooth*m_params.m_numSmooth);
       pp.query("mg_num_cycles", m_params.m_mgCycle);
       pp.query("mg_iter_max", m_params.m_iterMax);
+      pp.query("visc_iter_max", viscitermax);
+      pp.query("visc_iter_min", viscitermin);
       pp.query("mg_norm_thresh", m_params.m_normThresh);
       int numLevels = m_finestLevel + 1;
 
@@ -1250,6 +1288,8 @@ defineProjections()
                                           3*IntVect::Unit);
 
           m_solver[idir] = RefCountedPtr<AMRMultiGrid<LevelData<EBCellFAB> > > (new AMRMultiGrid<LevelData<EBCellFAB> >);
+          pout() << "defining velocity solver for direction "  << idir << endl;
+
           m_solver[idir]->define(level0Dom,
                                  opFactory,
                                  bottomSolverPtr,
@@ -1261,7 +1301,8 @@ defineProjections()
           m_solver[idir]->m_hang       =  m_params.m_hang;
           m_solver[idir]->m_eps        =  m_params.m_tolerance;
           m_solver[idir]->m_verbosity  =  m_params.m_verbosity;
-          m_solver[idir]->m_iterMax    =  m_params.m_iterMax;
+          m_solver[idir]->m_iterMax    =  viscitermax;
+          m_solver[idir]->m_iterMin    =  viscitermin;
           m_solver[idir]->m_normThresh =  m_params.m_normThresh;
           m_solver[idir]->setMGCycle(m_params.m_mgCycle);
 
@@ -1302,7 +1343,6 @@ defineProjections()
           delete rhs[ilev];
         }
     }
-  defineExtraSolvers();
 }
 /*********************/
 void
@@ -1322,7 +1362,6 @@ EBAMRNoSubcycle::initialData()
       EBLevelDataOps::setVal(   *m_pres[ilev], 0.0);
     }
 
-  initialExtraData();
 }
 /*********************/
 void
@@ -1378,7 +1417,7 @@ EBAMRNoSubcycle::computeDt()
               BaseFab<Real>& velFAB = (velNewLD[dit()]).getSingleValuedFAB();
               int iRegIrregCovered;
               CH_START(t1);
-              const BaseFab<int>& maskFAB = m_ebisl[ilev][dit()].getEBGraph().getMask(iRegIrregCovered);
+              const BaseFab<char>& maskFAB = m_ebisl[ilev][dit()].getEBGraph().getMask(iRegIrregCovered);
               CH_STOP(t1);
               if (iRegIrregCovered != -1)//not all covered
                 {
@@ -1390,7 +1429,7 @@ EBAMRNoSubcycle::computeDt()
                           FORT_MAXNORMMASK(CHF_REAL(maxVel),
                                            CHF_CONST_FRA1(velFAB,idir),
                                            CHF_BOX(box),
-                                           CHF_CONST_FIA1(maskFAB,0));
+                                           CHF_CONST_FBA1(maskFAB,0));
                         }
                       IntVectSet ivs = m_ebisl[ilev][dit()].getMultiCells(box);
                       for (VoFIterator vofit(ivs, m_ebisl[ilev][dit()].getEBGraph()); vofit.ok(); ++vofit)
@@ -1473,7 +1512,7 @@ computeInitialDt()
 /*********************/
 void
 EBAMRNoSubcycle::
-regrid(const Vector<Vector<Box> >& a_newGrids)
+regrid(Vector<Vector<Box> >& a_newGrids)
 {
   CH_TIME("EBAMRNoSubcycle::regrid");
 
@@ -1490,26 +1529,23 @@ regrid(const Vector<Vector<Box> >& a_newGrids)
     {
       EBCellFactory ebcellfact(m_ebisl[ilev]);
       tempLDPtr[ilev] = new LevelData<EBCellFAB>();
-      tempLDPtr[ilev]->define(m_grids[ilev], SpaceDim,  3*IntVect::Unit, ebcellfact);
+      tempLDPtr[ilev]->define(m_grids[ilev], SpaceDim,  m_nGhost*IntVect::Unit, ebcellfact);
       m_velo[ilev]->copyTo(interv, *(tempLDPtr[ilev]), interv);
       tempLDPtr2[ilev] = new LevelData<EBCellFAB>();
       tempLDPtr2[ilev]->define(m_grids[ilev], SpaceDim,  IntVect::Zero, ebcellfact);
       m_gphi[ilev]->copyTo(interv, *(tempLDPtr2[ilev]), interv);
     }
 
-  cacheExtraTerms();
 
   //this changes m_grids and m_ebisl
   defineGrids(a_newGrids);
   defineEBISLs();
-  defineExtraEBISLs();
 
   //this redefines new data with new set of grids
   //this can also change m_finestLevel
   defineNewVel();
   definePressure();
   defineProjections();
-  defineExtraTerms();
   //now fill new data holders, copying from old over old grids and interpolating where there is new grid
   tempLDPtr[0]->copyTo(interv, *m_velo[0], interv);
   tempLDPtr2[0]->copyTo(interv, *m_gphi[0], interv);
@@ -1542,7 +1578,6 @@ regrid(const Vector<Vector<Box> >& a_newGrids)
       delete tempLDPtr2[ilev];
     }
 
-  interpolateExtraTerms();
 }
 /*****************/
 void
@@ -1557,13 +1592,13 @@ EBAMRNoSubcycle::postTimeStep()
   averageDown(m_velo);
   averageDown(m_pres);
   averageDown(m_gphi);
-  averageDownExtraTerms();
 }
 /*****************/
 void
 EBAMRNoSubcycle::
 computeVorticity(LevelData<EBCellFAB>& a_vort, int a_level)
 {
+  CH_TIME("compute vorticity");
   if (m_params.m_verbosity > 3)
     {
       pout() << "EBAMRNoSubcycle::computeVorticity" << endl;
@@ -1778,52 +1813,25 @@ tagCellsLevel(IntVectSet& a_tags, int a_level)
       pout() << "EBAMRNoSubcycle::tagCellsLevel" << endl;
     }
   CH_assert(m_isSetup);
-  LevelData<EBCellFAB> vort;
-  computeVorticity(vort, a_level);
   a_tags.makeEmpty();
 
   for (DataIterator dit = m_grids[a_level].dataIterator(); dit.ok(); ++dit)
     {
-      const EBCellFAB& vortFAB = vort[dit()];
-      const Box& grid =        m_grids[a_level].get(dit());
-      const EBGraph& ebgraph = m_ebisl[a_level][dit()].getEBGraph();
-      IntVectSet ivsTot(grid);
-      Box shrunkDom = m_domain[a_level].domainBox();
-      int shrinkNumCells = m_params.m_tagShrinkDomain;
-      int shrinkRefRatio = 1;
-      for (int ilev = 1; ilev <= a_level; ilev++)
-        {
-          shrinkRefRatio *= m_params.m_refRatio[ilev-1];
-        }
-      for (int idir = 0;  idir < SpaceDim; idir++)
-        {
-          if (idir != m_params.m_flowDir)
-            {
-              shrunkDom.grow(idir, -shrinkNumCells*shrinkRefRatio);
-            }
-        }
-      ivsTot &= shrunkDom;
-
-      for (VoFIterator vofit(ivsTot, ebgraph); vofit.ok(); ++vofit)
-        {
-          const VolIndex& vof = vofit();
-          const IntVect& iv = vof.gridIndex();
-          Real vortmag = 0.0;
-
-          for (int icomp = 0; icomp < vortFAB.nComp(); icomp++)
-            {
-              Real vortDirVal = vortFAB(vof, icomp);
-              vortmag += vortDirVal*vortDirVal;
-            }
-          vortmag = sqrt(vortmag);
-          if (vortmag >= m_params.m_refineThreshold)
-            {
-              a_tags |= iv;
-            }
-        } //end loop over vofs
-
       //refine all irregular cells
+      EBGraph ebgraph = m_ebisl[a_level][dit()].getEBGraph();
+      const Box& grid = m_grids[a_level][dit()];
       IntVectSet irregIVS = ebgraph.getIrregCells(grid);
+      //need to do something if there is no EB.  could also tag on 
+      //characteristics of the data.
+      if(irregIVS.isEmpty())
+        {
+          Box coarBox = m_domain[a_level].domainBox();
+          int iboxShrink = coarBox.size(0);
+          iboxShrink /= 4;
+          coarBox.grow(-iboxShrink);
+          irregIVS |= coarBox;
+        }
+
       a_tags |= irregIVS;
     }
 
@@ -1938,6 +1946,7 @@ allocateTemporaries()
         }
     }
   EBAMRDataOps::setToZero(m_uDotDelU  );
+  EBAMRDataOps::setToZero(m_vectorScrat);
   EBAMRDataOps::setToZero(m_cellScratch);
   EBAMRDataOps::setToZero(m_cellScratc1);
   EBAMRDataOps::setToZero(m_cellScratc2);
@@ -2001,7 +2010,6 @@ advance()
 
   //allocate space for integration
   allocateTemporaries();
-  allocateExtraTemporaries();
 
   predictor();
   corrector();
@@ -2010,20 +2018,16 @@ advance()
 
   //remove all unnecessary data
   deleteTemporaries();
-  deleteExtraTemporaries();
-
 }
 /******************/
 void
 EBAMRNoSubcycle::
 predictor()
 {
-  predictExtraFieldsPreVelocity();
   if (!m_steadyState)
     {
       predictVelocity();
     }
-  predictExtraFieldsPostVelocity();
 }
 /******************/
 void
@@ -2034,7 +2038,7 @@ predictVelocity()
     {
       pout() << "EBAMRNoSubcycle::predictVelocity" << endl;
     }
-  CH_TIMERS("EBAMRNoSubcycle::predictVelocity");
+  CH_TIME("EBAMRNoSubcycle::predictVelocity");
 
   if (m_params.m_verbosity > 1)
     {
@@ -2120,46 +2124,20 @@ normalVelocityPredictor(Vector<LevelData<EBFluxFAB> *>&                       a_
           DirichletPoissonEBBC::s_velComp = idir;
           viscousSourceForAdvect(m_cellScratc2,   //returns holding source term = nu*lapl
                                  m_cellScratch,   //holds cell centered vel comp n
-                                 m_cellScratc1,   //will hold the zero for the residual calc (zeroed inside routine)
                                  idir,            //velocity component
                                  m_time);         //time, for BC setting
 
           source = &m_cellScratc2;
         }
 
-      Vector<LevelData<EBCellFAB>*> extraSource;
-      extraSource.resize(m_finestLevel+1, NULL);
-      for (int ilev=0; ilev <= m_finestLevel; ilev++)
-        {
-          EBCellFactory ebcellfact(m_ebisl[ilev]);
-          extraSource[ilev] = new LevelData<EBCellFAB>(m_grids[ilev], 1, 3*IntVect::Unit, ebcellfact);
-        }
-      EBAMRDataOps::setToZero(extraSource);
 
-      computeExtraSourceForPredictor(extraSource, idir);
-
-      if (source != NULL)
-        {
-          for (int ilev=0; ilev<= m_finestLevel; ilev++)
-            {
-              for (DataIterator dit = m_grids[ilev].dataIterator(); dit.ok(); ++dit)
-                {
-                  (*(*source)[ilev])[dit()] += (*extraSource[ilev])[dit()];
-                }
-            }
-        }
-      else
-        {
-          source = &extraSource;
-        }
 
       if (m_params.m_verbosity > 3)
         {
           pout() << "EBAMRNoSubcycle::computing advection velocities, component " << idir << endl;
         }
-      EBPatchGodunov::setCurComp(idir);
-      EBPatchGodunov::setDoingVel(1);
-      EBPatchGodunov::setDoingAdvVel(1);
+      EBAdvectPatchIntegrator::setCurComp(idir);
+      EBAdvectPatchIntegrator::setDoingVel(1);
 
       RefCountedPtr<EBPhysIBCFactory> advectBC = m_ibc->getVelAdvectBC(idir);
       //extrapolate velocity component to faces
@@ -2172,10 +2150,6 @@ normalVelocityPredictor(Vector<LevelData<EBFluxFAB> *>&                       a_
                            m_cellScratch,
                            a_velo);
 
-      for (int ilev=0; ilev<= m_finestLevel; ilev++)
-        {
-          delete extraSource[ilev];
-        }
 
       //now copy the result to the appropriate faces in advVel. (advVel only has normal velocities)
       for (int ilev = 0; ilev <= m_finestLevel; ilev++)
@@ -2296,19 +2270,17 @@ transverseVelocityPredictor(Vector<LevelData<EBCellFAB>* >&    a_uDotDelU,
     }
   for (int icomp = 0; icomp < ncomp; icomp++)
     {
-      EBPatchGodunov::setCurComp(icomp);
-      EBPatchGodunov::setDoingAdvVel(0);
-
+      EBAdvectPatchIntegrator::setCurComp(icomp);
       RefCountedPtr<EBPhysIBCFactory> advectBC;
       if (a_reallyVelocity)
         {
           advectBC  = m_ibc->getVelAdvectBC(icomp);
-          EBPatchGodunov::setDoingVel(1);
+          EBAdvectPatchIntegrator::setDoingVel(1);
         }
       else
         {
           advectBC  = m_ibc->getScalarAdvectBC(icomp);
-          EBPatchGodunov::setDoingVel(0);
+          EBAdvectPatchIntegrator::setDoingVel(0);
         }
 
       for (int ilev=0; ilev <= m_finestLevel; ilev++)
@@ -2327,37 +2299,11 @@ transverseVelocityPredictor(Vector<LevelData<EBCellFAB>* >&    a_uDotDelU,
           DirichletPoissonEBBC::s_velComp = icomp;
           viscousSourceForAdvect(m_cellScratc2,   //returns holding source term = nu*lapl
                                  m_cellScratch,   //holds cell centered vel comp n
-                                 m_cellScratc1,   //will hold the zero for the residual calc (zeroed inside routine)
                                  icomp,           //velocity component
                                  m_time);         //time, for BC setting
           source = &m_cellScratc2;
         }
 
-      Vector<LevelData<EBCellFAB>*> extraSource;
-      extraSource.resize(m_finestLevel+1, NULL);
-      for (int ilev=0; ilev <= m_finestLevel; ilev++)
-        {
-          EBCellFactory ebcellfact(m_ebisl[ilev]);
-          extraSource[ilev] = new LevelData<EBCellFAB>(m_grids[ilev], 1, 3*IntVect::Unit, ebcellfact);
-        }
-      EBAMRDataOps::setToZero(extraSource);
-
-      computeExtraSourceForPredictor(extraSource, icomp);
-
-      if (source != NULL)
-        {
-          for (int ilev=0; ilev<= m_finestLevel; ilev++)
-            {
-              for (DataIterator dit = m_grids[ilev].dataIterator(); dit.ok(); ++dit)
-                {
-                  (*(*source)[ilev])[dit()] += (*extraSource[ilev])[dit()];
-                }
-            }
-        }
-      else
-        {
-          source = &extraSource;
-        }
 
       //cellscratch used for consstate
       extrapolateScalarCol(m_macScratch1,
@@ -2368,11 +2314,6 @@ transverseVelocityPredictor(Vector<LevelData<EBCellFAB>* >&    a_uDotDelU,
                            source,
                            m_cellScratch,
                            m_velo);
-
-      for (int ilev=0; ilev<= m_finestLevel; ilev++)
-        {
-          delete extraSource[ilev];
-        }
 
       if (a_reallyVelocity)
         {
@@ -2485,7 +2426,7 @@ computeAdvectiveDerivative(Vector<LevelData<EBCellFAB>* >                     & 
                            Vector<LayoutData< Vector< BaseIVFAB<Real> * > >* >&  a_coveredScalarHi,
                            bool                                                  a_nonConsOnly,
                            bool                                                  a_consOnly,
-                           Vector<RefCountedPtr<EBLevelAdvect> >              *  a_ebLevAd)
+                           Vector<RefCountedPtr<EBAdvectLevelIntegrator> >    *  a_ebLevAd)
 {
   CH_TIME("EBAMRNoSubcycle::computeAdvectiveDerivative2");
   int ncomp = a_uDotDelU[0]->nComp();
@@ -2494,10 +2435,10 @@ computeAdvectiveDerivative(Vector<LevelData<EBCellFAB>* >                     & 
   {
     a_ebLevAd = &m_ebLevAd;
   }
+  exchange(a_macScalar);
+  exchange(a_macAdvVel);
   for (int ilev = 0; ilev <= m_finestLevel; ilev++)
     {
-      a_macScalar[ilev]->exchange(Interval(0,ncomp-1));
-      a_macAdvVel[ilev]->exchange(Interval(0,0));
       //compute scalar advective derivative
       //then copy into the appropriate
       //component of the input data holder
@@ -2507,7 +2448,7 @@ computeAdvectiveDerivative(Vector<LevelData<EBCellFAB>* >                     & 
       int jbox = 0;
       for (DataIterator dit = m_grids[ilev].dataIterator(); dit.ok(); ++dit)
         {
-          EBPatchAdvect& patcher = (*a_ebLevAd)[ilev]->getPatchAdvect(dit());
+          EBAdvectPatchIntegrator& patcher = (*a_ebLevAd)[ilev]->getPatchAdvect(dit());
           //EBCellFAB& udeluFAB = (*a_uDotDelU[ilev])[dit()];
           //this takes the non-conservative advective derivative = udotdelu
           patcher.advectiveDerivative((*a_uDotDelU[ilev])[dit()],
@@ -2585,6 +2526,7 @@ computeAdvectiveDerivative(Vector<LevelData<EBCellFAB>* >                     & 
       //exchange ghost cell data for flux interpolant
       for (int faceDir = 0; faceDir < SpaceDim; faceDir++)
         {
+          CH_TIME("flux_interpolant_exchange");
           fluxInterpolants[faceDir].exchange(Interval(0, ncomp-1));
         }
 
@@ -2593,9 +2535,9 @@ computeAdvectiveDerivative(Vector<LevelData<EBCellFAB>* >                     & 
       LevelData<BaseIVFAB<Real> > massDiffLD(m_grids[ilev], ncomp, 2*IntVect::Unit, ivfact);
       LevelData<BaseIVFAB<Real> > consDivLD(m_grids[ilev], ncomp, IntVect::Unit, ivfact);//used when advectingScalar
       Interval consInterv(0, ncomp-1);
-      EBLevelRedist levelRedist(m_grids[ilev], m_ebisl[ilev], m_domain[ilev], ncomp);
-      levelRedist.setToZero();
-
+      //EBLevelRedist levelRedist(m_grids[ilev], m_ebisl[ilev], m_domain[ilev], ncomp);
+      //levelRedist.setToZero();
+      m_redist[ilev]->setToZero();
       int ibox = 0;
       for (DataIterator dit = m_grids[ilev].dataIterator(); dit.ok(); ++dit)
         {
@@ -2613,20 +2555,17 @@ computeAdvectiveDerivative(Vector<LevelData<EBCellFAB>* >                     & 
               fluxDir.define(ivsIrregSmall, ebisBox.getEBGraph(), idir, ncomp);
             }
 
-          EBPatchAdvect& patcher  = (*a_ebLevAd)[ilev]->getPatchAdvect(dit());
+          EBAdvectPatchIntegrator& patcher  = (*a_ebLevAd)[ilev]->getPatchAdvect(dit());
 
-          EBPatchGodunov& patchGod = patcher;
-          patchGod.interpolateFluxToCentroids(centroidFlux,
-                                              interpolantGrid,
-                                              ivsIrregSmall);
+          patcher.interpolateFluxToCentroids(centroidFlux,
+                                             interpolantGrid,
+                                             ivsIrregSmall);
 
-          BaseIVFAB<Real>  ebFlux(ivsIrregSmall, ebisBox.getEBGraph(), ncomp);
           BaseIVFAB<Real> consDiv(ivsIrregSmall, ebisBox.getEBGraph(), ncomp);
-          ebFlux.setVal(0.0);
           consDiv.setVal(0.0);
-
-          //this fills  consDiv with kappa*div(US)
-          patchGod.consUndividedDivergence(consDiv, centroidFlux, ebFlux, ivsIrregSmall);
+          //this fills  consDiv with kappa*div(US) 
+          //eb flux is always zero so not sent in
+          patcher.consUndividedDivergence(consDiv, centroidFlux,  ivsIrregSmall);
 
           //a_udotdelu holds udels(NC).  make it hold (kappa*div(us) + (1-kappa)udels(NC))
           EBCellFAB&        udelsFAB = (*a_uDotDelU[ilev])[dit()];
@@ -2667,7 +2606,7 @@ computeAdvectiveDerivative(Vector<LevelData<EBCellFAB>* >                     & 
 
           if (!a_consOnly && !a_nonConsOnly && ilev == m_finestLevel)
             {
-              levelRedist.increment(massDiff, dit(), consInterv);
+              m_redist[ilev]->increment(massDiff, dit(), consInterv);
             }
 
           ibox++;
@@ -2678,7 +2617,7 @@ computeAdvectiveDerivative(Vector<LevelData<EBCellFAB>* >                     & 
       //smush the mass difference back in
       if (!a_consOnly && !a_nonConsOnly && ilev== m_finestLevel)
         {
-          levelRedist.redistribute(*a_uDotDelU[ilev], consInterv);
+          m_redist[ilev]->redistribute(*a_uDotDelU[ilev], consInterv);
         }
 
     }//ilev
@@ -2688,7 +2627,6 @@ computeAdvectiveDerivative(Vector<LevelData<EBCellFAB>* >                     & 
     {
       refluxUDotDelU(a_uDotDelU, a_macAdvVel, a_macScalar);
     }
-  averageDown(a_uDotDelU);
 }
 /*******************/
 void
@@ -2765,7 +2703,7 @@ refluxUDotDelU(Vector<LevelData<EBCellFAB>* >                     &  a_uDotDelU,
 }
 
 /*******************/
- void
+void
 EBAMRNoSubcycle::
 extrapolateScalarCol(Vector<LevelData<EBFluxFAB>* >                     &  a_macScalar,
                      Vector<LayoutData< Vector< BaseIVFAB<Real> * > >* >&  a_coveredMacLo,
@@ -2775,7 +2713,7 @@ extrapolateScalarCol(Vector<LevelData<EBFluxFAB>* >                     &  a_mac
                      const Vector<LevelData<EBCellFAB>*>*                  a_sourceTerm,
                      const Vector<LevelData<EBCellFAB>* >               &  a_cellScalar,
                      const Vector<LevelData<EBCellFAB>* >               &  a_cellVelocity,
-                     Vector<RefCountedPtr<EBLevelAdvect> >              *  a_ebLevAd)
+                     Vector<RefCountedPtr<EBAdvectLevelIntegrator> >    *  a_ebLevAd)
 {
   CH_TIME("EBAMRNoSubcycle::extrapolateScalarCol");
 
@@ -2787,7 +2725,6 @@ extrapolateScalarCol(Vector<LevelData<EBFluxFAB>* >                     &  a_mac
   for (int ilev = 0; ilev <= m_finestLevel; ilev++)
     {
 
-      EBPatchGodunov::setCurLevel(ilev);
       LevelData<EBCellFAB>* coarDataOld = NULL;
       LevelData<EBCellFAB>* coarDataNew = NULL;
 
@@ -2808,7 +2745,7 @@ extrapolateScalarCol(Vector<LevelData<EBFluxFAB>* >                     &  a_mac
           refRat = m_params.m_refRatio[ilev-1];
         }
 
-      RefCountedPtr<EBLevelAdvect> ebLevelAdvect = (*a_ebLevAd)[ilev];
+      RefCountedPtr<EBAdvectLevelIntegrator> ebLevelAdvect = (*a_ebLevAd)[ilev];
       //need to reset boundary conditions because this object was defined with dummy bcs
       //because it is reused over several different variables
 
@@ -2828,6 +2765,7 @@ extrapolateScalarCol(Vector<LevelData<EBFluxFAB>* >                     &  a_mac
               sourceCoarNew = (*a_sourceTerm)[ilev-1];
             }
         }
+      //not the most elegant interface
       ebLevelAdvect->advectToFacesCol(*a_macScalar[ilev],     //extrapolated component idir
                                       *a_coveredMacLo[ilev],
                                       *a_coveredMacHi[ilev],
@@ -2845,9 +2783,8 @@ extrapolateScalarCol(Vector<LevelData<EBFluxFAB>* >                     &  a_mac
                                       m_time, m_time, m_time, m_dt,
                                       source, sourceCoarOld, sourceCoarNew);
 
-      a_macScalar[ilev]->exchange(Interval(0,0));
     }
-
+  exchange(a_macScalar);
 }
 /*******************/
 /*******************/
@@ -2858,7 +2795,7 @@ extrapolateToCoveredFaces(Vector<LayoutData< Vector< BaseIVFAB<Real> * > >* >&  
                           Vector<LevelData<EBFluxFAB>* >&                       a_macOpen,
                           Vector<LevelData<EBCellFAB>* >&                       a_cellOpen,
                           int                                                   a_idir,
-                          Vector<RefCountedPtr<EBLevelAdvect> >              *  a_ebLevAd)
+                          Vector<RefCountedPtr<EBAdvectLevelIntegrator> >    *  a_ebLevAd)
 {
   CH_TIME("EBAMRNoSubcycle::extrapolateToCoveredFaces");
   if (a_ebLevAd == NULL)
@@ -2867,17 +2804,16 @@ extrapolateToCoveredFaces(Vector<LayoutData< Vector< BaseIVFAB<Real> * > >* >&  
   }
   // averageDown(a_macOpen);
   //extrapolate the projected velocity to covered faces
+  exchange(a_macOpen);
   for (int ilev = 0; ilev <= m_finestLevel; ilev++)
     {
       ProblemDomain curDomain(m_domain[ilev]);
 
-      LevelData<EBFluxFAB>& faceValue = (LevelData<EBFluxFAB>&) *a_macOpen[ilev];
-      faceValue.exchange(Interval(0,0));
 
       for (DataIterator dit = m_grids[ilev].dataIterator(); dit.ok(); ++dit)
         {
 
-          EBPatchAdvect& patcher  = (*a_ebLevAd)[ilev]->getPatchAdvect(dit());
+          EBAdvectPatchIntegrator& patcher  = (*a_ebLevAd)[ilev]->getPatchAdvect(dit());
           patcher.extrapToCoveredFaces(*(*a_coveredMacLo[ilev])[dit()][a_idir],
                                        (*a_macOpen[ilev])[dit()][a_idir],
                                        (*a_cellOpen[ilev])[dit()],
@@ -2898,18 +2834,15 @@ void
 EBAMRNoSubcycle::
 viscousSourceForAdvect(Vector<LevelData<EBCellFAB>* >&       a_source,
                        Vector<LevelData<EBCellFAB>* >&       a_velComp,
-                       Vector<LevelData<EBCellFAB>* >&       a_zero,
                        int                                   a_icomp,
                        Real                                  a_time)
 {
   CH_TIME("EBAMRNoSubcycle::viscousSourceForAdvect");
   EBAMRDataOps::setToZero(a_source);
-  EBAMRDataOps::setToZero(a_zero);
   CH_assert(a_velComp[0]->nComp() == 1);
 
   applyEBAMROp(a_source,  //returns holding kappa*nu*lapl(vel comp)
                a_velComp, //holds cell centered vel comp
-               a_zero,    //holds the zero for the residual calc
                a_icomp,
                a_time);  //velocity component
 
@@ -2918,9 +2851,9 @@ viscousSourceForAdvect(Vector<LevelData<EBCellFAB>* >&       a_source,
   //this includes an exchange
   for (int ilev = 0; ilev <= m_finestLevel; ilev++)
     {
+      
       Interval interv(0, 0);
-      EBNormalizeByVolumeFraction normalized_source(m_eblg[ilev]);
-      normalized_source(*a_source[ilev],interv);
+      m_normalizor[ilev]->normalize(*a_source[ilev],interv);
       if (ilev==0)
         {
           //fill fine-fine ghost cells only
@@ -2928,9 +2861,7 @@ viscousSourceForAdvect(Vector<LevelData<EBCellFAB>* >&       a_source,
         }
       else//exchange happens in here
         {
-          IntVect ivGhost = a_source[ilev]->ghostVect();
-          EBConstantCFInterp interpolator(m_grids[ilev], m_ebisl[ilev], m_domain[ilev], ivGhost);
-          interpolator.interpolate(*a_source[ilev]);
+          m_constCFI[ilev]->interpolate(*a_source[ilev]);
         }
     }
 }
@@ -2940,7 +2871,6 @@ void
 EBAMRNoSubcycle::
 applyEBAMROp(Vector<LevelData<EBCellFAB>* >&       a_lap,
              Vector<LevelData<EBCellFAB>* >&       a_phi,
-             Vector<LevelData<EBCellFAB>* >&       a_zero,
              int                                   a_velComp,
              Real                                  a_time)
 {
@@ -2963,18 +2893,13 @@ applyEBAMROp(Vector<LevelData<EBCellFAB>* >&       a_lap,
 
   int coarsestLevel = 0;
   bool homogeneousBC = false;
-  //apply the operator (by computing the residual with rhs = 0, and * -1
-  m_solver[a_velComp]->computeAMRResidual(a_lap,
+  m_solver[a_velComp]->computeAMROperator(a_lap,
                                           a_phi,
-                                          a_zero,
                                           m_finestLevel,
                                           coarsestLevel,
                                           homogeneousBC);
 
-  EBAMRDataOps::scale(a_lap,-1.0);
-  EBAMRDataOps::setCoveredVal(a_lap,0.0);
-  EBAMRDataOps::setCoveredAMRVal(a_lap,m_ebisl,m_params.m_refRatio,0.0);
-
+  averageDown(a_lap);
 }
 /*****************/
 /******************/
@@ -2982,12 +2907,10 @@ void
 EBAMRNoSubcycle::
 corrector()
 {
-  correctExtraFieldsPreVelocity();
   if (!m_steadyState)
     {
       correctVelocity();
     }
-  correctExtraFieldsPostVelocity();
 }
 /*****************/
 /*****************/
@@ -3005,27 +2928,12 @@ correctVelocity()
   CH_TIMER("cell-centered_projection", t3);
 
   Interval interv(0, SpaceDim-1);
-  Vector<LevelData<EBCellFAB>* > tempLDPtr;
-  tempLDPtr.resize(m_finestLevel+1);
+  Vector<LevelData<EBCellFAB>* >& tempLDPtr = m_vectorScrat;
   for (int ilev=0; ilev<= m_finestLevel; ilev++)
     {
-      EBCellFactory ebcellfact(m_ebisl[ilev]);
-      tempLDPtr[ilev] = new LevelData<EBCellFAB>();
-      tempLDPtr[ilev]->define(m_grids[ilev], SpaceDim,  3*IntVect::Unit, ebcellfact);
       m_velo[ilev]->copyTo(interv, *(tempLDPtr[ilev]), interv);
     }
 
-  Vector<LevelData<EBCellFAB>*> extraSource;
-  extraSource.resize(m_finestLevel+1, NULL);
-  for (int ilev=0; ilev <= m_finestLevel; ilev++)
-    {
-      EBCellFactory ebcellfact(m_ebisl[ilev]);
-      extraSource[ilev] = new LevelData<EBCellFAB>(m_grids[ilev], SpaceDim, 3*IntVect::Unit, ebcellfact);
-    }
-  EBAMRDataOps::setToZero(extraSource);
-
-  //computes extra source term vector to be added below
-  computeExtraSourceForCorrector(extraSource);
 
   if (!m_viscousCalc)
     {
@@ -3041,7 +2949,7 @@ correctVelocity()
               EBCellFAB& newVel = (*m_velo[ilev])[dit()];
               EBCellFAB& uDotDelU = (*m_uDotDelU[ ilev])[dit()];
               EBCellFAB& gradPres = (*m_gphi [ ilev])[dit()];
-              EBCellFAB& source = (*extraSource[ ilev])[dit()];
+              //EBCellFAB& source = (*extraSource[ ilev])[dit()];
               //make udotdelu = udotdelu + gradp
               uDotDelU += gradPres;
 
@@ -3049,7 +2957,7 @@ correctVelocity()
               uDotDelU *= -1.0;
 
               //adding extra source
-              uDotDelU += source;
+              //uDotDelU += source;
 
               //now udotdelu = dt*(-udotdelu - gradp);
               uDotDelU *=  m_dt;
@@ -3068,8 +2976,6 @@ correctVelocity()
       //make udelu = -udelu-gradp == the source term of heat eqn
       EBAMRDataOps::scale(m_uDotDelU, -1.0);
 
-      EBAMRDataOps::incr(m_uDotDelU, extraSource, 1.0);
-
       if (m_params.m_verbosity >= 2)
         {
           pout() << "EBAMRNoSubcycle::solving implicitly for viscous and any extra source terms" << endl;
@@ -3087,9 +2993,16 @@ correctVelocity()
           Interval scaInterv(0, 0);
           for (int ilev = 0; ilev <= m_finestLevel; ilev++)
             {
-              m_uDotDelU[ilev]->copyTo(vecInterv,  *m_cellScratc2[ilev], scaInterv);
-              m_velo[ ilev]->copyTo(vecInterv,  *m_cellScratch[ilev], scaInterv);
-              m_velo[ ilev]->copyTo(vecInterv,  *m_cellScratc1[ilev], scaInterv);
+              //m_uDotDelU[ilev]->copyTo(vecInterv,  *m_cellScratc2[ilev], scaInterv);
+              //m_velo[ ilev]->copyTo(vecInterv,  *m_cellScratch[ilev], scaInterv);
+              //m_velo[ ilev]->copyTo(vecInterv,  *m_cellScratc1[ilev], scaInterv);
+              for(DataIterator dit = m_grids[ilev].dataIterator(); dit.ok(); ++dit)
+                {
+                  Box region = m_grids[ilev][dit()];
+                  (*m_cellScratc2[ilev])[dit()].copy(region, scaInterv, region, (*m_uDotDelU[ilev])[dit()], vecInterv);
+                  (*m_cellScratch[ilev])[dit()].copy(region, scaInterv, region, (*    m_velo[ilev])[dit()], vecInterv);
+                  (*m_cellScratc1[ilev])[dit()].copy(region, scaInterv, region, (*    m_velo[ilev])[dit()], vecInterv);
+                }  
             }
 
           //tell EBBC which velocity component we are solving for
@@ -3136,11 +3049,6 @@ correctVelocity()
     {
       pout() << "EBAMRNoSubcycle::cc projecting velocity" << endl;
     }
-
-  EBAMRDataOps::setCoveredVal(m_velo,0.0);
-  EBAMRDataOps::setCoveredAMRVal(m_velo,m_ebisl,m_params.m_refRatio,0.0);
-  EBAMRDataOps::setCoveredVal(m_gphi,0.0);
-  EBAMRDataOps::setCoveredAMRVal(m_gphi,m_ebisl,m_params.m_refRatio,0.0);
 
   //make u* := u* + dt*gphi
   //this makes the output pressure (I-P)u*= gphi*dt
@@ -3238,16 +3146,6 @@ correctVelocity()
           tempLDPtr[ilev]->copyTo(interv, *m_velo[ilev], interv);
         }
     }
-
-  for (int ilev=0; ilev<= m_finestLevel; ilev++)
-    {
-      delete tempLDPtr[ilev];
-      delete extraSource[ilev];
-    }
-
-  EBAMRDataOps::setCoveredVal(m_velo, 0.0);
-  EBAMRDataOps::setCoveredVal(m_gphi, 0.0);
-  EBAMRDataOps::setCoveredVal(m_pres, 0.0);
 }
 /*****************/
 /*****************/
@@ -3277,6 +3175,69 @@ pointsUpdated()
 /*****************/
 void
 EBAMRNoSubcycle::writePlotFile()
+{
+  ParmParse pp;
+  bool use_sparse_plot_file = true;
+  pp.query( "use_sparse_plot_file", use_sparse_plot_file);
+  if(use_sparse_plot_file)
+    {
+      pout() << "using sparse plot format --- you have to run the converter to view it in visit" << endl;
+      writePlotFileNew();
+    }
+  else
+    {
+      pout() << "using dense plot format --- you can view plotfiles in visit" << endl;
+      pout() << "but you might want to consider using the sparse one to save memory" << endl;
+      writePlotFileOld();
+    }
+}
+/****/
+void
+EBAMRNoSubcycle::writePlotFileNew()
+{
+  CH_TIME("EBAMRNoSubcycle::writePlotFile");
+  char fileVelo[1000];
+  char fileGphi[1000];
+  int ncells = m_domain[0].size(0);
+  sprintf(fileVelo, "velo.nx%d.step.%07d.%dd.hdf5", ncells, m_curStep, SpaceDim);
+  sprintf(fileGphi, "gphi.nx%d.step.%07d.%dd.hdf5", ncells, m_curStep, SpaceDim);
+  string filenameVelo(fileVelo);
+  string filenameGphi(fileGphi);
+
+  int  numLevels = m_finestLevel + 1;
+  HDF5Handle handleVelo;
+  HDF5Handle handleGphi;
+  createEBFile(handleVelo, filenameVelo,  numLevels, m_params.m_refRatio, m_domain[0],  m_dx[0]*RealVect::Unit, IntVect::Zero);
+  createEBFile(handleGphi, filenameGphi,  numLevels, m_params.m_refRatio, m_domain[0],  m_dx[0]*RealVect::Unit, IntVect::Zero);
+  //this gets called by createEBFile.
+  //headerEBFile(...);
+  
+  Vector<string> velonames(SpaceDim);
+  Vector<string> gphinames(SpaceDim);
+   for (int idir = 0; idir < SpaceDim; idir++)
+    {
+      char velochar[1000];
+      char gphichar[1000];
+      sprintf(velochar, "velocity%d", idir);
+      sprintf(gphichar, "gradPres%d", idir);
+      velonames[idir] = string(velochar);
+      gphinames[idir] = string(gphichar);
+    }
+   writeCellCenteredNames(handleVelo, velonames);
+   writeCellCenteredNames(handleGphi, gphinames);
+   IntVect ghostVelo =  m_velo[0]->ghostVect();
+   IntVect ghostGphi =  m_gphi[0]->ghostVect();
+   for(int ilev = 0; ilev <= m_finestLevel; ilev++)
+     {
+       writeCellCentered(handleVelo, ilev, m_velo[ilev]);
+       writeCellCentered(handleGphi, ilev, m_gphi[ilev]);
+     }
+   handleVelo.close();
+   handleGphi.close();
+}
+/****/
+void
+EBAMRNoSubcycle::writePlotFileOld()
 {
   CH_TIME("EBAMRNoSubcycle::writePlotFile");
   if (m_params.m_verbosity > 3)
@@ -3318,11 +3279,10 @@ EBAMRNoSubcycle::writePlotFile()
   names.append(presnames);
   names.append(vortnames);
   //For adding extra data
-  names.append(extraNames());
 
   char fileChar[1000];
   int ncells = m_domain[0].size(0);
-  sprintf(fileChar, "plot.nx%d.step.%07d.%dd.hdf5", ncells, m_curStep, SpaceDim);
+  sprintf(fileChar, "%s.nx%d.step.%07d.%dd.hdf5", m_plotFile.c_str(), ncells, m_curStep, SpaceDim);
 
   bool replaceCovered = false;
   Vector<Real> coveredValues;
@@ -3341,9 +3301,6 @@ EBAMRNoSubcycle::writePlotFile()
 #else
       int nvar = 3*SpaceDim + 1;
 #endif
-      //For adding extra data
-      int numExtraVars = getNumExtraVars();
-      nvar += numExtraVars;
       EBCellFactory ebcellfact(m_ebisl[ilev]);
       outputData[ilev] = new LevelData<EBCellFAB>(m_grids[ilev], nvar, IntVect::Zero, ebcellfact);
 
@@ -3365,17 +3322,11 @@ EBAMRNoSubcycle::writePlotFile()
       dstInterv = Interval(2*SpaceDim+1, 2*SpaceDim+1);
       vorticity[ilev]->copyTo(srcInterv, *outputData[ilev], dstInterv);
 
-      //Add extra data
-      int startDstInterv = 2*SpaceDim+2;
-      addExtraOutputData(*outputData[ilev], startDstInterv, ilev);
 #else
       srcInterv = Interval(0, SpaceDim-1);
       dstInterv = Interval(2*SpaceDim+1, 3*SpaceDim);
       vorticity[ilev]->copyTo(srcInterv, *outputData[ilev], dstInterv);
 
-      //Add extra data
-      int startDstInterv = 3*SpaceDim+1;
-      addExtraOutputData(*outputData[ilev],  startDstInterv, ilev);
 #endif
       setCoveredStuffToZero(*outputData[ilev]);
     }
@@ -3393,8 +3344,6 @@ EBAMRNoSubcycle::writePlotFile()
               curNumLevels,
               replaceCovered,
               coveredValues);
-
-  addExtraDatatoPlotFile(filename);
 
   for (int ilev = 0; ilev <nlev; ilev++)
     {
@@ -3433,10 +3382,10 @@ EBAMRNoSubcycle::writeCheckpointFile()
   header.m_int ["use_fixed_dt"]           = iuseFixedDt;
   header.m_int ["steady_state"]           = m_steadyState;
 
-  char iter_str[100];
+  char iter_str[1000];
 
   int ncells = m_domain[0].size(0);
-  sprintf(iter_str, "check%d.nx%d.%dd.hdf5", m_curStep, ncells, SpaceDim);
+  sprintf(iter_str, "%s%d.nx%d.%dd.hdf5", m_checkFile.c_str(),m_curStep, ncells, SpaceDim);
 
   HDF5Handle handleOut(iter_str, HDF5Handle::CREATE);
   //Write the header for this level
@@ -3449,7 +3398,6 @@ EBAMRNoSubcycle::writeCheckpointFile()
       write(handleOut,*m_gphi[ilev],"gphi");
       write(handleOut,*m_pres[ilev],"pres");
       write(handleOut,*m_advVel[ilev],"advVel");
-      writeExtraDataToCheckpoint(handleOut, ilev);
     }
   handleOut.close();
 }
@@ -3505,10 +3453,8 @@ EBAMRNoSubcycle::readCheckpointFile(const string& a_restartFile)
 
   //define stuff using grids
   defineEBISLs();
-  defineExtraEBISLs();
   defineNewVel();
   definePressure();
-  defineExtraTerms();
   //now input the actual data
   for (int ilev = 0; ilev <= m_finestLevel; ilev++)
     {
@@ -3517,7 +3463,6 @@ EBAMRNoSubcycle::readCheckpointFile(const string& a_restartFile)
       read<EBCellFAB>(handleIn, *m_gphi[ilev], "gphi", m_grids[ilev], Interval(), false);
       read<EBCellFAB>(handleIn, *m_pres[ilev], "pres", m_grids[ilev], Interval(), false);
       read<EBFluxFAB>(handleIn, *m_advVel[ilev], "advVel", m_grids[ilev], Interval(), false);
-      readExtraDataFromCheckpoint(handleIn, ilev);
     }
   handleIn.close();
 
@@ -3554,14 +3499,13 @@ setupForRestart(const string& a_restartFile)
         {
           EBCellFactory ebcellfact(m_ebisl[ilev]);
           tempLDPtr[ilev] = new LevelData<EBCellFAB>();
-          tempLDPtr[ilev]->define(m_grids[ilev], SpaceDim,  3*IntVect::Unit, ebcellfact);
+          tempLDPtr[ilev]->define(m_grids[ilev], SpaceDim,  m_nGhost*IntVect::Unit, ebcellfact);
           m_velo[ilev]->copyTo(interv, *(tempLDPtr[ilev]), interv);
           tempLDPtr2[ilev] = new LevelData<EBCellFAB>();
           tempLDPtr2[ilev]->define(m_grids[ilev], SpaceDim,  IntVect::Zero, ebcellfact);
           m_gphi[ilev]->copyTo(interv, *(tempLDPtr2[ilev]), interv);
         }
 
-      cacheExtraTerms(oldFinestLevel);
 
       m_finestLevel = finestLevelFromParmParse;
 
@@ -3615,12 +3559,9 @@ setupForRestart(const string& a_restartFile)
         }
 
       int startLevel = oldFinestLevel+1;
-      int endLevel = oldFinestLevel;
       defineEBISLs();
-      defineExtraEBISLs();
       defineNewVel(startLevel);
       definePressure(startLevel);
-      defineExtraTerms(startLevel);
       defineProjections();
 
       for (int ilev=0; ilev<=oldFinestLevel; ilev++)
@@ -3648,8 +3589,6 @@ setupForRestart(const string& a_restartFile)
                                   interv);
         }
 
-      interpolateExtraTermsForRestart(startLevel, endLevel);
-
       m_ccProjector->project(m_velo, m_gphi);
       filter(m_velo);
       defineIrregularData();
@@ -3673,7 +3612,7 @@ setupForRestart(const string& a_restartFile)
 /*****************/
 void
 EBAMRNoSubcycle::
-setupForFixedHierarchyRun(const Vector<Vector<Box> >& a_grids)
+setupForFixedHierarchyRun(Vector<Vector<Box> >& a_grids)
 {
   CH_TIME("EBAMRNoSubcycle::setupForFixedHierarchyRun");
   if (m_params.m_verbosity > 3)

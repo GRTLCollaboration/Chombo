@@ -41,14 +41,15 @@ public:
   EBCellFAB(const EBISBox& a_ebisBox,
             const Box& a_region, int a_nVar);
 
+  ///aliasing constructor
+  EBCellFAB(const Interval&   a_comps,
+            EBCellFAB& a_original):BaseEBCellFAB<Real>(a_comps, a_original){ ;}
+  
 
   ///
   void define(const EBISBox& a_ebisBox,
               const Box& a_region, int a_nVar);
 
-  ///
-  void setInvalidData(const Real& a_val,
-                      const int& a_comp);
 
   ///
   virtual ~EBCellFAB();
@@ -56,6 +57,7 @@ public:
   ///
   const FArrayBox& getFArrayBox() const;
 
+ 
   ///
   /**
      Does a dynamic cast  of the BaseFab<Real>
@@ -63,6 +65,17 @@ public:
    */
   FArrayBox& getFArrayBox();
 
+  ///
+  MiniIVFAB<Real>& getMultiValuedFAB()
+  {
+    return m_irrFAB;
+  }
+
+  ///
+  const MiniIVFAB<Real>& getMultiValuedFAB() const
+  {
+    return m_irrFAB;
+  }
   ///
   /**
      Negate the values in all locations
@@ -123,13 +136,16 @@ public:
   /**
      done over intersection of src, dst
   */
-  EBCellFAB& mult(const EBCellFAB& a_ebfab,
+  EBCellFAB& mult(Real a_value,
                   int a_srccomp,
-                  int a_destcomp,
                   int a_numcomp);
 
 
 
+  EBCellFAB&  mult(const EBCellFAB& a_src,
+                   int a_srccomp,
+                   int a_destcomp,
+                   int a_numcomp);
   ///
   /**
      done over intersection of src, dst
@@ -191,9 +207,9 @@ public:
   /**
      Current FAB = a_X FAB * a_A  +  a_Y FAB * a_B.
   */
-  EBCellFAB& axby(const EBCellFAB& a_X, const EBCellFAB& a_Y,
-                  const Real& a_A, const Real& a_B,
-                  const int& a_destComp,const int& a_xComp,const int& a_yComp);
+  // EBCellFAB& axby(const EBCellFAB& a_X, const EBCellFAB& a_Y,
+  //                 const Real& a_A, const Real& a_B,
+  //                 const int& a_destComp,const int& a_xComp,const int& a_yComp);
 
   //! Returns the maximum value in the FAB for the given component.
   Real max(int a_comp = 0) const;
@@ -256,6 +272,9 @@ public:
   /// good for making temps.
   void clone(const EBCellFAB& a_arg);
 
+  virtual void setCoveredCellVal(const Real&    a_val,
+                                 const int&  a_comp,
+                                 const bool& a_doMulti=true);
 private:
   //disallowed for all the usual reasons
   EBCellFAB(const EBCellFAB& ebcin)

@@ -13,9 +13,11 @@
 
 #include "RefCountedPtr.H"
 
-#include "BaseDomainBC.H"
+#include "ViscousBaseDomainBC.H"
 #include "BaseBCValue.H"
+#include "BCFunc.H"
 #include "NamespaceHeader.H"
+
 
 class NeumannViscousTensorDomainBC: public ViscousBaseDomainBC
 {
@@ -49,6 +51,48 @@ public:
                            const DataIndex&      a_dit,
                            const Real&           a_time,
                            const bool&           a_useHomogeneous);
+
+  virtual void 
+  fillVelGhost(FArrayBox&     a_phi,
+               const Box&     a_valid,
+               const Box&     a_domain,
+               Real           a_dx,
+               bool           a_homogeneous)
+  {
+    Box valid = a_valid;
+    Box grownBox = a_valid;
+    grownBox.grow(1);
+    for (int idir=0; idir<CH_SPACEDIM; ++idir)
+      {
+        for(SideIterator sit; sit.ok(); ++sit)
+          {
+            Box choppedBox = grownBox;
+            choppedBox.grow(idir,-1);
+            Box toRegion = adjCellBox(choppedBox, idir, sit(), 1);
+
+            if(!a_domain.contains(toRegion))
+              {
+                for (BoxIterator bit(toRegion); bit.ok(); ++bit)
+                  {
+                    const IntVect& iv = bit();
+                    //fake vof just to get the location
+                    VolIndex vof(iv, 0);
+                    RealVect loc = EBArith::getVoFLocation(vof, a_dx, RealVect::Zero);
+                    int isign = sign(sit());
+                    IntVect ivneigh = iv - isign*BASISV(idir);
+                    RealVect value = bcvaluefunc(loc, idir, sit());
+                    if(a_homogeneous) value = RealVect::Zero;
+                    for(int comp = 0; comp < SpaceDim; comp++)
+                      {
+                        //neumann
+                        a_phi(iv, comp) = a_phi(ivneigh, comp)  + a_dx*value[comp];
+                      }
+                  }
+              }
+          } 
+      }//end loop over directions
+  }
+
 
 private:
   void getDivergenceAndGradient(Real&                 a_divergence,
@@ -85,6 +129,8 @@ public:
   virtual NeumannViscousTensorDomainBC* create(const ProblemDomain& a_domain,
                                                const EBISLayout&    a_layout,
                                                const RealVect&      a_dx);
+
+
 private:
   bool m_onlyHomogeneous;
   bool m_isFunction;
