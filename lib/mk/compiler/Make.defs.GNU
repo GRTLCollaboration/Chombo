@@ -128,7 +128,7 @@ endif
 ifeq ($(USE_64),TRUE)
    # works on an AMD64 machine that defaults to 32bit
    # may also work on a Power{PC,4,5} but I'm not positive
-  deffcomflags += -m64
+#  deffcomflags += -m64
 endif
 
 ifeq ($(OPENMPCC),TRUE)
