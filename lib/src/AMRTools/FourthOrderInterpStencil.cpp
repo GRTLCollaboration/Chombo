@@ -231,6 +231,7 @@ void FourthOrderInterpStencil::fillFine(
                                         const IntVect&     a_coarseDataCell,
                                         const IntVect&     a_coarseToFineOffset) const
 {
+  CH_TIME("FourthOrderInterpStencil::fillFine:234");
   CH_assert(m_defined);
   // This function fills the fine cells inside a_coarseDataCell
   // with interpolated data from a_coarseFab.

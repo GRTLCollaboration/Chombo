@@ -18,7 +18,7 @@
 
 
 #ifdef CH_Darwin
-# define _Atomic
+// # define _Atomic
 #include <libproc.h>
 #endif
 
