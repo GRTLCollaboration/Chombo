@@ -175,6 +175,7 @@ void FourthOrderFineInterp::interpOnPatch(
                                           /// index
                                           const DataIndex&      a_dind)
 {
+  CH_TIME("FourthOrderFineInterp::interpOnPatch:178");
   CH_assert(m_defined);
 
   const Box& coarseBox = m_layoutCoarsened[a_dind];
@@ -211,6 +212,8 @@ void FourthOrderFineInterp::interpOnPatch(
                                           /// we fill in fine cells within these coarse cells
                                           const IntVectSet&     a_ivs)
 {
+  CH_TIME("FourthOrderFineInterp::interpOnPatch:215");
+  CH_assert(m_defined);
   CH_assert(m_defined);
 
   // const Box& coarseBox = m_layoutCoarsened[a_dind];

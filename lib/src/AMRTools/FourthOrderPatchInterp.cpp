@@ -151,6 +151,8 @@ void FourthOrderPatchInterp::interpToFine(/// interpolated solution on this leve
                                           /// stencils
                                           const BaseFab<IntVect>&   a_stencils)
 {
+  CH_TIME("FourthOrderPatchInterp::interpToFine:154");
+  CH_assert(m_defined);
   CH_assert(m_defined);
   CH_assert(m_isCoarseBoxSet);
   for (BoxIterator bit(m_coarseBox); bit.ok(); ++bit)
@@ -175,6 +177,7 @@ void FourthOrderPatchInterp::interpToFine(/// interpolated solution on this leve
                                           /// we fill in fine cells within these coarse cells
                                           const IntVectSet&         a_ivs)
 {
+  CH_TIME("FourthOrderPatchInterp::interpToFine:180");
   CH_assert(m_defined);
   // CH_assert(m_isCoarseBoxSet);
   for (IVSIterator ivsit(a_ivs); ivsit.ok(); ++ivsit)
