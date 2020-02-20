@@ -71,6 +71,7 @@ void AMR::setDefaultValues()
   m_checkpoint_interval= -1;
   m_plot_interval=-1;
   m_checkForSteadyState = false;
+  m_allow_evolution_stop = false;
   m_plot_period=-1.0;
   m_next_plot_time=-1.0;
   m_max_grid_size= 0;
@@ -262,6 +263,13 @@ void AMR::plotInterval(int a_plot_interval)
 void AMR::checkForSteadyState(bool a_checkForSteadyState)
 {
   m_checkForSteadyState = a_checkForSteadyState;
+}
+//-----------------------------------------------------------------------
+
+//-----------------------------------------------------------------------
+void AMR::allowEvolutionStop(bool a_allow_evolution_stop)
+{
+  m_allow_evolution_stop = a_allow_evolution_stop;
 }
 //-----------------------------------------------------------------------
 
@@ -790,6 +798,7 @@ void AMR::run(Real a_max_time, int a_max_step)
 
   Real old_dt_base = m_dt_base;
   bool steadyStateStop = false;
+  bool stop_evolution = false;
   for ( ; (m_cur_step < a_max_step) &&
           (a_max_time - m_cur_time > m_time_eps*m_dt_base);
         ++m_cur_step, m_cur_time += old_dt_base)
@@ -897,6 +906,18 @@ void AMR::run(Real a_max_time, int a_max_step)
               pout() << "writing checkpoint file" << endl;
               writeCheckpointFile();
             }
+          break;
+        }
+      if (m_allow_evolution_stop)
+        {
+#ifdef CH_MPI
+          MPI_Barrier(Chombo_MPI::comm);
+#endif
+          stop_evolution = m_amrlevels[0]->stopEvolution();
+        }
+      if (stop_evolution)
+        {
+          pout() << "AMR: evolution stopped" << endl;
           break;
         }
     }

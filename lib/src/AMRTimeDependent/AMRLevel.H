@@ -122,7 +122,18 @@ public:
   {
     return false;
   }
-    
+
+   ///
+  /**
+     Return true on the coarsest level to stop the evolution
+     Default version always returns false.
+   */
+  virtual
+  bool stopEvolution()
+  {
+    return false;
+  }
+
   ///
   /**
      Things to do after advancing this level by one time step.
