@@ -910,9 +910,6 @@ void AMR::run(Real a_max_time, int a_max_step)
         }
       if (m_allow_evolution_stop)
         {
-#ifdef CH_MPI
-          MPI_Barrier(Chombo_MPI::comm);
-#endif
           stop_evolution = m_amrlevels[0]->stopEvolution();
         }
       if (stop_evolution)
