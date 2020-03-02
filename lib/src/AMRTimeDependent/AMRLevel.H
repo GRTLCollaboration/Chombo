@@ -126,10 +126,11 @@ public:
    ///
   /**
      Return true on the coarsest level to stop the evolution
+     Can also ask whether to write a checkpoint or not
      Default version always returns false.
    */
   virtual
-  bool stopEvolution()
+  bool stopEvolution(bool& a_write_checkpoint)
   {
     return false;
   }

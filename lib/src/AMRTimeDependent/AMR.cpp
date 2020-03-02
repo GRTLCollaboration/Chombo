@@ -908,13 +908,20 @@ void AMR::run(Real a_max_time, int a_max_step)
             }
           break;
         }
+      bool write_checkpoint = false;
       if (m_allow_evolution_stop)
         {
-          stop_evolution = m_amrlevels[0]->stopEvolution();
+          stop_evolution = m_amrlevels[0]->stopEvolution(write_checkpoint);
         }
       if (stop_evolution)
         {
           pout() << "AMR: evolution stopped" << endl;
+          if ((m_checkpoint_interval > 0) && write_checkpoint &&
+              (m_lastcheck_step != m_cur_step))
+            {
+              pout() << "writing checkpoint file" << endl;
+              writeCheckpointFile();
+            }
           break;
         }
     }
