@@ -190,4 +190,38 @@ void FourthOrderPatchInterp::interpToFine(/// interpolated solution on this leve
       stencil.fillFine(a_fine, a_coarse, ivc);
     }
 }
+
+
+//////////////////////////////////////////////////////////////////////////////
+void FourthOrderPatchInterp::interpToFine(/// interpolated solution on this level
+                                          FArrayBox&                a_fine,
+                                          /// coarse solution
+                                          const FArrayBox&          a_coarse,
+                                          /// stencil type to use
+                                          const IntVect&            a_stencil,
+                                          /// fill fine cells in this box
+                                          const Box&         a_box)
+{
+  CH_TIME("FourthOrderPatchInterp::interpToFine:205");
+  CH_assert(m_defined);
+  // CH_assert(m_isCoarseBoxSet);
+  const FourthOrderInterpStencil& stencil = *m_stencils(a_stencil, 0);
+
+  // For the basic ghost stencil on a box, do a loop
+  if (a_stencil == IntVect::Zero)
+    stencil.fillFineLoop(a_fine, a_coarse, a_box);
+  else
+    stencil.fillFine(a_fine, a_coarse, a_box);
+  /*
+  for (BoxIterator bit(a_box); bit.ok(); ++bit)
+    {
+      const IntVect& ivc = bit();
+      const FourthOrderInterpStencil& stencil = *m_stencils(a_stencil, 0);
+      // Using coarseFab, fill fine cells of fineFab within ivc.
+      // stencil.fillFine(a_fine, a_coarse, ivc);
+      stencil.fillFine(a_fine, a_coarse, ivc);
+    }
+  */
+}
+
 #include "NamespaceFooter.H"

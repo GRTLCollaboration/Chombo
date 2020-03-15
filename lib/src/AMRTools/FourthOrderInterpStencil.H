@@ -81,6 +81,24 @@ public:
                 /// offset from base coarse cell to coarsened fine cells
                 const IntVect&     a_coarseToFineOffset = IntVect::Zero) const;
 
+  void fillFine(/// to fill at m_baseFineBox + m_refineVect*a_coarseBox() + a_coarseToFineOffset
+                FArrayBox&         a_fineFab,
+                /// coarse data
+                const FArrayBox&   a_coarseFab,
+                /// coarse box with fine subcells to fill in
+                const Box&         a_coarseBox,
+                /// offset from base coarse cell to coarsened fine cells
+                const IntVect&     a_coarseToFineOffset = IntVect::Zero) const;
+
+  void fillFineLoop(/// to fill at m_baseFineBox + m_refineVect*a_coarseBox() + a_coarseToFineOffset
+                FArrayBox&         a_fineFab,
+                /// coarse data
+                const FArrayBox&   a_coarseFab,
+                /// coarse box with fine subcells to fill in
+                const Box&         a_coarseBox,
+                /// offset from base coarse cell to coarsened fine cells
+                const IntVect&     a_coarseToFineOffset = IntVect::Zero) const;
+
 protected:
 
   /// refinement ratio
@@ -125,6 +143,8 @@ protected:
 
   Real power1dfineind0avg(int a_offset,
                           int a_ipwr) const;
+
+  mutable bool m_firstcall=true;
 
 private:
 

@@ -134,6 +134,7 @@ void FourthOrderFineInterp::interpToFine(
                                          /// coarse solution
                                          const LevelData<FArrayBox>&   a_coarse)
 {
+  CH_TIME("FourthOrderFineInterp::interpToFine:137");
   CH_assert(m_defined);
 
   // Simple copyTo also fills in ghost cells of m_coarseData.
@@ -175,7 +176,6 @@ void FourthOrderFineInterp::interpOnPatch(
                                           /// index
                                           const DataIndex&      a_dind)
 {
-  CH_TIME("FourthOrderFineInterp::interpOnPatch:178");
   CH_assert(m_defined);
 
   const Box& coarseBox = m_layoutCoarsened[a_dind];
@@ -223,4 +223,27 @@ void FourthOrderFineInterp::interpOnPatch(
   // m_patchInterp.setCoarseBox(coarseBox);
   m_patchInterp.interpToFine(a_fine, a_coarse, stencilHereFab, a_ivs);
 }
+
+
+//////////////////////////////////////////////////////////////////////////////
+void FourthOrderFineInterp::interpOnPatch(
+                                          /// interpolated solution on this level
+                                          FArrayBox&            a_fine,
+                                          /// coarse solution
+                                          const FArrayBox&      a_coarse,
+                                          /// index
+                                          const IntVect&      a_stencil,
+                                          /// fill fine cells in coarse box
+                                          const Box&     a_box)
+{
+  CH_TIME("FourthOrderFineInterp::interpOnPatch:239");
+  CH_assert(m_defined);
+  CH_assert(m_defined);
+
+  m_patchInterp.interpToFine(a_fine, a_coarse, a_stencil, a_box);
+
+  // not needed
+  // m_patchInterp.setCoarseBox(coarseBox);
+}
+
 #include "NamespaceFooter.H"
