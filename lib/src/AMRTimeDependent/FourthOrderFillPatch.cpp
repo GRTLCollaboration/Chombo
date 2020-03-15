@@ -103,6 +103,7 @@ void FourthOrderFillPatch::define(/// layout at this level
 
   // LayoutData<IntVectSet> m_coarsenedGhosts;
   m_coarsenedGhosts.define(m_layoutCoarsened);
+  m_coarsenedGhostBoxStencil.define(m_layoutCoarsened);
 
   // I copied this code segment from PiecewiseLinearFillPatch::define().
   // We find LayoutData<IntVectSet> m_coarsenedGhosts, using:
@@ -133,6 +134,27 @@ void FourthOrderFillPatch::define(/// layout at this level
       IntVectSet& coarsenedGhostsHere = m_coarsenedGhosts[dit];
       coarsenedGhostsHere = IntVectSet(coarseBoxWithGhosts);
 
+      // Initially set ghost cell boxes to dir x lo/hi of coarseBox
+      long numCrsGhosts = 0;
+      Vector<BoxStencil>& vecGhostBoxStencil = m_coarsenedGhostBoxStencil[dit];
+      for (int d=SpaceDim-1; d >= 0; d--)
+        for (SideIterator sit; sit.ok(); ++sit)
+          {
+            // Get the ghost box 
+            Box dirsideGhosts = adjCellBox(coarseBox,d,sit(),ghostsCoarsened);
+            // Grow it in remaining directions that aren't yet covered
+            for (int dnot=d-1; dnot >= 0; dnot--)
+              dirsideGhosts.grow(dnot,ghostsCoarsened);
+            // Intersect with domain
+            dirsideGhosts &= m_coarseDomain;
+            numCrsGhosts += dirsideGhosts.numPts();
+            BoxStencil bxs;
+            bxs.b = dirsideGhosts;
+            vecGhostBoxStencil.push_back(bxs);
+          }
+      // pout() << "Ghost boxes:" << endl << vecGhostBoxes << endl;
+      pout() << "  Total ghost box points:" << numCrsGhosts << endl;
+
       // Iterate over boxes in coarsened fine layout, and subtract off
       // from the set of coarse cells from which the fine ghost cells
       // will be interpolated.
@@ -141,6 +163,7 @@ void FourthOrderFillPatch::define(/// layout at this level
         {
           const Box& coarseOtherBox = m_layoutCoarsened[litOther];
           coarsenedGhostsHere -= coarseOtherBox;
+          // NOTE: don't do this with box-based interpolation
           // also need to remove periodic images from list of cells
           // to be filled, since they will be filled through exchange
           // as well
@@ -160,7 +183,40 @@ void FourthOrderFillPatch::define(/// layout at this level
                 }
             }
         }
+      pout() << "  Total ghost IVS points:" << coarsenedGhostsHere.numPts()
+        << endl;
     }
+  
+    // Now do a check if the dir/side boxes are all the same stencil
+    for (dit.begin(); dit.ok(); ++dit)
+      {
+        const BaseFab<IntVect>& stencils = m_spaceInterpolator.getStencil(dit);
+        Vector<BoxStencil>& vecGhostBoxStencil = m_coarsenedGhostBoxStencil[dit];
+
+        // For each box, iterate over the stencils 
+        for (int b=0; b < vecGhostBoxStencil.size(); b++)
+        {
+          BoxStencil& crsBoxSten = vecGhostBoxStencil[b];
+          bool start=true;
+          IntVect sameSten;
+          BoxIterator bit(crsBoxSten.b);
+          for (bit.begin(); bit.ok(); ++bit, start=false)
+          {
+            // Loop up the stencil in BaseFab
+            IntVect sten = stencils(bit(),0);
+            if (start)
+              sameSten = sten;
+            if (sameSten != sten)
+            {
+              sameSten = IntVect::Unit*INT_MIN;
+              break;
+            }
+          }
+          crsBoxSten.s = sameSten;
+          pout() << "  BoxStencil:" << endl << crsBoxSten.b << endl 
+            << crsBoxSten.s << endl;
+        }
+      }
 
   // Everything is defined now.
   m_defined = true;
@@ -192,7 +248,8 @@ void FourthOrderFillPatch::fillInterp(/// interpolated solution on this level
 
   // Interpolate to a_fineData from m_spaceInterpolator.coarsenedFineData(),
   // on the given components.
-  fillInterpSpaceFromCoarsened(a_fineData, a_srcComp, a_dstComp, a_numComp);
+  // fillInterpSpaceFromCoarsened(a_fineData, a_srcComp, a_dstComp, a_numComp);
+  fillInterpSpaceFromCoarsened2(a_fineData, a_srcComp, a_dstComp, a_numComp);
 }
 
 
@@ -296,6 +353,60 @@ void FourthOrderFillPatch::fillInterpSpaceFromCoarsened(/// interpolated solutio
 
   // overwrite interpolated data with valid data when present
   // a_fineData.exchange();
+}
+
+
+//////////////////////////////////////////////////////////////////////////////
+void FourthOrderFillPatch::fillInterpSpaceFromCoarsened2(/// interpolated solution on this level
+                                                        LevelData<FArrayBox>&         a_fineData,
+
+                                                        /// starting coarse data component
+                                                        int                           a_srcComp,
+                                                        /// starting fine data component
+                                                        int                           a_dstComp,
+                                                        /// number of data components to interpolate
+                                                        int                           a_numComp)
+{
+  CH_TIME("FourthOrderFillPatch::fillInterpSpaceFromCoarsened2");
+  CH_assert(m_defined);
+
+  const Interval srcInterval(a_srcComp, a_srcComp + a_numComp-1);
+  // This should be const, but aliasLevelData doesn't let you do that.
+  LevelData<FArrayBox>& coarsenedFineData =
+    m_spaceInterpolator.coarsenedFineData();
+  LevelData<FArrayBox> coarseCompData;
+  aliasLevelData(coarseCompData, &coarsenedFineData, srcInterval);
+
+  const Interval dstInterval(a_dstComp, a_dstComp + a_numComp-1);
+  LevelData<FArrayBox> fineCompData;
+  aliasLevelData(fineCompData, &a_fineData, dstInterval);
+
+  DataIterator dit = m_layout.dataIterator();
+  for (dit.begin(); dit.ok(); ++dit)
+    {
+      // Do not fill in all of fineFab:  fill ghost cells only.
+      FArrayBox& fineFab = fineCompData[dit];
+      const FArrayBox& coarseFab = coarseCompData[dit];
+      // const IntVectSet& ivs = m_coarsenedGhosts[dit];
+      // m_spaceInterpolator.interpOnPatch(fineFab, coarseFab, dit, ivs);
+
+      // IntVectSet ivs;
+        // ivs |= crsGhostBoxes[b];
+      const Vector<BoxStencil>& vecGhostBoxStencil = m_coarsenedGhostBoxStencil[dit];
+      for (int b=0; b < vecGhostBoxStencil.size(); b++)
+      {
+        const BoxStencil& crsBoxSten = vecGhostBoxStencil[b];
+        m_spaceInterpolator.interpOnPatch(fineFab, coarseFab, crsBoxSten.s, crsBoxSten.b);
+      }
+    }
+  // dummy statement in order to get around gdb bug
+  int dummy_unused = 0; dummy_unused = 0;
+  //  m_spaceInterpolator.interpToFine(a_fineData,
+  //                                   coarsenedFineData);
+
+  // overwrite interpolated data with valid data when present
+  // this is necessary for box-based ghost cell fill-ins
+  a_fineData.exchange();
 }
 
 

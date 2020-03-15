@@ -8,13 +8,14 @@
  */
 #endif
 
-// #include <cstdio>
+#include <iomanip>
 
 #include "FourthOrderInterpStencil.H"
 #include "BoxIterator.H"
 #include "LAPACKMatrix.H"
 
 #include "NamespaceHeader.H"
+
 //////////////////////////////////////////////////////////////////////////////
 // Constructor - set up some defaults
 FourthOrderInterpStencil::FourthOrderInterpStencil()
@@ -224,6 +225,7 @@ void FourthOrderInterpStencil::define(
   m_defined = true;
 }
 
+
 //////////////////////////////////////////////////////////////////////////////
 void FourthOrderInterpStencil::fillFine(
                                         FArrayBox&         a_fineFab,
@@ -279,6 +281,134 @@ void FourthOrderInterpStencil::fillFine(
   int dummy_unused = 0; dummy_unused++;
 }
 
+
+//////////////////////////////////////////////////////////////////////////////
+void FourthOrderInterpStencil::fillFine(
+                                        FArrayBox&         a_fineFab,
+                                        const FArrayBox&   a_coarseFab,
+                                        const Box&         a_coarseBox,
+                                        const IntVect&     a_coarseToFineOffset) const
+{
+  CH_TIME("FourthOrderInterpStencil::fillFine:292");
+  CH_assert(m_defined);
+
+  // TODO - implement pseudocode
+  // We know this is the standard iv=(0,0,0) stencil
+  
+  int origPrecision = (pout()).precision();
+  pout() << setprecision(16);
+
+  for (BoxIterator bit(a_coarseBox); bit.ok(); ++bit)
+  {
+    IntVect coarseDataCell = bit();
+    // This function fills the fine cells inside a_coarseBox
+    // with interpolated data from a_coarseFab.
+    // petermc, 3 Oct 2012, changed from m_refineCoarse to m_refineVect
+    // because there is no refinement in m_fixedDims.
+    IntVect fineBase = m_refineVect * coarseDataCell + a_coarseToFineOffset;
+    // The fine cells to be filled in are at m_baseFineBox + fineBase,
+    // where
+    // m_baseFineBox == (IntVect::Zero, (m_refineCoarse - 1) * interpUnit).
+
+    // The coarse cells from which we draw data are at
+    // {a_coarseDataCell + m_coarseBaseIndices[i*D+[0:D-1]]: 0 <= i < m_stencilSize}.
+
+    // added by petermc, 20 Aug 2009:  fill in a_fineFab only where you can.
+    // (previously, had set shiftedFineBox = m_baseFineBox)
+    Box shiftedFineBox(a_fineFab.box());
+    shiftedFineBox.shift(-fineBase);
+    shiftedFineBox &= m_baseFineBox; // intersect with [0:nref-1]^D or slice
+
+    // Fill in a_fineFab(shiftedFineBox + fineBase)
+    // using a_coarseFab(a_coarseDataCell + m_coarseBaseIndices)
+    // and stencil coefficients in m_coarseToFineFab(shiftedFineBox).
+
+    // Note that shiftedFineBox is contained in
+    // m_baseFineBox == (IntVect::Zero, (m_refineCoarse - 1) * interpUnit).
+
+    m_firstcall = false;
+    int numPts = shiftedFineBox.numPts();
+#pragma omp parallel for
+    for (int icomp = 0; icomp < a_fineFab.nComp(); icomp++)
+      {
+        for (BoxIterator bit(shiftedFineBox); bit.ok(); ++bit)
+          {
+            IntVect ivFine = bit();
+            if (m_firstcall && icomp==0 && numPts==8)
+              pout() << "  ivFine = " << ivFine << endl;
+            Real val = 0.;
+            for (int inbr = 0; inbr < m_stencilSize; inbr++)
+              {
+                IntVect ivCoarse = coarseDataCell + m_coarseBaseIndices[inbr];
+                val +=
+                  m_coarseToFineFab(ivFine, inbr) * a_coarseFab(ivCoarse, icomp);
+                if (m_firstcall && icomp==0 && numPts==8)
+                  pout() << " ivCoarse = " << ivCoarse << endl
+                    << "  coarse index = " << m_coarseBaseIndices[inbr]
+                    << ", fine stencil value = " << m_coarseToFineFab(ivFine, inbr)
+                    << endl;
+              }
+            a_fineFab(fineBase + ivFine, icomp) = val;
+          }
+      }
+    if (numPts==8)
+      m_firstcall = false;
+  }
+
+  pout() << setprecision(origPrecision);
+
+  // dummy statement in order to get around gdb bug
+  int dummy_unused = 0; dummy_unused++;
+}
+
+//////////////////////////////////////////////////////////////////////////////
+void FourthOrderInterpStencil::fillFineLoop(
+                                        FArrayBox&         a_fineFab,
+                                        const FArrayBox&   a_coarseFab,
+                                        const Box&         a_coarseBox,
+                                        const IntVect&     a_coarseToFineOffset) const
+{
+  CH_TIME("FourthOrderInterpStencil::fillFineLoop:372");
+  CH_assert(m_defined);
+
+  // Some guards to make sure this loop is appropriate
+  CH_assert(SpaceDim == 3);
+  CH_assert(m_refineVect == 2*IntVect::Unit);
+ 
+//  int origPrecision = (pout()).precision();
+//  pout() << setprecision(16);
+
+  // Do the loop over the fine box intersected with coarse box
+  Box fineBox = refine(a_coarseBox, m_refineVect);
+  fineBox &= a_fineFab.box();
+
+  int fi,fj,fk,icomp;
+// #pragma parallel ??
+  for (icomp=0; icomp<a_fineFab.nComp(); ++icomp)
+  for (fk=0; fk<fineBox.size(2); ++fk)
+  for (fj=0; fj<fineBox.size(1); ++fj)
+  for (fi=0; fi<fineBox.size(0); ++fi)
+  {
+    // Calculate what coarse cell and stencil to use for this fine cell
+    IntVect ivf = IntVect(fi,fj,fk) + fineBox.smallEnd();
+    IntVect ivc = ivf / m_refineVect;
+    IntVect ivfs = ivf - ivc * m_refineVect; // mod of m_refineVect
+    Real val = 0.;
+    // any way to max this offset / make a fixed bound loop/unroll?
+// #pragma unroll ??
+    for (int inbr = 0; inbr < m_stencilSize; inbr++)
+    {
+      IntVect ivcsten = ivc + m_coarseBaseIndices[inbr];
+      val += m_coarseToFineFab(ivfs, inbr) * a_coarseFab(ivcsten, icomp);
+    }
+    a_fineFab(ivf, icomp) = val;
+  }
+ 
+  // pout() << setprecision(origPrecision);
+
+  // dummy statement in order to get around gdb bug
+  int dummy_unused = 0; dummy_unused++;
+}
 
 //////////////////////////////////////////////////////////////////////////////
 Real FourthOrderInterpStencil::power1d0avg(Real a_lower,
