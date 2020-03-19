@@ -9,8 +9,8 @@ FC=ftn
 MPICXX=CC
 
 # cross compile for the Haswell processor, not the native login node
-#cxxoptflags+= -xCORE-AVX2 
-#foptflags += -xCORE-AVX2
+cxxoptflags+= -xCORE-AVX2 
+foptflags += -xCORE-AVX2
 
 USE_HDF=TRUE
 HDF5_DIR = $(HDF5_ROOT)

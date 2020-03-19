@@ -235,7 +235,7 @@ void FourthOrderFillPatch::fillInterp(/// interpolated solution on this level
                                       /// number of data components to interpolate
                                       int                           a_numComp)
 {
-  CH_TIME("FourthOrderFillPatch::fillInterp:182");
+  CH_TIME("FourthOrderFillPatch::fillInterp:238");
 
   CH_assert(m_defined);
   CH_assert(m_timeInterpDefined);
@@ -279,7 +279,8 @@ void FourthOrderFillPatch::fillRK4Intermediate(/// intermediate RK4 solution on 
 
   // Interpolate to a_fineData from m_spaceInterpolator.coarsenedFineData(),
   // on the given components.
-  fillInterpSpaceFromCoarsened(a_fineData, a_srcComp, a_dstComp, a_numComp);
+  // fillInterpSpaceFromCoarsened(a_fineData, a_srcComp, a_dstComp, a_numComp);
+  fillInterpSpaceFromCoarsened2(a_fineData, a_srcComp, a_dstComp, a_numComp);
 }
 
 
@@ -307,7 +308,8 @@ void FourthOrderFillPatch::fillInterp(/// interpolated solution on this level
 
   // Interpolate to a_fineData from m_spaceInterpolator.coarsenedFineData(),
   // on the given components.
-  fillInterpSpaceFromCoarsened(a_fineData, a_srcComp, a_dstComp, a_numComp);
+  // fillInterpSpaceFromCoarsened(a_fineData, a_srcComp, a_dstComp, a_numComp);
+  fillInterpSpaceFromCoarsened2(a_fineData, a_srcComp, a_dstComp, a_numComp);
 }
 
 
