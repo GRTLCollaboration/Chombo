@@ -132,6 +132,7 @@ public:
   virtual
   bool stopEvolution(bool& a_write_checkpoint)
   {
+    a_write_checkpoint = true;
     return false;
   }
 
