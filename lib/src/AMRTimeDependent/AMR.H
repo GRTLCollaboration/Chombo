@@ -190,6 +190,10 @@ public:
   //! Tells AMR to check each level for steady state and stop if we get there
   void checkForSteadyState(bool a_steadyState);
 
+  //! Tells AMR whether to allow AMRLevels to stop the evolution at the end of a
+  //! coarse timestep
+  void allowEvolutionStop(bool a_allow_evolution_stop);
+
   //! Tells AMR to write plot files after every \a a_plot_period time units.
   void plotPeriod(Real a_plot_period);
 
@@ -447,6 +451,7 @@ protected:
   Real m_dt_tolerance_factor;
   Real m_fixedDt;
   bool              m_checkForSteadyState;
+  bool              m_allow_evolution_stop;
   bool              m_isDefined;
   bool              m_isSetUp;
   Vector<AMRLevel*> m_amrlevels;
