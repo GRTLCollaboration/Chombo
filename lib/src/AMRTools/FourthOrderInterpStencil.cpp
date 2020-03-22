@@ -383,8 +383,8 @@ void FourthOrderInterpStencil::fillFineLoop(
   fineBox &= a_fineFab.box();
 
   int fi,fj,fk,icomp;
-// #pragma parallel ??
   for (icomp=0; icomp<a_fineFab.nComp(); ++icomp)
+#pragma omp parallel for collapse(3)
   for (fk=0; fk<fineBox.size(2); ++fk)
   for (fj=0; fj<fineBox.size(1); ++fj)
   for (fi=0; fi<fineBox.size(0); ++fi)
@@ -395,7 +395,7 @@ void FourthOrderInterpStencil::fillFineLoop(
     IntVect ivfs = ivf - ivc * m_refineVect; // mod of m_refineVect
     Real val = 0.;
     // any way to max this offset / make a fixed bound loop/unroll?
-// #pragma unroll ??
+#pragma omp simd
     for (int inbr = 0; inbr < m_stencilSize; inbr++)
     {
       IntVect ivcsten = ivc + m_coarseBaseIndices[inbr];
