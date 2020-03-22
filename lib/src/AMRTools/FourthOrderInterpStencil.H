@@ -129,6 +129,9 @@ public:
   /// m_stencilSize coefficients of coarse cells for each cell in m_baseFineBox
   FArrayBox m_coarseToFineFab;
 
+  /// Just a hack for the regular stencils to see if it's faster
+  Real m_sten[8][33];
+
 protected:
 
   /// whether define() has been called
