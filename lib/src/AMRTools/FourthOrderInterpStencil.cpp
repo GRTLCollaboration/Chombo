@@ -220,6 +220,22 @@ void FourthOrderInterpStencil::define(
         }
       m_coarseToFineFab(ivFine, nbr0) += 1. - sumCoeffs;
     }
+  // For the specific case away from the boundaries, create
+  // a simple array for the stencils
+  if ((m_bdryOffset == IntVect::Zero) && (SpaceDim == 3) && 
+      (m_refineVect == 2*IntVect::Unit))
+  {
+    const int ncoarse = m_coarseToFineFab.nComp();
+    CH_assert(ncoarse == 33);
+    const int nfine = m_coarseToFineFab.box().numPts();
+    CH_assert(nfine == 8);
+    for (int f=0; f < nfine; ++f)
+    for (int c=0; c < ncoarse; ++c)
+    {
+      IntVect ivf(f%2, (f/2)%2, f/4);
+      m_sten[f][c] = m_coarseToFineFab(ivf,c);
+    }
+  }
 
   // Everything is defined now.
   m_defined = true;
@@ -394,12 +410,18 @@ void FourthOrderInterpStencil::fillFineLoop(
     IntVect ivc = ivf / m_refineVect;
     IntVect ivfs = ivf - ivc * m_refineVect; // mod of m_refineVect
     Real val = 0.;
-    // any way to max this offset / make a fixed bound loop/unroll?
-#pragma omp simd
+/*
     for (int inbr = 0; inbr < m_stencilSize; inbr++)
     {
       IntVect ivcsten = ivc + m_coarseBaseIndices[inbr];
       val += m_coarseToFineFab(ivfs, inbr) * a_coarseFab(ivcsten, icomp);
+    }
+*/
+    int f = ivfs[0] + 2*ivfs[1] + 4*ivfs[2];
+    for (int c = 0; c < 33; ++c)
+    {
+      IntVect ivcsten = ivc + m_coarseBaseIndices[c];
+      val += m_sten[f][c] * a_coarseFab(ivcsten, icomp);
     }
     a_fineFab(ivf, icomp) = val;
   }
