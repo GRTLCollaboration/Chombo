@@ -11,6 +11,7 @@
 // #include <cstdio>
 
 #include "FourthOrderFillPatch.H"
+#include "NeighborIterator.H"
 #include "NamespaceHeader.H"
 
 //////////////////////////////////////////////////////////////////////////////
@@ -48,6 +49,7 @@ void FourthOrderFillPatch::define(/// layout at this level
                                   /// dimensions that are fixed, not interpolated
                                   Interval                  a_fixedDims)
 {
+  bool debug=true;
   // Cache data
   m_numStates = a_numStates;
   m_coarseDomain = a_coarseDomain;
@@ -153,7 +155,8 @@ void FourthOrderFillPatch::define(/// layout at this level
             vecGhostBoxStencil.push_back(bxs);
           }
       // pout() << "Ghost boxes:" << endl << vecGhostBoxes << endl;
-      pout() << "  Total ghost box points:" << numCrsGhosts << endl;
+      if (debug)
+        pout() << "  Total ghost box points:" << numCrsGhosts << endl;
 
       // Iterate over boxes in coarsened fine layout, and subtract off
       // from the set of coarse cells from which the fine ghost cells
@@ -183,11 +186,13 @@ void FourthOrderFillPatch::define(/// layout at this level
                 }
             }
         }
-      pout() << "  Total ghost IVS points:" << coarsenedGhostsHere.numPts()
-        << endl;
+      if (debug)
+        pout() << "  Total ghost IVS points:" << coarsenedGhostsHere.numPts()
+          << endl;
     }
   
     // Now do a check if the dir/side boxes are all the same stencil
+    NeighborIterator nit(m_layoutCoarsened);
     for (dit.begin(); dit.ok(); ++dit)
       {
         const BaseFab<IntVect>& stencils = m_spaceInterpolator.getStencil(dit);
@@ -208,13 +213,29 @@ void FourthOrderFillPatch::define(/// layout at this level
               sameSten = sten;
             if (sameSten != sten)
             {
-              sameSten = IntVect::Unit*INT_MIN;
+              sameSten = IntVect::Unit*INT_MIN; // Garbage value
               break;
             }
           }
           crsBoxSten.s = sameSten;
-          pout() << "  BoxStencil:" << endl << crsBoxSten.b << endl 
-            << crsBoxSten.s << endl;
+          if (debug)
+            pout() << "  BoxStencil:" << endl << crsBoxSten.b << endl 
+              << crsBoxSten.s << endl;
+
+          // Now intersect the boxes with the neighbor iterator
+          IntVectSet ivs(crsBoxSten.b);
+          for (nit.begin(dit()); nit.ok(); ++nit)
+          {
+            Box crs = m_layoutCoarsened[nit()];
+            ivs -= crs;
+          }
+          if (!ivs.isEmpty())
+          {
+            ivs.recalcMinBox();
+            crsBoxSten.b = ivs.minBox();
+          }
+          else
+            crsBoxSten.b = Box(); // invalid box
         }
       }
 
@@ -398,7 +419,8 @@ void FourthOrderFillPatch::fillInterpSpaceFromCoarsened2(/// interpolated soluti
       for (int b=0; b < vecGhostBoxStencil.size(); b++)
       {
         const BoxStencil& crsBoxSten = vecGhostBoxStencil[b];
-        m_spaceInterpolator.interpOnPatch(fineFab, coarseFab, crsBoxSten.s, crsBoxSten.b);
+        if (crsBoxSten.b.ok())
+          m_spaceInterpolator.interpOnPatch(fineFab, coarseFab, crsBoxSten.s, crsBoxSten.b);
       }
     }
   // dummy statement in order to get around gdb bug
