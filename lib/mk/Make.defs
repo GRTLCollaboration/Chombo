@@ -217,6 +217,12 @@ endif
 # GNU compilers with version attached e.g. g++-9
 ifeq ($(findstring g++-, $(cxxname)), g++-)
   include $(CHOMBO_HOME)/mk/compiler/Make.defs.GNU
+else
+  # GNU Fortran95 compiler in gcc e.g. gfortran-9
+  ifeq ($(findstring gfortran-, $(fname)), gfortran-)
+    include $(CHOMBO_HOME)/mk/compiler/Make.defs.GNU
+  endif
+
 endif
 
 # Intel compiler
