@@ -214,6 +214,12 @@ else
   endif
 endif
 
+# GNU compilers with version attached e.g. g++-9
+ifeq ($(findstring g++-, $(cxxname)), g++-)
+  include $(CHOMBO_HOME)/mk/compiler/Make.defs.GNU
+endif
+
+# Intel compiler
 ifeq ($(cxxname),icpc)
  include $(CHOMBO_HOME)/mk/compiler/Make.defs.Intel
 endif
