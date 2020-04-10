@@ -1,0 +1,34 @@
+name: Run Chombo Tests
+
+on: [push]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    env:
+      OMP_NUM_THREADS: 1
+
+    steps:
+    - name: Checkout Chombo
+      uses: actions/checkout@v2
+
+    - name: Install Chombo dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get -y --no-install-recommends install csh make gfortran-8 g++-8 cpp-8 libhdf5-dev libhdf5-openmpi-dev openmpi-bin libblas-dev liblapack-dev libgetopt-complete-perl ssh
+
+    - name: Set Compilers
+      run: |
+        sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-8 80
+        sudo update-alternatives --install /usr/bin/gfortran gfortran /usr/bin/gfortran-8 80
+        sudo update-alternatives --install /usr/bin/cpp cpp /usr/bin/cpp-8 80
+
+    - name: Build Chombo libraries and tests
+      run: |
+        cp $GITHUB_WORKSPACE/lib/mk/local/Make.defs.ubuntu-18.04 $GITHUB_WORKSPACE/lib/mk/Make.defs.local
+        make all -j 4
+      working-directory: ${{ github.workspace }}/lib
+
+    - name: Run Chombo Tests
+      run: make run
+      working-directory: ${{ github.workspace }}/lib
