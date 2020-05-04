@@ -584,7 +584,8 @@ void AMR::setupForRestart(HDF5Handle& a_handle)
       pout() << "AMR::restart: checkpoint file inconsistent with inputs to define " << endl;
       pout() << "numlevels input to define = " << m_max_level + 1<< endl;
       pout() << "numlevels in checkpoint = " << num_levels << endl;
-      MayDay::Error("AMR::restart: checkpoint file inconsistent with inputs to define ");
+      //MayDay::Error("AMR::restart: checkpoint file inconsistent with inputs to define ");
+      m_finest_level = m_max_level;
     }
 
   if (m_verbosity >= 2)
