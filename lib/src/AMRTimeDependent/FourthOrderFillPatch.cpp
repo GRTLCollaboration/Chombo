@@ -49,7 +49,7 @@ void FourthOrderFillPatch::define(/// layout at this level
                                   /// dimensions that are fixed, not interpolated
                                   Interval                  a_fixedDims)
 {
-  bool debug=true;
+  bool debug=false;
   // Cache data
   m_numStates = a_numStates;
   m_coarseDomain = a_coarseDomain;
