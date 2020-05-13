@@ -122,7 +122,20 @@ public:
   {
     return false;
   }
-    
+
+   ///
+  /**
+     Return true on the coarsest level to stop the evolution
+     Can also ask whether to write a checkpoint or not
+     Default version always returns false.
+   */
+  virtual
+  bool stopEvolution(bool& a_write_checkpoint)
+  {
+    a_write_checkpoint = true;
+    return false;
+  }
+
   ///
   /**
      Things to do after advancing this level by one time step.

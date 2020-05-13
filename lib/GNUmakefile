@@ -253,12 +253,12 @@ include: $(CHOMBO_HOME)/include  $(MULTIDIM_INCLUDE_DIR)
 ifneq ($(wildcard $(CHOMBO_HOME)/include/*.H),)
 	$(QUIET)chmod -R u+w $(CHOMBO_HOME)/include
 endif
-	$(QUIET)$(foreach d,$(lib_targets),cp -p $(CHOMBO_HOME)/src/$(d)/*.H $(CHOMBO_HOME)/include ;)
+	$(QUIET)$(foreach d,$(lib_targets),install -p $(CHOMBO_HOME)/src/$(d)/*.H $(CHOMBO_HOME)/include ;)
 #build multidim headers if necessary -- hardwire to build DIM=1->6
 ifeq ($(MULTIDIM),TRUE)
 	$(QUIET)cat $(foreach d,$(lib_targets), $(CHOMBO_HOME)/src/$(d)/multidim/dim-independent-headers.txt)> $(CHOMBO_HOME)/include/multidim/dim-independent-headers.txt
 	$(QUIET)$(CHOMBO_HOME)/util/multidim/make_headers.sh $(CHOMBO_HOME)/include $(CHOMBO_HOME)/include 1 6
-	$(QUIET)cp -p $(CHOMBO_HOME)/src/MultiDim/*.H.transdim $(CHOMBO_HOME)/include/multidim
+	$(QUIET)install -p $(CHOMBO_HOME)/src/MultiDim/*.H.transdim $(CHOMBO_HOME)/include/multidim
 	$(QUIET)find $(CHOMBO_HOME)/include/multidim -name '*.H*' -exec chmod u-w {} \;
 endif
 	$(QUIET)find $(CHOMBO_HOME)/include -name '*.H' -exec chmod u-w {} \;
