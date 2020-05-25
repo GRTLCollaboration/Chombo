@@ -43,7 +43,7 @@ makefiles+=compiler/Make.defs.GNU
 
 ################################################################
 
-# From GCC v7 and greater the command g++ -dumpversion only returns the major 
+# From GCC v7 and greater the command g++ -dumpversion only returns the major
 # version number (e.g. 7) rather than the full version number including minor
 # number and patch level (e.g. 7.1.0) as in older versions. This causes some
 # undefined environment variables in the Chombo makefiles which then result in
@@ -119,7 +119,8 @@ deffcomflags += -Wno-unused-parameter -Wno-unused-variable
 
   # Try this for gcc 4.2 and above...
   # newer versions of gcc (4.2.1 works) can use this
-ifeq (00,$(shell test $(_gppmajorver) -ge 4 ; echo $$?)$(shell test $(_gppminorver) -ge 2 ; echo $$?))
+  # disable for gcc 9 and later due to excessive memory usage
+ifeq (00,$(shell (test $(_gppmajorver) -ge 4) && (test $(_gppmajorver) -lt 9); echo $$?)$(shell test $(_gppminorver) -ge 2 ; echo $$?))
    deffdbgflags += -fbounds-check
 endif
 
