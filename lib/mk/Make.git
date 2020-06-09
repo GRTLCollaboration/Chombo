@@ -1,0 +1,20 @@
+# Include this Makefile (after Make.test or Make.example to append short git
+# commit hashes to Chombo test and example programs
+
+.DEFAULT_GOAL := all-git
+
+git_status_check := ""
+
+src_dirs_full = . $(src_dirs)
+src_extensions = .cpp .hpp .H .ChF
+srcs_full = $(realpath $(wildcard $(foreach ext,$(src_extensions),$(addsuffix /*$(ext),$(src_dirs_full)))))
+git_status_check += $(foreach src,$(srcs_full),$(shell git diff --stat $(src)))
+ifneq ($(strip $(git_status_check)),"")
+	git_status := "-dirty"
+endif
+git_status ?= ""
+
+git_commit_hash := $(shell git rev-parse --short HEAD)
+
+all-git: all
+	$(ECHO)mv $(_app_configs) $(ebase)$(config).$(git_commit_hash)$(git_status).ex
