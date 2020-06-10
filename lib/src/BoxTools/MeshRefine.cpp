@@ -612,17 +612,18 @@ MeshRefine::regrid(Vector<Vector<Box> >&   a_newmeshes,
               {
                 for (int i = 0; i < all_tags.size(); ++i)
                   {
-                     modifiedTags[lvl] |= all_tags[i];
+                    // modifiedTags[lvl] |= all_tags[i];
                     //**FIXME -- revert to above line when IVS is fixed.
                     //**The following works around a bug in IVS that appears if
                     //**the above line is used.  This bug is observed when there
                     //**is a coarsening of an IVS containing only IntVect::Zero
                     //**followed by an IVS |= IVS.
-                   // for (IVSIterator ivsit(all_tags[i]); ivsit.ok(); ++ivsit)
-                   //   {
-                   //     modifiedTags[lvl] |= ivsit();
-                   //   }
+                    for (IVSIterator ivsit(all_tags[i]); ivsit.ok(); ++ivsit)
+                      {
+                        modifiedTags[lvl] |= ivsit();
+                      }
                     //**FIXME -- hopefully fixed (BVS 10/30/2015)
+                    //**FIXME -- Reinstated - sadly seems to still break it! (KC 10/6/2020)
                     // Regain memory used (BVS,NDK 6/30/2008)
                     all_tags[i].makeEmpty();
                   }
