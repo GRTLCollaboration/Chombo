@@ -49,8 +49,8 @@ CH_CPP = $(CXX) -EP
 # Changed c++11 flag into c++14 as required for GRChombo
 _cxxbaseflags = -restrict -m64 -std=c++14
 
-cxxdbgflags += -g -Wall -Wextra -pedantic -fstack-protector-all $(_cxxbaseflags)
-cxxoptflags += -O3 -qopt-multi-version-aggressive $(_cxxbaseflags)
+defcxxdbgflags := -g -Wall -Wextra -pedantic -fstack-protector-all $(_cxxbaseflags)
+defcxxoptflags := -O3 -qopt-multi-version-aggressive $(_cxxbaseflags)
 
 # For ifort v18.0 and above need this extra flag to preprocess correctly
 # Note that this assumes your version of icpc is the same as ifort like any
@@ -61,8 +61,8 @@ endif
 
 defldflags = -static-intel
 
-foptflags += -O3
-fdbgflags += -g -check bounds -check uninit -ftrapuv
+deffoptflags := -O3
+defdbgflags := -g -check bounds -check uninit -ftrapuv
 
 # The -lsvml flag has been found to give GRChombo bugs and it seems like
 # one can safely remove it. For now we will leave it in and just note in wiki.
