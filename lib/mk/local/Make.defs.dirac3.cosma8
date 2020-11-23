@@ -1,0 +1,24 @@
+makefiles+=Make.defs.local
+
+XTRACONFIG       = .zen2
+
+DIM              = 3
+DEBUG            = FALSE
+OPT              = HIGH
+PRECISION        = DOUBLE
+CXX              = g++ -std=c++14
+FC               = gfortran
+MPI              = TRUE
+MPICXX           = mpicxx
+USE_64           = TRUE
+USE_HDF          = TRUE
+HDFLIBFLAGS      = -lhdf5
+HDFMPILIBFLAGS   = -lhdf5 -lopenblas
+USE_MT           = FALSE        # disables Chombo's internal memory tracking as it seems to disagree with Allinea MAP
+OPENMPCC         = TRUE
+cxxdbgflags      = -O0 -g -Wl,--eh-frame-hdr
+cxxoptflags      = -std=c++14 -g -O3 -march=znver2 -fno-math-errno
+fdbgflags        = -g -Wl,--eh-frame-hdr
+foptflags        = -O3 -march=znver2
+cxxcppflags += -DBENCHMARK -DDISABLE_AHFINDER -UCH_USE_MEMORY_TRACKING
+
