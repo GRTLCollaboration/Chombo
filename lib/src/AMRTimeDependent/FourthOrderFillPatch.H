@@ -194,15 +194,16 @@ protected:
   FourthOrderFineInterp m_spaceInterpolator;
 
   /// A data holder for using loop-based stencil where possible
-  struct BoxStencil
-  {
-    Box b; // Box on which to do the loop
-    IntVect s; // stencil type to use for the loop
-  };
+  // struct BoxStencil
+  // {
+    // Box b; // Box on which to do the loop
+    // IntVect s; // stencil type to use for the loop
+  // };
 
   /// ghosts as boxes of uncovered, coarsened fine patches
   /// NOTE: since i, j is faster indexing, have dir=2 bigger, then dir=1,0
-  LayoutData<Vector<BoxStencil> > m_coarsenedGhostBoxStencil;
+  //LayoutData<Vector<BoxStencil> > m_coarsenedGhostBoxStencil;
+  LayoutData<Vector<Box> > m_coarsenedGhostBoxes;
   /// flag to indicate only 1 stencil on each ghost box
   // LayoutData<Vector<bool> > m_coarsenedGhostLoopFlag;
 
@@ -225,7 +226,21 @@ protected:
      At a fixed time, interpolate in space to ghost cells (on Boxes)
      of a_fine from m_coarseFineData.
    */
-  void fillInterpSpaceFromCoarsened2(/// interpolated solution on this level
+  //void fillInterpSpaceFromCoarsened2(/// interpolated solution on this level
+  //                                    LevelData<FArrayBox>&         a_fineData,
+  //                                    /// starting coarse data component
+  //                                    int                           a_srcComp,
+  //                                    /// starting fine data component
+  //                                    int                           a_dstComp,
+  //                                    /// number of data components to interpolate
+  //                                    int                           a_numComp);
+
+  /// Interpolate in space only, from coarsened fine grids.
+  /**
+     At a fixed time, interpolate in space to ghost cells (on Boxes)
+     of a_fine from m_coarseFineData.
+   */
+  void fillInterpSpaceFromCoarsened3(/// interpolated solution on this level
                                     LevelData<FArrayBox>&         a_fineData,
                                     /// starting coarse data component
                                     int                           a_srcComp,

@@ -59,7 +59,7 @@ void FourthOrderPatchInterp::define(
           delete m_stencils(offset, 0);
         }
       m_defined = false;
-    } 
+    }
   m_domain = a_domain;
   m_refineCoarse = a_refineCoarse;
   m_maxStencilDist = a_maxStencilDist;
@@ -224,4 +224,33 @@ void FourthOrderPatchInterp::interpToFine(/// interpolated solution on this leve
   */
 }
 
+//////////////////////////////////////////////////////////////////////////////
+void FourthOrderPatchInterp::interpToFine(/// interpolated solution on this level
+                                          FArrayBox&                a_fine,
+                                          /// coarse solution
+                                          const FArrayBox&          a_coarse,
+                                          /// stencils
+                                          const BaseFab<IntVect>&   a_stencils,
+                                          /// we fill in fine cells within these coarse cells
+                                          const Box&                a_box)
+{
+  CH_TIME("FourthOrderPatchInterp::interpToFine:190");
+  CH_assert(m_defined);
+  CH_assert(SpaceDim == 3);
+  // CH_assert(m_isCoarseBoxSet);
+  const int* loop_lo = a_box.loVect();
+  const int* loop_hi = a_box.hiVect();
+#pragma omp parallel for collapse(SpaceDim)
+  for (int iz = loop_lo[2]; iz <= loop_hi[2]; ++iz)
+    for (int iy = loop_lo[1]; iy <= loop_hi[1]; ++iy)
+      for (int ix = loop_lo[0]; ix <= loop_hi[0]; ++ix)
+    {
+      const IntVect ivc = IntVect(ix, iy, iz);
+      const IntVect& stencilIndex = a_stencils(ivc, 0);
+      const FourthOrderInterpStencil& stencil =
+        *m_stencils(stencilIndex, 0);
+      // Using coarseFab, fill fine cells of fineFab within ivc.
+      stencil.fillFineThreadSafe(a_fine, a_coarse, ivc);
+    }
+}
 #include "NamespaceFooter.H"

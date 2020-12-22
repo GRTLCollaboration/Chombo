@@ -246,4 +246,28 @@ void FourthOrderFineInterp::interpOnPatch(
   // m_patchInterp.setCoarseBox(coarseBox);
 }
 
+//////////////////////////////////////////////////////////////////////////////
+void FourthOrderFineInterp::interpOnPatch(
+                                          /// interpolated solution on this level
+                                          FArrayBox&            a_fine,
+                                          /// coarse solution
+                                          const FArrayBox&      a_coarse,
+                                          /// index
+                                          const DataIndex&      a_dind,
+                                          /// we fill in fine cells within these coarse cells
+                                          const Box&            a_box)
+{
+  CH_TIME("FourthOrderFineInterp::interpOnPatch:252");
+  CH_assert(m_defined);
+  CH_assert(m_defined);
+
+  // const Box& coarseBox = m_layoutCoarsened[a_dind];
+  const BaseFab<IntVect>& stencilHereFab = m_stencilHere[a_dind];
+
+  // not needed
+  // m_patchInterp.setCoarseBox(coarseBox);
+  m_patchInterp.interpToFine(a_fine, a_coarse, stencilHereFab, a_box);
+}
+
+
 #include "NamespaceFooter.H"

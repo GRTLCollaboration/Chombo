@@ -100,6 +100,21 @@ public:
                             const IntVect&            a_stencil,
                             /// we fill in fine cells within these coarse cells
                             const Box&                a_box);
+
+  /// Interpolate in space.
+  /**
+     Interpolate in space to a_fine from a_coarse using a_stencil type
+     at fine cells within the coarse cells in a_box.
+   */
+  virtual void interpToFine(/// interpolated solution on this level
+                            FArrayBox&                a_fine,
+                            /// coarse solution
+                            const FArrayBox&          a_coarse,
+                            /// stencil type
+                            const BaseFab<IntVect>&   a_stencils,
+                            /// we fill in fine cells within these coarse cells
+                            const Box&                a_box);
+
 protected:
 
   /// all possible stencils, on (-m_maxStencilDist:+m_maxStencilDist)^SpaceDim

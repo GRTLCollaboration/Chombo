@@ -160,6 +160,20 @@ public:
                      /// fill fine cells on a box (within a_coarse)
                      const Box&            a_box);
 
+  /// Interpolate in space on a single patch.
+  /**
+     Interpolate in space to a_fine from a_coarse, using
+     the stencil index for the fine cells on a box.
+  */
+  void interpOnPatch(
+                     /// interpolated solution on this level
+                     FArrayBox&            a_fine,
+                     /// coarse solution
+                     const FArrayBox&      a_coarse,
+                     /// stencil
+                     const DataIndex&      a_dind,
+                     /// fill fine cells on a box (within a_coarse)
+                     const Box&            a_box);
 protected:
 
   /// Box layout for this level

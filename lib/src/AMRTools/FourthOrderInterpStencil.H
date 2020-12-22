@@ -81,6 +81,15 @@ public:
                 /// offset from base coarse cell to coarsened fine cells
                 const IntVect&     a_coarseToFineOffset = IntVect::Zero) const;
 
+  void fillFineThreadSafe(/// to fill at m_baseFineBox + m_refineVect*a_coarseDataCell + a_coarseToFineOffset
+                FArrayBox&         a_fineFab,
+                /// coarse data
+                const FArrayBox&   a_coarseFab,
+                /// coarse cell with fine subcells to fill in
+                const IntVect&     a_coarseDataCell,
+                /// offset from base coarse cell to coarsened fine cells
+                const IntVect&     a_coarseToFineOffset = IntVect::Zero) const;
+                
   void fillFine(/// to fill at m_baseFineBox + m_refineVect*a_coarseBox() + a_coarseToFineOffset
                 FArrayBox&         a_fineFab,
                 /// coarse data
