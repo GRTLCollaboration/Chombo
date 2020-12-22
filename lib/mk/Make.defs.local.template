@@ -42,19 +42,20 @@ makefiles+=Make.defs.local
 
 # Variables for optional features that don't affect filenames:
 
-#  USE_64          : if TRUE, use 64bit pointers on systems where 32bits is the default
-#  USE_COMPLEX     : if TRUE, enable the 'Complex' type
-#                    (default is TRUE, disable only if compiler doesn't allow it)
-#  USE_EB          : if TRUE, build Chombo Embedded Boundary code
-#  USE_CCSE        : if TRUE, build CCSE mglib and supporting code into one lib
-#  USE_HDF         : if TRUE, use the HDF5 library
-#   HDFINCFLAGS    : cpp options (-I*) for HDF5 include files
-#   HDFLIBFLAGS    : link options (-L* -l*) for HDF5 library files
-#   HDFMPIINCFLAGS : cpp options (-I*) for parallel HDF5 include files
-#   HDFMPILIBFLAGS : link options (-L* -l*) for parallel HDF5 library files
-#  USE_MF          : if TRUE, build Chombo MultiFluid code (requires USE_EB=TRUE)
-#  USE_MT          : if TRUE, enable Chombo memory tracking
-#  USE_SETVAL      : (TRUE,FALSE) use setVal to initialize all BaseFab<Real>
+#  USE_64             : if TRUE, use 64bit pointers on systems where 32bits is the default
+#  USE_ALIGNED_MEMORY : if TRUE, allocate memory using posix_memalign
+#  USE_COMPLEX        : if TRUE, enable the 'Complex' type
+#                       (default is TRUE, disable only if compiler doesn't allow it)
+#  USE_EB             : if TRUE, build Chombo Embedded Boundary code
+#  USE_CCSE           : if TRUE, build CCSE mglib and supporting code into one lib
+#  USE_HDF            : if TRUE, use the HDF5 library
+#   HDFINCFLAGS       : cpp options (-I*) for HDF5 include files
+#   HDFLIBFLAGS       : link options (-L* -l*) for HDF5 library files
+#   HDFMPIINCFLAGS    : cpp options (-I*) for parallel HDF5 include files
+#   HDFMPILIBFLAGS    : link options (-L* -l*) for parallel HDF5 library files
+#  USE_MF             : if TRUE, build Chombo MultiFluid code (requires USE_EB=TRUE)
+#  USE_MT             : if TRUE, enable Chombo memory tracking
+#  USE_SETVAL         : (TRUE,FALSE) use setVal to initialize all BaseFab<Real>
 
 # These variables are system-dependent but usually dont have to be changed:
 
@@ -104,52 +105,53 @@ makefiles+=Make.defs.local
 ## Override the default values here
 
 ## Configuration variables
-#DIM           =
-#DEBUG         =
-#OPT           =
-#PRECISION     =
-#PROFILE       =
-#CXX           =
-#FC            =
-#MPI           =
+#DIM                =
+#DEBUG              =
+#OPT                =
+#PRECISION          =
+#PROFILE            =
+#CXX                =
+#FC                 =
+#MPI                =
 ## Note: don't set the MPICXX variable if you don't have MPI installed
-#MPICXX        =
-#OBJMODEL      =
-#XTRACONFIG    =
+#MPICXX             =
+#OBJMODEL           =
+#XTRACONFIG         =
 ## Optional features
-#USE_64        =
-#USE_COMPLEX   =
-#USE_EB        =
-#USE_CCSE      =
-#USE_HDF       =
-#HDFINCFLAGS   = -I<hdf_serial_dir>/include
-#HDFLIBFLAGS   = -L<hdf_serial_dir>/lib -lhdf5 -lz
+#USE_64             =
+#USE_ALIGNED_MEMORY =
+#USE_COMPLEX        =
+#USE_EB             =
+#USE_CCSE           =
+#USE_HDF            =
+#HDFINCFLAGS        = -I<hdf_serial_dir>/include
+#HDFLIBFLAGS        = -L<hdf_serial_dir>/lib -lhdf5 -lz
 ## Note: don't set the HDFMPI* variables if you don't have parallel HDF installed
-#HDFMPIINCFLAGS= -I<hdf_parallel_dir>/include
-#HDFMPILIBFLAGS= -L<hdf_parallel_dir>/lib -lhdf5 -lz
-#USE_MF        =
-#USE_MT        =
-#USE_SETVAL    =
-#CH_AR         =
-#CH_CPP        =
-#DOXYGEN       =
-#LD            =
-#PERL          =
-#RANLIB        =
-#cppdbgflags   =
-#cppoptflags   =
-#cxxcppflags   =
-#cxxdbgflags   =
-#cxxoptflags   =
-#cxxprofflags  =
-#fcppflags     =
-#fdbgflags     =
-#foptflags     =
-#fprofflags    =
-#flibflags     =
-#lddbgflags    =
-#ldoptflags    =
-#ldprofflags   =
-#syslibflags   =
+#HDFMPIINCFLAGS     = -I<hdf_parallel_dir>/include
+#HDFMPILIBFLAGS     = -L<hdf_parallel_dir>/lib -lhdf5 -lz
+#USE_MF             =
+#USE_MT             =
+#USE_SETVAL         =
+#CH_AR              =
+#CH_CPP             =
+#DOXYGEN            =
+#LD                 =
+#PERL               =
+#RANLIB             =
+#cppdbgflags        =
+#cppoptflags        =
+#cxxcppflags        =
+#cxxdbgflags        =
+#cxxoptflags        =
+#cxxprofflags       =
+#fcppflags          =
+#fdbgflags          =
+#foptflags          =
+#fprofflags         =
+#flibflags          =
+#lddbgflags         =
+#ldoptflags         =
+#ldprofflags        =
+#syslibflags        =
 
 #end  -- dont change this line

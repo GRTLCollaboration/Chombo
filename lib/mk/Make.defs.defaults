@@ -102,6 +102,7 @@ LDFLAGS?=
 
 # Chombo optional features
 USE_64?=TRUE#        #64bit pointers
+USE_ALIGNED_MEMORY?=FALSE  #Allocate aligned memory
 USE_MT?=FALSE#         #memory tracking
 # USE_SETVAL?=TRUE#     #initialize FAB data
 USE_COMPLEX?=TRUE#    #type for complex numbers

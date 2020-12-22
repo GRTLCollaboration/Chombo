@@ -24,6 +24,7 @@
 ### There are several user variables that control the behavior of the rules
 ###  defined here.  They are:
 ###    USE_64      if TRUE, use 64bit pointers on systems where 32bits is the default
+###    USE_ALIGNED_MEMORY if TRUE, allocate memory using posix_memalign
 ###    USE_COMPLEX if TRUE, enable the 'Complex' type
 ###                 (default is TRUE, disable only if compiler doesn't allow it)
 ###    USE_EB      if TRUE, build Chombo Embedded Boundary code
