@@ -241,11 +241,12 @@ void FourthOrderPatchInterp::interpToFine(/// interpolated solution on this leve
   const int* loop_lo = a_box.loVect();
   const int* loop_hi = a_box.hiVect();
 #ifdef _OPENMP
-#pragma omp parallel for collapse(SpaceDim)
+#pragma omp parallel for collapse(SpaceDim + 1)
 #endif
-  for (int iz = loop_lo[2]; iz <= loop_hi[2]; ++iz)
-    for (int iy = loop_lo[1]; iy <= loop_hi[1]; ++iy)
-      for (int ix = loop_lo[0]; ix <= loop_hi[0]; ++ix)
+  for (int icomp = 0; icomp < a_fine.nComp(); ++icomp)
+    for (int iz = loop_lo[2]; iz <= loop_hi[2]; ++iz)
+      for (int iy = loop_lo[1]; iy <= loop_hi[1]; ++iy)
+        for (int ix = loop_lo[0]; ix <= loop_hi[0]; ++ix)
     {
       const IntVect ivc = IntVect(ix, iy, iz);
       const IntVect& stencilIndex = a_stencils(ivc, 0);
@@ -254,7 +255,7 @@ void FourthOrderPatchInterp::interpToFine(/// interpolated solution on this leve
       const FourthOrderInterpStencil& stencil =
         *m_stencils(stencilIndex, 0);
       // Using coarseFab, fill fine cells of fineFab within ivc.
-      stencil.fillFine(a_fine, a_coarse, ivc, IntVect::Zero, threadsafe);
+      stencil.fillFine(a_fine, a_coarse, ivc, icomp);
     }
 }
 #include "NamespaceFooter.H"
