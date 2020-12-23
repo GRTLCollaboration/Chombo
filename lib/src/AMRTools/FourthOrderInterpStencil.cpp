@@ -247,7 +247,8 @@ void FourthOrderInterpStencil::fillFine(
                                         FArrayBox&         a_fineFab,
                                         const FArrayBox&   a_coarseFab,
                                         const IntVect&     a_coarseDataCell,
-                                        const IntVect&     a_coarseToFineOffset) const
+                                        const IntVect&     a_coarseToFineOffset,
+                                        const bool         a_threadsafe) const
 {
   CH_TIME("FourthOrderInterpStencil::fillFine:234");
   CH_assert(m_defined);
@@ -276,62 +277,7 @@ void FourthOrderInterpStencil::fillFine(
   // Note that shiftedFineBox is contained in
   // m_baseFineBox == (IntVect::Zero, (m_refineCoarse - 1) * interpUnit).
 
-#pragma omp parallel for
-  for (int icomp = 0; icomp < a_fineFab.nComp(); icomp++)
-    {
-      for (BoxIterator bit(shiftedFineBox); bit.ok(); ++bit)
-        {
-          IntVect ivFine = bit();
-          Real val = 0.;
-          for (int inbr = 0; inbr < m_stencilSize; inbr++)
-            {
-              IntVect ivCoarse = a_coarseDataCell + m_coarseBaseIndices[inbr];
-              val +=
-                m_coarseToFineFab(ivFine, inbr) * a_coarseFab(ivCoarse, icomp);
-            }
-          a_fineFab(fineBase + ivFine, icomp) = val;
-        }
-    }
-
-  // dummy statement in order to get around gdb bug
-  int dummy_unused = 0; dummy_unused++;
-}
-
-
-//////////////////////////////////////////////////////////////////////////////
-void FourthOrderInterpStencil::fillFineThreadSafe(
-                                        FArrayBox&         a_fineFab,
-                                        const FArrayBox&   a_coarseFab,
-                                        const IntVect&     a_coarseDataCell,
-                                        const IntVect&     a_coarseToFineOffset) const
-{
-  CH_TIME("FourthOrderInterpStencil::fillFine:234");
-  CH_assert(m_defined);
-  // This function fills the fine cells inside a_coarseDataCell
-  // with interpolated data from a_coarseFab.
-  // petermc, 3 Oct 2012, changed from m_refineCoarse to m_refineVect
-  // because there is no refinement in m_fixedDims.
-  IntVect fineBase = m_refineVect * a_coarseDataCell + a_coarseToFineOffset;
-  // The fine cells to be filled in are at m_baseFineBox + fineBase,
-  // where
-  // m_baseFineBox == (IntVect::Zero, (m_refineCoarse - 1) * interpUnit).
-
-  // The coarse cells from which we draw data are at
-  // {a_coarseDataCell + m_coarseBaseIndices[i*D+[0:D-1]]: 0 <= i < m_stencilSize}.
-
-  // added by petermc, 20 Aug 2009:  fill in a_fineFab only where you can.
-  // (previously, had set shiftedFineBox = m_baseFineBox)
-  Box shiftedFineBox(a_fineFab.box());
-  shiftedFineBox.shift(-fineBase);
-  shiftedFineBox &= m_baseFineBox; // intersect with [0:nref-1]^D or slice
-
-  // Fill in a_fineFab(shiftedFineBox + fineBase)
-  // using a_coarseFab(a_coarseDataCell + m_coarseBaseIndices)
-  // and stencil coefficients in m_coarseToFineFab(shiftedFineBox).
-
-  // Note that shiftedFineBox is contained in
-  // m_baseFineBox == (IntVect::Zero, (m_refineCoarse - 1) * interpUnit).
-
+#pragma omp parallel for if (!a_threadsafe)
   for (int icomp = 0; icomp < a_fineFab.nComp(); icomp++)
     {
       for (BoxIterator bit(shiftedFineBox); bit.ok(); ++bit)

@@ -240,17 +240,21 @@ void FourthOrderPatchInterp::interpToFine(/// interpolated solution on this leve
   // CH_assert(m_isCoarseBoxSet);
   const int* loop_lo = a_box.loVect();
   const int* loop_hi = a_box.hiVect();
+#ifdef _OPENMP
 #pragma omp parallel for collapse(SpaceDim)
+#endif
   for (int iz = loop_lo[2]; iz <= loop_hi[2]; ++iz)
     for (int iy = loop_lo[1]; iy <= loop_hi[1]; ++iy)
       for (int ix = loop_lo[0]; ix <= loop_hi[0]; ++ix)
     {
       const IntVect ivc = IntVect(ix, iy, iz);
       const IntVect& stencilIndex = a_stencils(ivc, 0);
+      // this already is enclosed by an OpenMP region
+      constexpr bool threadsafe = true;
       const FourthOrderInterpStencil& stencil =
         *m_stencils(stencilIndex, 0);
       // Using coarseFab, fill fine cells of fineFab within ivc.
-      stencil.fillFineThreadSafe(a_fine, a_coarse, ivc);
+      stencil.fillFine(a_fine, a_coarse, ivc, IntVect::Zero, threadsafe);
     }
 }
 #include "NamespaceFooter.H"
