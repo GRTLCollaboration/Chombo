@@ -7,8 +7,12 @@ git_status_check := ""
 
 src_dirs_full = . $(src_dirs)
 src_extensions = .cpp .hpp .H .ChF
+# Get all dependent source files
 srcs_full = $(realpath $(wildcard $(foreach ext,$(src_extensions),$(addsuffix /*$(ext),$(src_dirs_full)))))
-git_status_check += $(foreach src,$(srcs_full),$(shell git diff --stat $(src)))
+# Remove all source files not in this git repository
+srcs_filtered = $(filter $(realpath $(shell git rev-parse --show-toplevel))%,$(srcs_full))
+# Check if any files have uncommitted/unstaged changes
+git_status_check += $(foreach src,$(srcs_filtered),$(shell git diff --stat $(src)))
 ifneq ($(strip $(git_status_check)),"")
 	git_status := "-dirty"
 endif
