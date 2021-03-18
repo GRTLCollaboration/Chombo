@@ -296,6 +296,16 @@ public:
 
   ///
   /**
+     Run postWriteCheckpoint if data should be manipulated after writing a checkpoint
+
+  */
+  virtual
+    void postWriteCheckpoint ()
+    {
+    }
+
+  ///
+  /**
      Run prePlotLevel if data should be manipulated before a plot file
 
   */

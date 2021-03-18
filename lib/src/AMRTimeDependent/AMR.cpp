@@ -1905,6 +1905,7 @@ void AMR::writeCheckpointFile() const
     CH_TIME("AMR::closeCheckpoint");
     handle.close();
   }
+  m_amrlevels[0]->postWriteCheckpoint();
 #endif
 }
 //-----------------------------------------------------------------------
