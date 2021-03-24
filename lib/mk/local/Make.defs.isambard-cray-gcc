@@ -1,0 +1,24 @@
+makefiles+=Make.defs.local
+
+DIM              = 3
+DEBUG            = FALSE
+OPT              = HIGH
+PRECISION        = DOUBLE
+CXX              = g++
+FC               = gfortran
+MPI              = FALSE
+MPICXX           = mpicxx 
+USE_64           = TRUE
+USE_HDF          = FALSE
+syslibflags      = -L$(ARMPL_DIR)/lib -larmpl 
+HDFINCFLAGS      = -I$(HDF5_DIR)/include
+HDFMPIINCFLAGS   = -I$(HDF5_DIR)/include
+HDFLIBFLAGS      = -L$(HDF5_DIR)/lib -lhdf5
+HDFMPILIBFLAGS   = -L$(HDF5_DIR)/lib -lhdf5
+USE_MT           = FALSE        # disables Chombo's internal memory tracking as it seems to disagree with Allinea MAP
+OPENMPCC         = TRUE
+cxxdbgflags      = -O0 -g
+cxxoptflags      = -O3 -ffast-math -freciprocal-math -fassociative-math -g -mcpu=native
+fdbgflags        = -g
+foptflags        = -O3 -ffast-math -freciprocal-math -fassociative-math -g -mcpu=native
+cxxcppflags += -DDISABLE_AHFINDER -UCH_USE_MEMORY_TRACKING -I$(ARMPL_DIR)/include
