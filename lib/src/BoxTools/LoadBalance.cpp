@@ -30,6 +30,7 @@ using std::fstream;
 #endif
 
 #include "NamespaceHeader.H"
+#include <limits>
 
 // local prototypes
 int
