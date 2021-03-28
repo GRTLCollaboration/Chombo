@@ -23,6 +23,8 @@
 ###    USE_64      if TRUE, use 64bit pointers on systems where 32bits is the default
 ###    USE_COMPLEX if TRUE, enable the 'Complex' type
 ###                 (default is TRUE, disable only if compiler doesn't allow it)
+###    USE_ALIGNED_MEMORY if TRUE, allocate memory using posix_memalign
+###    MEMORY_ALIGNMENT size of alignment if using aligned memory
 ###    USE_EB      if TRUE, build Chombo Embedded Boundary code
 ###    USE_CCSE    if TRUE, build CCSE mglib and supporting code into one lib
 ###    USE_HDF     if TRUE, use the HDF5 library
@@ -120,6 +122,8 @@ export USE_4D
 export USE_5D
 export USE_6D
 export USE_64
+export USE_ALIGNED_MEMORY
+export MEMORY_ALIGNMENT
 export USE_CCSE
 export USE_COMPLEX
 export USE_EB
@@ -153,18 +157,18 @@ endif
 ##  objects      is the list of object files to build
 ##  depends      is the list of dependency files corresponding to the objects to compile
 ##  _lib_config  is the config-dependent filename for the current target library
-##  _app_configs is the list of config-dependent filenames for the 
+##  _app_configs is the list of config-dependent filenames for the
 ##               executable targets
 ##  _other_app_objects is the list of object files needed to build an executable in addition
 ##               to the file with the same name as the executable
 ##               (Note: Make.example disables this by setting AUTONAME=FALSE)
-##  _lib_names   is the list of generic library names which the target 
-##               (library or executable) depends on, derived from $(LibNames) 
+##  _lib_names   is the list of generic library names which the target
+##               (library or executable) depends on, derived from $(LibNames)
 ##               but translated to all lower-case
-##  _libs        is the list of configuration-dependent library filenames 
+##  _libs        is the list of configuration-dependent library filenames
 ##               which the executable depends on, derived from _lib_names.
 ##
-## NOTE: only one of _lib_config, _app_configs will be meaningful depending 
+## NOTE: only one of _lib_config, _app_configs will be meaningful depending
 ##       on $lbase,$ebase.
 
 # compute the configuration string, $(config), based on the user-level config variables
@@ -178,17 +182,17 @@ CSHELLCMD=/bin/csh -f -c
 
 # wildcard patterns for source files that Chombo can build.
 # The .BL_F prefix is for CCSE .F files.
-src_wildcard := *.cpp *.F90 *.f90 *.ChF *.F *.f *.BL_F 
+src_wildcard := *.cpp *.F90 *.f90 *.ChF *.F *.f *.BL_F
 
 # names of libraries and executables depend on the configuration string
 # only one of these will be defined for any particular GNUmakefile
 _lib_config  := $(CHOMBO_HOME)/lib$(lbase)$(config).a#  #library to build
-# the patsubst here has the nice benefit of removing any trailing spaces 
+# the patsubst here has the nice benefit of removing any trailing spaces
 # which may have crept into ebase (which prevents a class of _really_ hard
 # to find make problems
 _app_configs := $(patsubst %,%$(config).ex,$(ebase))#   #one or more apps to build
 
-# These variables list the object and dependency files. 
+# These variables list the object and dependency files.
 # The AUTONAME=FALSE case is only when $ebase is set by Make.examples.
 ifeq ($(AUTONAME),FALSE)
   # examples make their own dependencies and objects
@@ -207,7 +211,7 @@ endif
 
 # Chombo library filenames are lower case, regardless of the src
 # subdirectory name.  Also note that we automatically add BaseTools to LibNames,
-# unless we're either building the BaseTools library itself, or BaseTools already 
+# unless we're either building the BaseTools library itself, or BaseTools already
 # appears in LibNames
 ifeq  ($(findstring basetools,$(lbase)), )
 ifeq  ($(findstring BaseTools,$(LibNames)), )
@@ -215,7 +219,7 @@ LibNames +=  BaseTools
 endif
 endif
 
-_lib_names := $(shell echo $(LibNames) | tr 'A-Z' 'a-z') 
+_lib_names := $(shell echo $(LibNames) | tr 'A-Z' 'a-z')
 # the full pathnames to the library files
 _libs := $(patsubst %,$(CHOMBO_HOME)/lib%$(config).a,$(_lib_names))
 
@@ -224,7 +228,7 @@ _libs := $(patsubst %,$(CHOMBO_HOME)/lib%$(config).a,$(_lib_names))
 ##
 cxxc := $(subst FALSE,$(CXX),$(subst TRUE,$(MPICXX),$(MPI)))
 
-libincludes = $(foreach i,$(LibNames),-I$(CHOMBO_HOME)/src/$i) 
+libincludes = $(foreach i,$(LibNames),-I$(CHOMBO_HOME)/src/$i)
 
 ##
 ## Finally, set the variables that are user-visible.
@@ -235,7 +239,7 @@ ifeq ($(OPENMPCC),TRUE)
 openintcc = 1
 endif
 
-openmpflag = 
+openmpflag =
 ifeq ($(OPENMPFC),TRUE)
 openmpflag = -P
 endif
@@ -259,6 +263,8 @@ $(subst FALSE,,$(subst TRUE,-DCH_COUNT_FLOPS,$(COUNT_FLOPS)))\
 $(subst FALSE,-DCH_NTIMER,$(subst TRUE,,$(USE_TIMER)))\
 $(subst FALSE,,$(subst TRUE,-DCH_USE_64,$(USE_64)))\
 $(subst DOUBLE,-DCH_USE_DOUBLE,$(subst FLOAT,-DCH_USE_FLOAT,$(PRECISION)))\
+$(subst FALSE,,$(subst TRUE,-DCH_USE_ALIGNED_MEMORY,$(USE_ALIGNED_MEMORY)))\
+-DCH_MEMORY_ALIGNMENT=$(MEMORY_ALIGNMENT)\
 $(subst FALSE,,$(subst TRUE,-DCH_USE_HDF5 $(subst FALSE,$(HDFINCFLAGS),$(subst TRUE,$(HDFMPIINCFLAGS),$(MPI))),$(USE_HDF)))\
 $(cxxcppflags) $(fcppflags) $(appcppflags)\
 $(subst FALSE,,$(subst TRUE,$(fftincflags),$(USE_FFTW)))\
@@ -266,7 +272,7 @@ $(subst FALSE,,$(subst TRUE, -DCH_PAPI $(PAPIINCFLAGS),$(USE_PAPI)))\
 $(subst FALSE,,$(subst TRUE, -DCH_USE_PETSC $(petscincflags),$(USE_PETSC)))\
 $(subst FALSE,,$(subst TRUE, -DCH_USE_LAPACK $(lapackincflags),$(USE_LAPACK)))\
 $(subst FALSE,,$(subst TRUE, -DCH_USE_PYTHON ,$(USE_PYTHON)))\
-$(cppcallsfort) $(libincludes) 
+$(cppcallsfort) $(libincludes)
 
 CXXFLAGS := \
 $(subst FALSE,,$(subst TRUE,$(cxxdbgflags),$(DEBUG)))\
@@ -337,7 +343,7 @@ all-run: $(CHOMBO_HOME)/mk/.check.$(config) all-test run-only
 ifndef INPUT
   INPUT = $i.inputs
 endif
-run-only: 
+run-only:
 ifeq ($(PROFILE),TRUE)
 	$(ECHO)err=0;$(foreach i,$(ebase),echo "Running $i for configuration $(config) ...";$(RUN)$i$(config).ex $(RUNFLAGS) $(VERBOSE) $(INPUT);stat=$$?;$(PROF) ./$i$(config).ex > $i$(config).prof; echo "   profile written to $i$(config).prof" ; echo "... $i finished with status $$stat";echo "";if [ $$stat -ne 0 ]; then err=$$stat ; fi ; ) ; exit $err
 else
@@ -360,7 +366,7 @@ endif
 ## Rule to install the header files in the $CHOMBO_HOME/include directory
 ## [NOTE: this target also appears in $CHOMBO_HOME/GNUmakefile.]
 
-ifeq ($(MULTIDIM),TRUE) 
+ifeq ($(MULTIDIM),TRUE)
 MULTIDIM_INCLUDE_DIR = $(CHOMBO_HOME)/include/multidim
 endif
 
@@ -424,13 +430,13 @@ endif
 ifdef LibNames
 
 # rules to build a Chombo library in another directory
-$(LibNames): 
+$(LibNames):
 	+$(ECHO)$(MAKE) --no-print-directory --directory=$(CHOMBO_HOME) $@
 
-$(_lib_names): 
+$(_lib_names):
 	+$(ECHO)$(MAKE) --no-print-directory --directory=$(CHOMBO_HOME) $(patsubst lib%$(config).a,%,$@)
 
-$(_libs): 
+$(_libs):
 	+$(ECHO)$(MAKE) --no-print-directory --directory=$(CHOMBO_HOME) $(patsubst $(CHOMBO_HOME)/lib%$(config).a,%,$@)
 
 endif
@@ -441,8 +447,8 @@ endif
 #       parallel, so its safer (albeit slower) to do it all at once.  The
 #       drawback of this approach is that we have to save the object files
 #       instead of deleting them after they are put in the library. Sigh.
-# ALSO: XTRALIBS now has a meaning for libraries! If you specify one 
-#				static (.a) library in XTRALIBS, the object files are 
+# ALSO: XTRALIBS now has a meaning for libraries! If you specify one
+#				static (.a) library in XTRALIBS, the object files are
 #				extracted from the library and dumped into the target archive.
 #			  -JNJ
 $(_lib_config): $(XTRALIBS) $(addprefix o/$(config)/,$(objects))

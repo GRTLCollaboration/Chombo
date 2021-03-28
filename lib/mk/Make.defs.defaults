@@ -106,6 +106,8 @@ USE_MT?=FALSE#         #memory tracking
 # USE_SETVAL?=TRUE#     #initialize FAB data
 USE_COMPLEX?=TRUE#    #type for complex numbers
 USE_TIMER?=TRUE#      #Chombo::Timer
+USE_ALIGNED_MEMORY?=TRUE#     #Allocate aligned memory
+MEMORY_ALIGNMENT?=2*1024*1024#      #Memory alignment size
 
 USE_HDF?=TRUE#        #HDF5 file i/o
 HDFINCFLAGS?=

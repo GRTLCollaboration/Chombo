@@ -117,6 +117,8 @@ defs:
 	@echo "RUN=$(RUN)"
 	@echo "RUNFLAGS=$(RUNFLAGS)"
 	@echo "USE_64=$(USE_64)"
+	@echo "USE_ALIGNED_MEMORY=$(USE_ALIGNED_MEMORY)"
+	@echo "MEMORY_ALIGNMENT=$(MEMORY_ALIGNMENT)"
 	@echo "USE_COMPLEX=$(USE_COMPLEX)"
 	@echo "USE_EB=$(USE_EB)"
 	@echo "USE_FFTW=$(USE_FFTW)"

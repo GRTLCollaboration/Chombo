@@ -5,7 +5,7 @@
 ### This makefile defines all the  default multidim rules for Chombo.
 ### It should be `include'd in all other makefiles as the last line of the file.
 ###
-### The file `$(CHOMBO_HOME)/mk/Make.defs' and $(CHOMBO_HOME)/mk/Make.rules 
+### The file `$(CHOMBO_HOME)/mk/Make.defs' and $(CHOMBO_HOME)/mk/Make.rules
 ### should have been `include'd before this one.
 ###
 ### None of the variables are exported because this makefile is intended
@@ -26,6 +26,8 @@
 ###    USE_64      if TRUE, use 64bit pointers on systems where 32bits is the default
 ###    USE_COMPLEX if TRUE, enable the 'Complex' type
 ###                 (default is TRUE, disable only if compiler doesn't allow it)
+###    USE_ALIGNED_MEMORY if TRUE, allocate memory using posix_memalign
+###    MEMORY_ALIGNMENT size of alignment if using aligned memory
 ###    USE_EB      if TRUE, build Chombo Embedded Boundary code
 ###    USE_CCSE    if TRUE, build CCSE mglib and supporting code into one lib
 ###    USE_HDF     if TRUE, use the HDF5 library
@@ -172,5 +174,3 @@ endif
 #XXX# [NOTE: I think this is unnecessary now. <dbs>]
 #XXXo/$(5dconfig) f/$(5dconfig) d/$(5dconfig) p/$(5dconfig):
 #XXX	mkdir -p $@
-
-

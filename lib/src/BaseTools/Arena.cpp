@@ -91,9 +91,15 @@ void* BArena::alloc(size_t a_sz)
   // machines!
   //void* ret =  calloc(1,a_sz);
   //void* ret =  malloc(a_sz);
+#if defined(CH_USE_ALIGNED_MEMORY) && CH_MEMORY_ALIGNMENT > 0
   //MK (26/04/17): replaced malloc with aligned memory allocation. 2MB for huge page boundaries
+  //MR: This is still the default but can switch to malloc or change alignment
+  // if desired
   void* ret;
-  posix_memalign(&ret,2*1024*1024,a_sz);
+  posix_memalign(&ret, CH_MEMORY_ALIGNMENT, a_sz);
+#else
+  void* ret = malloc(a_sz);
+#endif
 
   if (ret == NULL)
   {
