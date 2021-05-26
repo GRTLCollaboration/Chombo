@@ -9,6 +9,7 @@
 #endif
 
 #include <iostream>
+#include <limits>
 #include <list>
 #include <set>
 using std::cout;
@@ -200,7 +201,7 @@ void split_load(Vector<int>& procs, Vector<long long>& loads,
     }
   if(start == end-1) MayDay::Error(" we should not arrive at this terminal case in LoadBalance \n");
   long long base = 0;
-  if(start!=0) base=sum[start-1]; 
+  if(start!=0) base=sum[start-1];
   long long half = (sum[end-1]-base)/2+base;
   int scan=start;
   while(sum[scan]<half) scan++;
@@ -211,7 +212,7 @@ void split_load(Vector<int>& procs, Vector<long long>& loads,
   split_load(procs, loads, sum, p0,   p,  start,  scan);
   split_load(procs, loads, sum, p ,   p1, scan,    end);
 }
-  
+
 int LoadBalance(Vector<int>&             a_procAssignments,
                 const Vector<long long>& a_computeLoads,
                 const Vector<Box>&       a_boxes,
@@ -241,7 +242,7 @@ int LoadBalance(Vector<int>&             a_procAssignments,
       return 0;
     }
 
- 
+
   Vector<long long> loads(a_LBnumProc, 0);
   /*
   //still serial version based on prefix sum   (bvs)
@@ -253,7 +254,7 @@ int LoadBalance(Vector<int>&             a_procAssignments,
 
   double totalLoad = sum.back();
 
-  */ 
+  */
   // first, compute 'total load'
   double totalLoad = 0;
   for (int ibox = 0; ibox < Nboxes; ++ibox)
@@ -289,7 +290,7 @@ int LoadBalance(Vector<int>&             a_procAssignments,
   // number of boxes to be farmed out is not much larger than the total number
   // of processors doing the work.  (ndk)
 
- 
+
   int bin = 0;
   double remainingLoad = totalLoad;
   double dynamicGoal = goal;
@@ -367,7 +368,7 @@ int LoadBalance(Vector<int>&             a_procAssignments,
       //  ibox, localLoad, a_computeLoads[ibox], remainingLoad, dynamicGoal, a_procAssignments[ibox]);
       //pout() << ctmp;
     }
-  
+
 #ifndef CH_NTIMER
   // Write a file per call to LoadBalance
 
@@ -448,8 +449,8 @@ int LoadBalance(Vector<int>&             a_procAssignments,
         else
         {
 
- 
-  
+
+
           LBFILE << "rank" << i << "  load=" << (long)loads[i] << " boxes("
                << NboxCount << ")=";
           if (printEveryBox)
@@ -462,11 +463,11 @@ int LoadBalance(Vector<int>&             a_procAssignments,
               }
             }
           }
- 
+
         }
       }
     }
- 
+
     LBFILE<<"\n\n";
   }
 #endif
@@ -823,7 +824,7 @@ LoadBalance(Vector<Vector<int> >& procAssignments  //output: processor number
 /// convenience function to gather a distributed set of Boxes with their corresponding processor assignment
 /** Assumption is that each processor has at most one valid box. This is useful when interacting with other distributed codes which might not have the entire set of distributed boxes on all processors.
  */
-int LoadBalance(Vector<int>& a_procAssignments, 
+int LoadBalance(Vector<int>& a_procAssignments,
                 Vector<Box>& a_boxes,
                 const Box&   a_localGridBox,
                 const int    a_numProc)
@@ -839,9 +840,9 @@ int LoadBalance(Vector<int>& a_procAssignments,
   if (numBox == 1) tempBoxes[0] = a_localGridBox;
 
 #ifdef CH_MPI
-  Box* nonConstBox = const_cast<Box*>(&a_localGridBox);  
+  Box* nonConstBox = const_cast<Box*>(&a_localGridBox);
   int boxSize = sizeof(Box);
-  status = MPI_Allgather(nonConstBox,  boxSize,  MPI_BYTE, &(tempBoxes[0]), 
+  status = MPI_Allgather(nonConstBox,  boxSize,  MPI_BYTE, &(tempBoxes[0]),
                          boxSize , MPI_BYTE , Chombo_MPI::comm);
 #endif
 
@@ -851,12 +852,12 @@ int LoadBalance(Vector<int>& a_procAssignments,
       tempProcAssign[i] = i;
     }
 
-  // filter out any empty boxes (it's OK if there are fewer 
-  // boxes than processors, but DisjointBoxLayout will 
+  // filter out any empty boxes (it's OK if there are fewer
+  // boxes than processors, but DisjointBoxLayout will
   // choke if given an empty box, so remove them now...
-  
+
   // this isn't the most efficient way to do this -- assumption
-  // is that we're not dealing with all that many boxes, and that 
+  // is that we're not dealing with all that many boxes, and that
   // this is only done once anyway...
   for (int i=0; i<tempBoxes.size(); i++)
     {
@@ -866,7 +867,7 @@ int LoadBalance(Vector<int>& a_procAssignments,
           a_procAssignments.push_back(tempProcAssign[i]);
         }
     }
-  
+
   return status;
 }
 
@@ -898,7 +899,7 @@ int basicLoadBalance(Vector<int>& a_procAssignments, int a_numBoxes, int a_numPr
   }
   return 0;
 }
-      
+
 ////////////////////////////////////////////////////////////////
 //                utility functions                           //
 ////////////////////////////////////////////////////////////////
