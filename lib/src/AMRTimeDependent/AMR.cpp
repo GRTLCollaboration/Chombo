@@ -916,8 +916,15 @@ void AMR::run(Real a_max_time, int a_max_step)
       if (stop_evolution)
         {
           pout() << "AMR: evolution stopped" << endl;
-          if ((m_checkpoint_interval > 0) && write_checkpoint &&
-              (m_lastcheck_step != m_cur_step))
+          // Increment time and step so it is correct in the final checkpoint
+          // (this is done immediately before normal checkpoint writing).
+          m_cur_step++;
+          m_cur_time += old_dt_base;
+          for (int level = 0; level <= m_max_level; ++level)
+            {
+              m_amrlevels[level]->time(m_cur_time);
+            }
+          if ((m_checkpoint_interval > 0) && write_checkpoint)
             {
               pout() << "writing checkpoint file" << endl;
               writeCheckpointFile();
