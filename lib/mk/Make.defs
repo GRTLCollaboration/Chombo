@@ -283,6 +283,11 @@ ifeq ($(findstring Intel,$(cxxname)),Intel)
   cxxname:=clang++
 endif
 
+# Cray LLVM based compiler
+ifeq ($(findstring Cray,$(cxxname)),Cray)
+  cxxname:=clang++
+endif
+
 # Apple clang++ compiler
 ifeq ($(findstring clang,$(cxxname)),clang)
   include $(CHOMBO_HOME)/mk/compiler/Make.defs.clang++
