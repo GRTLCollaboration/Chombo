@@ -18,12 +18,24 @@ makefiles+=local/Make.defs.clang++
 # Changed c++11 flag into c++14 as required for GRChombo
 _cxxbaseflags = -std=c++14 -Wno-sign-compare
 
+# Need to test for Intel DPC++/C++ compiler for OpenMP flags
+clangcxxname := $(firstword $(shell $(CXX) --version))
+
 # SIMD pragmas are now OpenMP ones and may want to vectorize even if not
 # using OpenMP.
 ifeq ($(OPENMPCC),TRUE)
-  _cxxbaseflags += -fopenmp
+  ifeq ($(findstring Intel,$(clangcxxname)),Intel)
+    _cxxbaseflags += -fiopenmp # Use Intel OpenMP
+  else
+    _cxxbaseflags += -fopenmp
+  endif
 else
-  _cxxbaseflags += -fopenmp-simd -Wno-unknown-pragmas
+  ifeq ($(findstring Intel,$(clangcxxname)),Intel)
+    _cxxbaseflags += -fiopenmp-simd # Use Intel OpenMP SIMD
+  else
+    _cxxbaseflags += -fopenmp-simd
+  endif
+  _cxxbaseflags += -Wno-unknown-pragmas
 endif
 defcxxcomflags := $(_cxxbaseflags)
 defcxxoptflags := $(defcxxcomflags) -O3 -march=native
