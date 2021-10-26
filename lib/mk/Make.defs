@@ -278,8 +278,13 @@ ifeq ($(cxxname),Apple)
   cxxname:=clang++
 endif 
 
+# Intel oneAPI compiler --version sometimes has Intel in the first word
+ifeq ($(findstring Intel,$(cxxname)),Intel)
+  cxxname:=clang++
+endif
+
 # Apple clang++ compiler
-ifeq ($(cxxname),clang++)
+ifeq ($(findstring clang,$(cxxname)),clang)
   include $(CHOMBO_HOME)/mk/compiler/Make.defs.clang++
 endif
 ## Finally, set the compiler variables to the defaults if they aren't set.
