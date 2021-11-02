@@ -53,8 +53,13 @@ ifeq ($(fname),gfortran)
   deffoptflags = -O3 -funroll-loops -march=native
   deffdbgflags = -g -ggdb -Wall -W
   defflibflags  += -lgfortran -lm
+else ifeq ($(fname),$(filter $(fname),ifort ifx))
+  # Default flags for the Intel Fortran compiler
+  deffoptflags = -O3 -xHost
+  deffdbgflags = -g -check bounds -check uninit -ftrapuv
+  defflibflags += -lifcore -lifport -limf
 else
   deffdbgflags = -g
   defoptflags = -O2 -march=native
-#  I don't know what library flag you need if this is gfortran
+#  I don't know what library flag you need if this is not gfortran or ifort
 endif
