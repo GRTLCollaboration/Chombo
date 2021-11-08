@@ -202,7 +202,7 @@ void TimeInterpolatorRK4::interpolate(/// interpolated solution on this level co
       // Evaluate a0 + a1*t + a2*t^2 + a3*t^3
       // as a0 + t * (a1 + t * (a2 + t * a3)).
 
-#ifdef _OPENMP
+#ifdef UNDEFINED // _OPENMP
 
       #pragma omp parallel default(shared)
       {
