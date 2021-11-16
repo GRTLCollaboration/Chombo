@@ -696,7 +696,13 @@ protected:
 };
 #include "NamespaceFooter.H"
 
-namespace std { template <> inline bool less<CH_XD::IntVect>::operator()(const CH_XD::IntVect& a, const CH_XD::IntVect& b) const { return a.lexLT(b);}
+namespace std { template <>
+#ifdef __clang__ // Clang and GCC handle this differently. The C++14 standard
+constexpr        // says this specialization of std::less should be constexpr
+#else            // but GCC does not like this as lexLT is not constexpr. We
+inline           // could make lexLT and all its called functions constexpr but
+#endif           // this would break compilation on old GCC versions (e.g. v6)
+bool less<CH_XD::IntVect>::operator()(const CH_XD::IntVect& a, const CH_XD::IntVect& b) const { return a.lexLT(b);}
 }
 #include "BaseNamespaceHeader.H"
 

@@ -16,18 +16,30 @@
 makefiles+=local/Make.defs.clang++
 
 # Changed c++11 flag into c++14 as required for GRChombo
-defcxxdbgflags = -std=c++14 -g -Wall -Wno-overloaded-virtual -Wno-sign-compare
-defcxxoptflags = -std=c++14 -ffast-math -march=native -Rpass=loop-vectorize -Wno-sign-compare
+_cxxbaseflags = -std=c++14 -Wno-sign-compare
+
+# Need to test for Intel DPC++/C++ compiler for OpenMP flags
+clangcxxname := $(firstword $(shell $(CXX) --version))
 
 # SIMD pragmas are now OpenMP ones and may want to vectorize even if not
 # using OpenMP.
 ifeq ($(OPENMPCC),TRUE)
-  defcxxdbgflags+= -fopenmp
-  defcxxoptflags+= -fopenmp
+  ifeq ($(findstring Intel,$(clangcxxname)),Intel)
+    _cxxbaseflags += -fiopenmp # Use Intel OpenMP
+  else
+    _cxxbaseflags += -fopenmp
+  endif
 else
-  defcxxdbgflags+= -fopenmp-simd -Wno-unknown-pragmas
-  defcxxoptflags+= -fopenmp-simd -Wno-unknown-pragmas
+  ifeq ($(findstring Intel,$(clangcxxname)),Intel)
+    _cxxbaseflags += -fiopenmp-simd # Use Intel OpenMP SIMD
+  else
+    _cxxbaseflags += -fopenmp-simd
+  endif
+  _cxxbaseflags += -Wno-unknown-pragmas
 endif
+defcxxcomflags := $(_cxxbaseflags)
+defcxxoptflags := $(defcxxcomflags) -O3 -march=native
+defcxxdbgflags := $(defcxxcomflags) -g -Wall -Wno-overloaded-virtual -Wno-missing-braces
 
 
 CH_CPP = cpp -E -P 
@@ -41,8 +53,13 @@ ifeq ($(fname),gfortran)
   deffoptflags = -O3 -funroll-loops -march=native
   deffdbgflags = -g -ggdb -Wall -W
   defflibflags  += -lgfortran -lm
+else ifeq ($(fname),$(filter $(fname),ifort ifx))
+  # Default flags for the Intel Fortran compiler
+  deffoptflags = -O3 -xHost
+  deffdbgflags = -g -check bounds -check uninit -ftrapuv
+  defflibflags += -lifcore -lifport -limf
 else
   deffdbgflags = -g
   defoptflags = -O2 -march=native
-#  I don't know what library flag you need if this is gfortran
+#  I don't know what library flag you need if this is not gfortran or ifort
 endif
