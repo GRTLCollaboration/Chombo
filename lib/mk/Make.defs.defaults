@@ -142,13 +142,13 @@ ifeq ($(PIC),TRUE)
 endif
 
 # these usually can be used without change
-CH_AR=ar r
+CH_AR?=ar r
 CH_CPP?=cpp -E -P
 DOXYGEN?=doxygen
 # Note: if $(LD) is blank, $(CXX) or $(MPICXX) is used to link
 LD=
 PERL=perl
-RANLIB=ranlib#  #set this to 'echo' for systems that dont have ranlib
+RANLIB?=ranlib#  #set this to 'echo' for systems that dont have ranlib
 PROF=gprof
 
 # Rose translator (defined here for graceful failure)
