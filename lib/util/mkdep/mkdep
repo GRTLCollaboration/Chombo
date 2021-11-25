@@ -3,8 +3,9 @@
 # Perl script to generate a "make"-style dependency list for a
 # C, C++, or FORTRAN source file with CPP include directives.  
 #
-# Usage:  mk_dep -DBG [-I<dir>]* [-X<dir>]* filename ...
+# Usage:  mk_dep -DBG [-I<dir>]* [-isystem <dir>]* [-X<dir>]* filename ...
 # Notes:  *  -I<path> defines a search path for include files
+#         *  -isystem <path> also defines a search path for include files
 #         *  -DBG turn on debug flag
 #         *  -D<anything_else> is ignored unless <anything_else> is in
 #             avoidblock in which case it is removed.  avoidblock lists
@@ -31,6 +32,8 @@
 #  09Sep99 by D.Serafini: Force files named "*_F.H" to be output even
 #          if they don't exist so chfpp will be called to make them.
 #
+#  24Nov21 by M.Radia: Add support for -isystem <path> flags (with and without
+#          space between flag and <path>)
 # ------------------------------------------------------------------
 
 $debug = 0;
@@ -40,14 +43,22 @@ $debug = 0;
 # only _dumm_ remains which shouldn't match any #ifdef _dummy_
 $avoidblock="CH_GPU|_dummy_";
 
-# search command line for -I and -X options
+# search command line for -I, -isystem and -X options
 while ($ARGV[0] =~ /^-/) {
     $_ = shift;
-    if (/^-I(.+)/) {
+    if (/^(?:-I|-isystem)(.+)/) {
         die "$1 does not exist\n" if (!-e $1);
         die "$1 not a directory\n" if (!-d $1);
         die "cannot read $1\n" if (!-r $1);
         push(@incldir,("$1/"));
+    } elsif (/^-isystem$/) {
+        # case where there is a space: -isystem <path>
+        # get path from next argument
+        $_ = shift;
+        die "$_ does not exist\n" if (!-e $_);
+        die "$_ not a directory\n" if (!-d $_);
+        die "cannot read $_\n" if (!-r $_);
+        push(@incldir,("$_/"));
     } elsif (/^-X(.+)/) {
         die "Sorry, -X option not implemented\n";
         #push(@excldir,($1));
