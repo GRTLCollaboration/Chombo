@@ -288,6 +288,11 @@ ifeq ($(findstring Cray,$(cxxname)),Cray)
   cxxname:=clang++
 endif
 
+# AMD Optimizing Compiler (AOCC)  
+ifeq ($(findstring AMD,$(cxxname)),AMD)
+  cxxname:=clang++
+endif
+
 # Apple clang++ compiler
 ifeq ($(findstring clang,$(cxxname)),clang)
   include $(CHOMBO_HOME)/mk/compiler/Make.defs.clang++
