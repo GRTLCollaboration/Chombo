@@ -58,8 +58,17 @@ else ifeq ($(fname),$(filter $(fname),ifort ifx))
   deffoptflags = -O3 -xHost
   deffdbgflags = -g -check bounds -check uninit -ftrapuv
   defflibflags += -lifcore -lifport -limf
+else ifeq ($(fname),flang)
+  # Default flags for Classic Flang (e.g. AMD AOCC Fortran compiler)
+  # Note that the name flang is also used by other Fortran compilers for which
+  # these defaults may not work.
+  deffcomflags = -Wno-unused-parameter -Wno-unused-variable
+  deffoptflags = -O3 -march-native
+  deffdbgflags = -g -Wall
+  defflibflags += -lflang -lpgmath
 else
   deffdbgflags = -g
   defoptflags = -O2 -march=native
-#  I don't know what library flag you need if this is not gfortran or ifort
+#  I don't know what library flag you need if this is not gfortran, flang or 
+#  ifort/ifx
 endif
