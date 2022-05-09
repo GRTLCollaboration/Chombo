@@ -21,6 +21,17 @@ using std::pair;
 #include "MayDay.H"
 #include "BaseNamespaceHeader.H"
 
+#ifdef CH_USE_ALIGNED_MEMORY
+#ifndef CH_MEMORY_ALIGNMENT
+#define CH_MEMORY_ALIGNMENT 2*1024*1024
+#endif
+
+#if (CH_MEMORY_ALIGNMENT & (CH_MEMORY_ALIGNMENT - 1) != 0)
+#error "CH_MEMORY_ALIGNMENT is not a power of 2."
+#endif
+#endif
+
+
 // DON'T include memtrack.H here, we track Arena allocation
 // on the usage side, so that we don't have to keep track
 // of memory size and pointer lists.  memtrack is too much
@@ -90,18 +101,26 @@ void* BArena::alloc(size_t a_sz)
   // Thus, switching back to "malloc" may cause intermittent failure on some
   // machines!
   //void* ret =  calloc(1,a_sz);
-  //void* ret =  malloc(a_sz);
-  //MK (26/04/17): replaced malloc with aligned memory allocation. 2MB for huge page boundaries
+  // MK (26/04/17): replaced malloc with aligned memory allocation. 2MB for huge
+  // page boundaries
+  // MR (22/12/20): switch back to malloc as aligned memory can significantly
+  // increase memory usage on some architectures
+#ifdef CH_USE_ALIGNED_MEMORY
   void* ret;
-  posix_memalign(&ret,2*1024*1024,a_sz);
+  int success = posix_memalign(&ret,CH_MEMORY_ALIGNMENT,a_sz);
+  bool malloc_fail = (success != 0) || (ret == NULL);
+#else
+  void* ret =  malloc(a_sz);
+  bool malloc_fail = (ret == NULL);
+#endif
 
-  if (ret == NULL)
+  if (malloc_fail)
   {
     print_memory_line("Out of memory");
     //#ifdef CH_USE_MEMORY_TRACKING
     //ReportAllocatedMemory(pout());
     //#endif
-    pout() << " Trying to calloc(1," << a_sz << ") in BArena::alloc()" << std::endl;
+    pout() << " Trying to allocate " << a_sz << " in BArena::alloc()" << std::endl;
     MayDay::Error("Out of memory in BArena::alloc (BaseFab) ");
   }
 

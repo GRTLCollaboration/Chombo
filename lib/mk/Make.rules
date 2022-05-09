@@ -120,6 +120,7 @@ export USE_4D
 export USE_5D
 export USE_6D
 export USE_64
+export USE_ALIGNED_MEMORY
 export USE_CCSE
 export USE_COMPLEX
 export USE_EB
@@ -258,6 +259,7 @@ $(subst FALSE,,$(subst TRUE,-DCH_USE_MEMORY_TRACKING,$(USE_MT)))\
 $(subst FALSE,,$(subst TRUE,-DCH_COUNT_FLOPS,$(COUNT_FLOPS)))\
 $(subst FALSE,-DCH_NTIMER,$(subst TRUE,,$(USE_TIMER)))\
 $(subst FALSE,,$(subst TRUE,-DCH_USE_64,$(USE_64)))\
+$(subst FALSE,,$(subst TRUE,-DCH_USE_ALIGNED_MEMORY,$(USE_ALIGNED_MEMORY)))\
 $(subst DOUBLE,-DCH_USE_DOUBLE,$(subst FLOAT,-DCH_USE_FLOAT,$(PRECISION)))\
 $(subst FALSE,,$(subst TRUE,-DCH_USE_HDF5 $(subst FALSE,$(HDFINCFLAGS),$(subst TRUE,$(HDFMPIINCFLAGS),$(MPI))),$(USE_HDF)))\
 $(cxxcppflags) $(fcppflags) $(appcppflags)\
