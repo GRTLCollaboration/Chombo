@@ -58,11 +58,28 @@ inline unsigned long long int ch_ticks()
   return tbr;
 }
 #define CH_TICKS
-#else
-// if we fall all the way through to here, we don't really do anything,
-// but we still need the NamespaceHeader to balance
-// the namespacefooter. (DFM 4/28/09)
+
+#elif defined(__aarch64__)
 #include "BaseNamespaceHeader.H"
+inline unsigned long long int ch_ticks()
+{
+  unsigned long long int virtual_timer_count;
+  asm volatile("mrs %0, cntvct_el0" : "=r"(virtual_timer_count));
+  return virtual_timer_count;
+}
+#define CH_TICKS
+
+#else
+#include <time.h>
+#include "BaseNamespaceHeader.H"
+inline unsigned long long int ch_ticks()
+{
+  timespec temp;
+  clock_gettime(CLOCK_MONOTONIC, &temp);
+  return temp.tv_sec * 1000000000l + temp.tv_nsec;
+}
+
+#define CH_TICKS
 #endif
 
 #include "BaseNamespaceFooter.H"
