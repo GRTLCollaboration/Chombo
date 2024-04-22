@@ -62,7 +62,8 @@ endif
 defldflags = -static-intel
 
 foptflags += -O3
-fdbgflags += -g -check bounds -check uninit -ftrapuv
+fdbgflags += -g
+#-check bounds -check uninit -ftrapuv
 
 # The -lsvml flag has been found to give GRChombo bugs and it seems like
 # one can safely remove it. For now we will leave it in and just note in wiki.
