@@ -39,7 +39,7 @@ else
 endif
 defcxxcomflags := $(_cxxbaseflags)
 defcxxoptflags := $(defcxxcomflags) -O3 -march=native
-defcxxdbgflags := $(defcxxcomflags) -g -Wall -Wno-overloaded-virtual -Wno-missing-braces
+defcxxdbgflags := $(defcxxcomflags) -g -Wall -Wno-overloaded-virtual -Wno-missing-braces -fsanitize=memory
 
 
 CH_CPP = cpp -E -P 
@@ -56,8 +56,8 @@ ifeq ($(fname),gfortran)
 else ifeq ($(fname),$(filter $(fname),ifort ifx))
   # Default flags for the Intel Fortran compiler
   deffoptflags = -O3 -xHost
-  deffdbgflags = -g -check bounds -check uninit -ftrapuv
-  defflibflags += -lifcore -lifport -limf
+  deffdbgflags = -g -fsanitize=memory -ftrapuv
+  defflibflags += -fortlib -fsanitize=memory
 else ifeq ($(fname),flang)
   # Default flags for Classic Flang (e.g. AMD AOCC Fortran compiler)
   # Note that the name flang is also used by other Fortran compilers for which
